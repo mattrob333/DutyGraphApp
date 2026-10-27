@@ -3,15 +3,23 @@
   "private": true,
   "type": "module",
   "description": "Root of the dutygraph-mobile repository: shared pure logic (shared/), the facilitator prompt pack (server/companion/), their tests (tests/), the Expo app (mobile/) and the dev server (dev-server/, created in Phase 1).",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test:shared": "tsx --test tests/*.test.ts",
-    "typecheck:shared": "tsc --noEmit -p tsconfig.json"
+    "typecheck:shared": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint mobile/src shared dev-server/src"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^24.0.0",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "playwright": "^1.64.1",
     "tsx": "^4.20.0",
     "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
     "zod": "4.6.7"
   }
 }

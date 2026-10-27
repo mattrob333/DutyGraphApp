@@ -5,7 +5,7 @@ The standalone working repository has been seeded from the supplied archive. Pha
 | Phase | Status | Verification |
 | --- | --- | --- |
 | 0 Workspace | Complete | 48 shared + 312 mobile tests; root/mobile typechecks pass; known seed Jest open handle |
-| 1 Development server | Pending | — |
+| 1 Development server | API implemented; browser integration pending | 14 server tests and typecheck pass; fake participant/proxy/provider adapters |
 | 2 Design system | Pending | — |
 | 3 Voice output | Pending | — |
 | 4 Speech input | Pending | — |

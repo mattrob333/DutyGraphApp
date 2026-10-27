@@ -47,6 +47,7 @@ export type MeetingLifecycleState = 'REQUESTED' | 'EVALUATING' | 'ROUTED' | 'PRE
   | 'NEEDS_HUMAN_FACILITATOR' | 'INSUFFICIENT_EVIDENCE' | 'TECHNICAL_FAILURE';
 
 export type MeetingSession = {
+  companyId: string; version: number; hash: string;
   id: string; meetingId: string; mode: 'capture' | 'copilot' | 'facilitator'; voice: 'tts_lines' | 'realtime' | 'simulated' | null;
   facilitatorState: MeetingFacilitatorState;   // from companion-judgment.ts
   currentTopicId: string | null; topicStartedAt: string | null;
@@ -107,3 +108,11 @@ export type TaskCardDecision = { taskCardId: string; recordVersion: number; cont
 
 export type AdvisorSession = { accessToken: string; refreshToken: string; accessExpiresAt: string; expiresAt: string;
   advisor: { id: string; name: string }; company: { id: string; name: string }; role: 'advisor_mobile' };
+
+export type Person = { id: string; name: string; role: string; department: string };
+export type MeetingCreateInput = { title: string; startsAt: string | null; minutes: number; purpose: string; outcomes: string[]; execution: string; attendees: MeetingAttendee[]; meetingType?: MeetingType; agenda?: AgendaTopic[] };
+export type SessionSnapshot = MeetingSession & { transcript: TranscriptSegment[]; parked: ParkedItem[]; speakerMap: SpeakerMap; proposals: MeetingProposal[] };
+export type CoachState = { currentTopicId: string | null; nextQuestion: string; addressedToPersonId: string | null; stillNeeded: string[]; flags: { kind: string; text: string }[]; remainingMs: number; budgetReached: boolean };
+export type FacilitatorTrigger = 'opening' | 'timebox_end' | 'silence' | 'leader_next' | 'slot_empty' | 'closing';
+export type FacilitatorAction = 'ASK_QUESTION' | 'ASK_FOLLOW_UP' | 'REQUEST_EXAMPLE' | 'CLARIFY_AMBIGUITY' | 'SUMMARIZE_FINDING' | 'CONFIRM_FINDING' | 'TRANSITION_TOPIC' | 'FLAG_CONTRADICTION' | 'REQUEST_HUMAN_REVIEW' | 'PARK_TOPIC' | 'RECOMMEND_CLOSURE' | 'CLOSE_SESSION';
+export type FacilitatorTurn = { text: string; addressedToPersonId?: string; action: FacilitatorAction; promptVersion: string; promptHash: string };
