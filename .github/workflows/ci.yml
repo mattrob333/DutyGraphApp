@@ -12,14 +12,24 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             mobile/package-lock.json
+            dev-server/package-lock.json
       - run: npm ci
       - run: npm run test:shared && npm run typecheck:shared
+      - run: npm run test:coverage:shared
       - run: npm ci
         working-directory: mobile
       - run: npm run verify -- --runInBand
         working-directory: mobile
+      - run: npm run test:coverage:handsfree
+        working-directory: mobile
       - run: npm run export:web
         working-directory: mobile
-      - run: npm ci && npm run verify
+        env:
+          EXPO_PUBLIC_DATA_SOURCE: mock
+          EXPO_PUBLIC_COMPANION_SCOPE: full
+      - run: npx playwright install --with-deps chromium
+      - run: node scripts/e2e-web.mjs --mode mock --flow all
+        working-directory: mobile
+      - run: npm ci && npm run verify && npm run coverage:check
         working-directory: dev-server
         if: hashFiles('dev-server/package-lock.json') != ''

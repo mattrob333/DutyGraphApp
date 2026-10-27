@@ -1,9 +1,57 @@
 # DutyGraph Mobile
 
-Standalone Expo app and development API for DutyGraph information gathering and Meeting OS. The participant seed is being extended according to [the build plan](docs/01-BUILD-PLAN.md). See [PROGRESS.md](PROGRESS.md) for verified status and limitations.
+Expo SDK 57 app and a standalone development API for participant information gathering and advisor Meeting OS. Includes spoken/typed question decks, Task Card review, Pulse, POWER/Gate planning, consent, capture, Facilitator controls, source-linked proposals, speaker mapping, kickoff and setup. [PROGRESS.md](PROGRESS.md) records verification and remaining device/provider checks.
 
-Requires Node 24 and npm. Install root dependencies with `npm install`, then `cd mobile && npm ci`. Run `npm run web` in `mobile` for the fictional demo. Run root checks with `npm run test:shared && npm run typecheck:shared`; run mobile checks with `npm run verify`.
+## Run the fictional demo
 
-Public configuration: `EXPO_PUBLIC_DATA_SOURCE` (`mock` or `http`), `EXPO_PUBLIC_COMPANION_SCOPE` (`questions` or `full`), `EXPO_PUBLIC_API_BASE_URL`, and `EXPO_PUBLIC_MEETINGS_API_BASE_URL`. Provider credentials belong only on the development server. No app-store release or upstream deployment is part of this build.
+Requires Node 24 and npm. From the repository root:
 
-POWER is Carson Tate’s framework from *Work Simply*. Proposed meeting and voice features in this repository are not claims about the production DutyGraph service.
+```sh
+npm ci
+npm --prefix mobile ci
+npm --prefix dev-server ci
+cd mobile
+EXPO_PUBLIC_DATA_SOURCE=mock EXPO_PUBLIC_COMPANION_SCOPE=full npm run web
+```
+
+Use the demo invitation on the welcome screen. Me contains appearance, voice and demo controls. “Run meetings for a company” opens advisor pairing; use `DEMO` in mock mode. All demo names and records are fictional.
+
+## Run against the development API
+
+Start the server in a separate terminal, with provider keys unset for deterministic fake providers:
+
+```sh
+cd dev-server
+env -u OPENAI_API_KEY -u OPENAI_LIVE_TRANSCRIBE_API_KEY npm start
+```
+
+Then start the app:
+
+```sh
+cd mobile
+EXPO_PUBLIC_DATA_SOURCE=http EXPO_PUBLIC_COMPANION_SCOPE=full \
+EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:4417 \
+EXPO_PUBLIC_MEETINGS_API_BASE_URL=http://127.0.0.1:4417 npm run web -- --clear
+```
+
+Enroll through `/mobile/enroll?t=` followed by 64 lowercase `d` characters. The fictional invitation is single-use; restart the in-memory server for a fresh run. Create a short-lived advisor code on the server's computer with `curl -X POST http://127.0.0.1:4417/dev/pairing-code`, then enter it on the advisor pairing screen. `/health` reports the active provider modes. The development server defaults to loopback. For a fictional-data phone test on a trusted network, explicitly set `HOST=0.0.0.0` and configure both app origins to the computer's LAN address; create pairing codes from localhost. A secure development connection is preferable for sensitive data.
+
+The EAS `staging` profile reads both public API origins from the EAS `preview` environment; configure origins reachable from the phone before building. The `preview` profile uses mock data.
+
+Copy [mobile/.env.example](mobile/.env.example) to an ignored `.env.local` if desired. Public app configuration contains origins and feature scope only. Provider keys stay on the server. Setting `DUTYGRAPH_ORIGIN` proxies the pinned participant v1 API; proposed meeting endpoints remain local and are not deployed to DutyGraph. See [the porting guide](docs/PORTING-TO-DUTYGRAPH.md) for server configuration and production requirements.
+
+## Verify
+
+```sh
+npm run verify
+npm run test:coverage:shared
+npm --prefix mobile run verify -- --runInBand
+npm --prefix mobile run test:coverage:handsfree
+npm --prefix dev-server run verify
+npm --prefix dev-server run coverage:check
+npm --prefix mobile run export:web
+```
+
+[Device and browser QA](docs/DEVICE-QA.md) contains reproducible E2E commands and the device checklist. Browser captures at 390×844 in both themes are in [docs/screens](docs/screens). [The build plan](docs/01-BUILD-PLAN.md), [decision log](DECISIONS-LOG.md) and [development log](DEVLOG.md) explain scope and implementation choices.
+
+Native recording, permissions, Bluetooth, interruptions, accessibility and long-session reliability still require device evidence. Native PCM streaming and native WebRTC are unavailable adapters; typing, device recognition and TTS fallbacks remain available. No real-provider rehearsal, upstream deployment or app-store release has occurred. POWER is Carson Tate’s framework from *Work Simply*.
