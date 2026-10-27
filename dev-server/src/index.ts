@@ -1,4 +1,5 @@
 import express from "express";
+import { seedDemoPulse } from "./fixtures.ts";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { randomBytes } from "node:crypto";
@@ -114,6 +115,7 @@ export function createApp(options: AppOptions = {}) {
     res.json({ pairingCode, expiresAt: new Date(expiresAt).toISOString() });
   });
   app.use("/api/mobile/meetings/v1", meetingRoutes(store, providers, config));
+  seedDemoPulse(store);
   app.use(
     "/api/mobile/v1x",
     (req, res, next) => {
@@ -125,15 +127,13 @@ export function createApp(options: AppOptions = {}) {
             (s) => s.accessHash === digest(token) && !s.revoked,
           )
         ) {
-          res
-            .status(404)
-            .json({
-              code: "NOT_AVAILABLE",
-              message:
-                "These proposed features need a local development session.",
-              retryable: false,
-              requestId: res.locals.requestId,
-            });
+          res.status(404).json({
+            code: "NOT_AVAILABLE",
+            message:
+              "These proposed features need a local development session.",
+            retryable: false,
+            requestId: res.locals.requestId,
+          });
           return;
         }
       }
@@ -163,7 +163,9 @@ if (
   });
   const server = createServer(app);
   attachFakeRealtime(server);
-  server.listen(Number(process.env.PORT ?? 4417), "127.0.0.1", () =>
-    console.info("DutyGraph dev server ready."),
+  server.listen(
+    Number(process.env.PORT ?? 4417),
+    process.env.HOST ?? "127.0.0.1",
+    () => console.info("DutyGraph dev server ready."),
   );
 }

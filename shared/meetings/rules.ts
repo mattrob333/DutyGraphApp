@@ -322,3 +322,21 @@ export function closingReadiness(
     unconfirmedActions: unconfirmed.length,
   };
 }
+
+/** Approval is derived from explicit review; it never claims the meeting objectives are complete. */
+export function reviewLifecycle(
+  proposals: MeetingProposal[],
+): MeetingLifecycleState {
+  if (!proposals.length) return "REVIEW_PENDING";
+  const accepted = proposals.filter((p) => p.state === "accepted");
+  const reviewed = proposals.every(
+    (p) => p.state === "accepted" || p.state === "rejected",
+  );
+  const ownersConfirmed = accepted.every(
+    (p) =>
+      p.body.kind !== "action" ||
+      ["assigned", "accepted", "completed"].includes(p.body.status),
+  );
+  if (reviewed && ownersConfirmed) return "APPROVED";
+  return accepted.length ? "PARTIALLY_APPROVED" : "REVIEW_PENDING";
+}

@@ -443,3 +443,62 @@ test("enrollment replay checks original body and expires after two minutes", asy
     await f.close();
   }
 });
+
+test("fictional inbox exposes a complete mixed Task Card check and an assigned Pulse", async () => {
+  const f = await fixture();
+  try {
+    const auth = (
+      await f.call(
+        "/api/mobile/v1/enroll",
+        { invitationToken: DEV_INVITATION },
+        undefined,
+        "enroll",
+      )
+    ).body;
+    const token = auth.accessToken;
+    const list = (await f.call("/api/mobile/v1/requests", undefined, token))
+      .body.requests;
+    const check = list.find((r: { type: string }) => r.type === "confirmation");
+    assert.equal(check.taskCardIds.length, 3);
+    for (let i = 0; i < check.taskCardIds.length; i++) {
+      const card = (
+        await f.call(
+          "/api/mobile/v1/task-cards/" + check.taskCardIds[i],
+          undefined,
+          token,
+        )
+      ).body;
+      const route =
+        i === 0
+          ? "/api/mobile/v1/task-cards/" + card.id + "/attest"
+          : "/api/mobile/v1x/task-cards/" + card.id + "/decision";
+      const result = await f.call(
+        route,
+        {
+          recordVersion: card.version,
+          contentHash: card.hash,
+          decision: ["correct", "needs_change", "not_mine"][i],
+          ...(i === 1 ? { note: "Check the next owner." } : {}),
+        },
+        token,
+        "mixed-" + i,
+      );
+      assert.equal(result.status, 200);
+      assert.equal(result.body.checkReturned, i === 2);
+    }
+    const done = (
+      await f.call("/api/mobile/v1/requests", undefined, token)
+    ).body.requests.find(
+      (r: { requestId: string }) => r.requestId === check.requestId,
+    );
+    assert.equal(done.state, "returned");
+    assert.equal(done.needsYou, false);
+    const pulses = (await f.call("/api/mobile/v1x/pulses", undefined, token))
+      .body.pulses;
+    assert.equal(pulses.length, 1);
+    assert.equal(pulses[0].questions.length, 3);
+    assert.ok(pulses[0].meetingId);
+  } finally {
+    await f.close();
+  }
+});

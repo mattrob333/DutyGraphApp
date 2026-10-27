@@ -97,6 +97,39 @@ export function seed(store: Store) {
       IDS.participant,
     );
   }
+  store.put(
+    "requests",
+    IDS.confirmation,
+    {
+      requestId: IDS.confirmation,
+      version: 1,
+      contentHash: hash(["task-check", IDS.task]),
+      title: "Check your Task Cards",
+      type: "confirmation",
+      state: "sent",
+      dueDate: "2030-12-31",
+      questionCount: 1,
+      needsYou: true,
+      questions: [
+        {
+          questionId: "check-0",
+          text: "Are these Task Cards right for your work?",
+          key: "question.0",
+          ...hintsForQuestion("Are these Task Cards right for your work?"),
+        },
+      ],
+      questionPlanVersion: "dev-1",
+      gapFollowup: false,
+      advisorName: "Alex Moreno",
+      taskCardIds: [
+        IDS.task,
+        "40000000-0000-4000-8000-000000000002",
+        "40000000-0000-4000-8000-000000000003",
+      ],
+    },
+    IDS.company,
+    IDS.participant,
+  );
   store.invitations[digest(DEV_INVITATION)] = {
     companyId: IDS.company,
     personId: IDS.participant,
@@ -350,6 +383,7 @@ export function participantRoutes(store: Store) {
         p.companyId,
         p.personId,
       );
+      returnCompletedChecks(store, p);
       return {
         body: {
           ok: true,
@@ -459,4 +493,38 @@ export function participantRoutes(store: Store) {
     }),
   );
   return r;
+}
+
+export function returnCompletedChecks(store: Store, p: Principal) {
+  for (const request of store.list<S["ParticipantRequestSummary"]>(
+    "requests",
+    p,
+    true,
+  )) {
+    if (
+      request.type !== "confirmation" ||
+      request.state !== "sent" ||
+      !request.taskCardIds?.length
+    )
+      continue;
+    if (
+      request.taskCardIds.every(
+        (id) => store.get<S["TaskCardView"]>("tasks", id, p, true).reviewed,
+      )
+    ) {
+      const full = store.get<object>("requests", request.requestId, p, true);
+      store.put(
+        "requests",
+        request.requestId,
+        {
+          ...full,
+          state: "returned",
+          needsYou: false,
+          version: request.version + 1,
+        },
+        p.companyId,
+        p.personId,
+      );
+    }
+  }
 }

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { proposalBodySchema } from "./schemas/proposals.ts";
 import { z } from "zod";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
@@ -35,6 +36,7 @@ import type {
   ClosingItem,
 } from "../../shared/meetings/types.ts";
 import {
+  reviewLifecycle,
   inferMeetingType,
   agendaFor,
   gateMeeting,
@@ -203,6 +205,15 @@ export function meetingRoutes(
       version({ ...m, updatedAt: new Date().toISOString() }, m.version + 1),
       p.companyId,
     );
+  const updateReview = (session: MeetingSession, p: Principal) => {
+    if (!session.endedAt) return;
+    const meeting = getMeeting(session.meetingId, p);
+    const proposals = store
+      .list<MeetingProposal>("proposals", p)
+      .filter((x) => x.sessionId === session.id);
+    const state = reviewLifecycle(proposals);
+    if (meeting.state !== state) saveMeeting({ ...meeting, state }, p);
+  };
   const getSession = (id: string, p: Principal) =>
     store.get<MeetingSession>("sessions", id, p);
   const saveSession = (s: MeetingSession, p: Principal) =>
@@ -219,6 +230,23 @@ export function meetingRoutes(
         (e) => e.cluster === t.speakerCluster && e.confirmedBy,
       );
       if (!mapped?.personKey || !declined.has(mapped.personKey)) continue;
+      if (t.text)
+        for (const [key, entry] of Object.entries(
+          store.records.idempotency ?? {},
+        )) {
+          if (
+            entry.companyId === p.companyId &&
+            JSON.stringify(entry.value).includes(t.text)
+          ) {
+            const prior = entry.value as { hash: string };
+            store.put(
+              "idempotency",
+              key,
+              { hash: prior.hash, blockedReason: "CONSENT_CHANGED" },
+              p.companyId,
+            );
+          }
+        }
       store.put(
         "transcripts",
         t.id,
@@ -408,6 +436,7 @@ export function meetingRoutes(
           },
         });
       }
+      checkVersion(getMeeting(m.id, p), m.version);
       const meeting = saveMeeting({ ...planned, gate, state: "ROUTED" }, p);
       return {
         body: {
@@ -654,6 +683,7 @@ export function meetingRoutes(
         existing.at = c.at;
       }
       excludeWithdrawn(s, p);
+      updateReview(s, p);
       s.noticeVersion = b.noticeVersion;
       s.appVersion = b.appVersion;
       const ready = canRecord(s.consents, m.attendees);
@@ -908,6 +938,7 @@ export function meetingRoutes(
             p.companyId,
           );
       }
+      updateReview(s, p);
       return { body: { segments: sessionSnapshot(store, s.id, p).transcript } };
     }),
   );
@@ -1064,6 +1095,12 @@ export function meetingRoutes(
         prompt: prompt.system,
         addressedToPersonId,
       });
+      if (hash(getSession(s.id, p).consents) !== hash(s.consents))
+        fail(
+          409,
+          "CONSENT_CHANGED",
+          "Consent changed while the provider was working.",
+        );
       s.promptVersion = prompt.promptVersion;
       s.promptHash = prompt.contentHash;
       s.log.push({
@@ -1298,6 +1335,7 @@ export function meetingRoutes(
             p.companyId,
           );
       }
+      updateReview(s, p);
       return { body: map };
     }),
   );
@@ -1344,6 +1382,12 @@ export function meetingRoutes(
           audio,
           mimeType: "audio/aac",
         });
+        if (hash(getSession(s.id, p).consents) !== hash(s.consents))
+          fail(
+            409,
+            "CONSENT_CHANGED",
+            "Consent changed while the provider was working.",
+          );
         for (const t of result.segments) {
           const segment: TranscriptSegment = {
             ...t,
@@ -1480,6 +1524,7 @@ export function meetingRoutes(
           contentHash: z.string().optional(),
           editNote: z.string().max(2000).optional(),
           text: z.string().min(1).max(12000).optional(),
+          body: proposalBodySchema.optional(),
           ownerPersonKey: z.string().nullable().optional(),
           due: z.iso.datetime().nullable().optional(),
           sources: z
@@ -1520,12 +1565,24 @@ export function meetingRoutes(
         proposal.decidedBy = p.personId;
         proposal.decidedAt = new Date().toISOString();
       } else {
-        if (!b.text) fail(400, "VALIDATION_ERROR", "Enter the edited item.");
+        if (!b.text && !b.body)
+          fail(400, "VALIDATION_ERROR", "Enter the edited item.");
+        if (b.body) {
+          if (b.body.kind !== proposal.kind)
+            fail(
+              400,
+              "VALIDATION_ERROR",
+              "Keep the proposal kind when editing.",
+            );
+          proposal.body = b.body;
+        }
         const body = proposal.body;
-        if (body.kind === "action") body.what = b.text;
-        else if (body.kind === "decision") body.decision = b.text;
-        else if (body.kind === "claim") body.value = b.text;
-        else if (body.kind === "open_question") body.question = b.text;
+        if (b.body) {
+          /* Structured edits were schema-validated above. */
+        } else if (body.kind === "action") body.what = b.text!;
+        else if (body.kind === "decision") body.decision = b.text!;
+        else if (body.kind === "claim") body.value = b.text!;
+        else if (body.kind === "open_question") body.question = b.text!;
         else
           fail(
             400,
@@ -1568,11 +1625,48 @@ export function meetingRoutes(
           }
           proposal.sources = b.sources;
         }
+        const people = getMeeting(s.meetingId, p).attendees.map(personKey);
+        const referenced =
+          body.kind === "action"
+            ? body.ownerPersonKey
+            : body.kind === "decision"
+              ? body.decidedByPersonKey
+              : body.kind === "responsibility_delta"
+                ? body.personKey
+                : body.kind === "open_question"
+                  ? body.askPersonKey
+                  : null;
+        if (referenced && !people.includes(referenced))
+          fail(403, "PERSON_FORBIDDEN", "Choose a person from this meeting.");
+        if (body.kind === "task_card_delta" && body.taskCardId)
+          store.get("tasks", body.taskCardId, p);
+        if (body.kind === "contradiction")
+          for (const claim of [body.claimA, body.claimB]) {
+            const segment = store.get<TranscriptSegment>(
+              "transcripts",
+              claim.source.segmentId,
+              p,
+            );
+            if (
+              segment.sessionId !== s.id ||
+              segment.revision !== claim.source.revision ||
+              segment.excluded ||
+              !segment.committed ||
+              !segment.text.includes(claim.source.quote)
+            )
+              fail(
+                409,
+                "EVIDENCE_REQUIRED",
+                "Both sides of a contradiction need current source quotes.",
+              );
+          }
+        if (body.kind === "action") body.status = "proposed";
         proposal.state = "proposed";
         proposal.editNote = b.editNote ?? "Edited by the meeting leader.";
       }
       const updated = version(proposal, proposal.version + 1);
       store.put("proposals", updated.id, updated, p.companyId);
+      updateReview(s, p);
       return { body: updated };
     }),
   );
@@ -1689,6 +1783,7 @@ export function meetingRoutes(
         reason: `${b.items.length} items reviewed on the leader device`,
       });
       saveSession(s, p);
+      updateReview(s, p);
       return { body: { items } };
     }),
   );

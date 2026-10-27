@@ -604,7 +604,11 @@ test("consent withdrawal purges words and invalidates accepted attribution; unkn
     await f.call(api + "/sessions/" + s.id + "/transcript", {
       segments: [segment],
     });
-    const finished = await f.call(api + "/sessions/" + s.id + "/finish", {});
+    const finished = await f.call(
+      api + "/sessions/" + s.id + "/finish",
+      {},
+      "withdraw-finish",
+    );
     const proposal = finished.body.proposals[0];
     await f.call(api + "/proposals/" + proposal.id + "/decision", {
       decision: "accept",
@@ -625,6 +629,21 @@ test("consent withdrawal purges words and invalidates accepted attribution; unkn
     assert.equal(snapshot.proposals[0].state, "stale");
     assert.ok(
       !JSON.stringify(snapshot).includes("Confidential withdrawal example."),
+    );
+    assert.ok(
+      !JSON.stringify(f.store.records).includes(
+        "Confidential withdrawal example.",
+      ),
+    );
+    assert.equal(
+      (
+        await f.call(
+          api + "/sessions/" + s.id + "/finish",
+          {},
+          "withdraw-finish",
+        )
+      ).body.code,
+      "CONSENT_CHANGED",
     );
     assert.equal(
       (
@@ -713,6 +732,103 @@ test("kickoff cannot overwrite another company note or manufacture claim sources
         })
       ).body.code,
       "EVIDENCE_REQUIRED",
+    );
+  } finally {
+    await f.close();
+  }
+});
+
+test("all structured proposal edits preserve kind, source scope and human owner confirmation", async () => {
+  const f = await setup();
+  try {
+    const { s, consent } = await start(f);
+    await f.call(api + "/sessions/" + s.id + "/consent", consent);
+    const id = uuid(),
+      text = "Priya will check the carrier.";
+    await f.call(api + "/sessions/" + s.id + "/transcript", {
+      segments: [
+        { id, revision: 1, startMs: 0, endMs: 1000, text, speaker: "S1" },
+      ],
+    });
+    await f.call(api + "/sessions/" + s.id + "/speakers", {
+      entries: [{ cluster: "S1", personKey: IDS.participant }],
+    });
+    const finished = await f.call(api + "/sessions/" + s.id + "/finish", {});
+    const original = finished.body.proposals[0],
+      source = original.sources[0];
+    const bodies: import("../../shared/meetings/types.ts").MeetingProposal["body"][] =
+      [
+        {
+          kind: "decision",
+          decision: "Review the carrier",
+          decidedByPersonKey: IDS.participant,
+          rationale: "Stated plan",
+          alternatives: [],
+          deferred: false,
+        },
+        {
+          kind: "action",
+          what: "Check the carrier",
+          ownerPersonKey: IDS.priya,
+          due: null,
+          dependsOn: [],
+          doneWhen: "Carrier checked",
+          status: "assigned",
+        },
+        {
+          kind: "open_question",
+          question: "Who owns the next step?",
+          askPersonKey: IDS.priya,
+        },
+        {
+          kind: "task_card_delta",
+          taskCardId: IDS.task,
+          field: "trigger",
+          from: "Ready",
+          to: "Ready and checked",
+        },
+        {
+          kind: "responsibility_delta",
+          personKey: IDS.priya,
+          duty: "Check carrier",
+          change: "add",
+        },
+        {
+          kind: "contradiction",
+          claimA: { text: "Check carrier", source },
+          claimB: { text: "Confirm carrier", source },
+        },
+        { kind: "claim", fieldPath: "carrier.review", value: "Needs review" },
+      ];
+    for (const body of bodies) {
+      const proposal = { ...original, id: uuid(), kind: body.kind, body };
+      f.store.put("proposals", proposal.id, proposal, IDS.company);
+      const changed = await f.call(
+        api + "/proposals/" + proposal.id + "/decision",
+        { decision: "edit", expectedVersion: proposal.version, body },
+      );
+      assert.equal(changed.status, 200, JSON.stringify(changed.body));
+      assert.equal(changed.body.body.kind, body.kind);
+      if (body.kind === "action")
+        assert.equal(changed.body.body.status, "proposed");
+    }
+    const invalid = await f.call(
+      api + "/proposals/" + original.id + "/decision",
+      {
+        decision: "edit",
+        expectedVersion: original.version,
+        body: { ...bodies[1], ownerPersonKey: "outside-company" },
+      },
+    );
+    assert.equal(invalid.status, 403);
+    const accepted = await f.call(
+      api + "/proposals/" + original.id + "/decision",
+      { decision: "accept", expectedVersion: original.version },
+    );
+    assert.equal(accepted.status, 200);
+    assert.equal(
+      (await f.call(api + "/meetings/" + f.meeting.id)).body.state,
+      "PARTIALLY_APPROVED",
     );
   } finally {
     await f.close();

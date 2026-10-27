@@ -21,7 +21,7 @@ export function commands(store: Store) {
         ...(req.file ? { audio: digest(req.file.buffer) } : {}),
       });
       const saved = store.records.idempotency?.[scope]?.value as
-        { hash: string; result: Result } | undefined;
+        { hash: string; result: Result; blockedReason?: string } | undefined;
       const inflight = pending.get(scope);
       if (
         (saved && saved.hash !== bodyHash) ||
@@ -31,6 +31,12 @@ export function commands(store: Store) {
           409,
           "IDEMPOTENCY_CONFLICT",
           "That key belongs to a different request.",
+        );
+      if (saved?.blockedReason)
+        fail(
+          409,
+          saved.blockedReason,
+          "Consent changed. Load the current meeting state.",
         );
       let result: Result;
       if (saved) result = saved.result;

@@ -178,6 +178,22 @@ test("actual advisor HTTP lifecycle conforms to proposed request and response sc
       },
       { id: setup.id },
     );
+    const enrollment = await fetch(base + "/api/mobile/v1/enroll", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": uuid(),
+      },
+      body: JSON.stringify({ invitationToken: "d".repeat(64) }),
+    });
+    token = (await enrollment.json()).accessToken;
+    const pulses = await call("/api/mobile/v1x/pulses", "get");
+    await call("/api/mobile/v1x/pulses/{id}", "get", undefined, {
+      id: pulses.pulses[0].id,
+    });
+    await call("/api/mobile/v1x/pulses/{id}/team-status", "get", undefined, {
+      id: pulses.pulses[0].id,
+    });
   } finally {
     await new Promise<void>((r) => server.close(() => r()));
   }

@@ -2514,6 +2514,26 @@
                     },
                     "minItems": 1,
                     "maxItems": 20
+                  },
+                  "body": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "decision",
+                          "action",
+                          "open_question",
+                          "task_card_delta",
+                          "responsibility_delta",
+                          "contradiction",
+                          "claim"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kind"
+                    ]
                   }
                 },
                 "required": [

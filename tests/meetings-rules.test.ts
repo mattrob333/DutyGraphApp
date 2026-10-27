@@ -202,3 +202,46 @@ test("Pulse status discloses completion only and due time completes collection",
     true,
   );
 });
+
+test("review lifecycle reflects human review without claiming objectives complete", async () => {
+  const { reviewLifecycle } = await import("../shared/meetings/rules.ts");
+  const base: MeetingProposal = {
+    id: "p",
+    sessionId: "s",
+    kind: "claim",
+    state: "proposed",
+    version: 1,
+    hash: "h",
+    sources: [],
+    evidence: "belief",
+    body: { kind: "claim", fieldPath: "note", value: "Review" },
+    decidedBy: null,
+    decidedAt: null,
+  };
+  assert.equal(reviewLifecycle([]), "REVIEW_PENDING");
+  assert.equal(reviewLifecycle([base]), "REVIEW_PENDING");
+  assert.equal(
+    reviewLifecycle([{ ...base, state: "accepted" }, base]),
+    "PARTIALLY_APPROVED",
+  );
+  assert.equal(reviewLifecycle([{ ...base, state: "accepted" }]), "APPROVED");
+  assert.equal(
+    reviewLifecycle([
+      {
+        ...base,
+        state: "accepted",
+        kind: "action",
+        body: {
+          kind: "action",
+          what: "Check",
+          ownerPersonKey: "p",
+          due: null,
+          dependsOn: [],
+          doneWhen: "Checked",
+          status: "proposed",
+        },
+      },
+    ]),
+    "PARTIALLY_APPROVED",
+  );
+});

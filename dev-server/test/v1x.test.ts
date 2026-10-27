@@ -205,10 +205,32 @@ test("config, Pulse list and meeting DTOs remain authenticated and participant s
   );
   const meetings = await f.call("/meetings");
   assert.equal(meetings.body.meetings.length, 1);
+  f.store.put(
+    "meetings",
+    f.meeting.id,
+    {
+      ...f.meeting,
+      gate: {
+        mode: "LIVE",
+        route: "LIVE",
+        reason: "Internal confidence 0.99; evidence score 7",
+        requiredPersonIds: [IDS.participant],
+        releasedPersonIds: [],
+        liveMinutes: 30,
+        asyncTopicIds: [],
+        judgedBy: "model",
+      },
+    },
+    IDS.company,
+  );
   const detail = await f.call(`/meetings/${f.meeting.id}`);
   assert.equal(detail.body.title, f.meeting.title);
   assert.equal("attendees" in detail.body, false);
   assert.equal("gate" in detail.body, false);
+  assert.equal(
+    /confidence|score|0\.99/.test(JSON.stringify(detail.body)),
+    false,
+  );
   assert.equal(
     (
       await f.call(

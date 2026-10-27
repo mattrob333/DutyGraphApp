@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { returnCompletedChecks } from "./participant.ts";
 import { z } from "zod";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -23,7 +24,11 @@ import {
   answerCoverageBody,
 } from "../../shared/mobile-contracts.ts";
 import { coverLocally } from "../../shared/hands-free/coverage.ts";
-import { gateMeeting, pulseTeamStatus } from "../../shared/meetings/rules.ts";
+import {
+  gateMeeting,
+  pulseTeamStatus,
+  reviewLifecycle,
+} from "../../shared/meetings/rules.ts";
 import type {
   MeetingDefinition,
   MeetingSession,
@@ -387,6 +392,7 @@ export function v1xRoutes(store: Store, providers: Providers, config: Config) {
         p.companyId,
         p.personId,
       );
+      returnCompletedChecks(store, p);
       return {
         body: {
           ok: true,
@@ -408,6 +414,7 @@ export function v1xRoutes(store: Store, providers: Providers, config: Config) {
     const { pulse, own } = ownPulse(id, p);
     return {
       id,
+      meetingId: pulse.meetingId,
       requestId: `pulse:${id}`,
       title: pulse.title,
       dueAt: pulse.dueAt,
@@ -645,7 +652,13 @@ export function v1xRoutes(store: Store, providers: Providers, config: Config) {
           : plannedMinutes < meeting.minutes
             ? `Your meeting is now ${plannedMinutes} minutes.`
             : "Your input is needed live.",
-      reason: meeting.gate?.reason ?? "The leader is planning this meeting.",
+      reason: completed
+        ? "Review the items about your work."
+        : released
+          ? "Your update can be shared without attending live."
+          : meeting.gate
+            ? "The remaining topics need your input."
+            : "The leader is planning this meeting.",
       purpose: meeting.power.purpose,
       expectedOutcome: meeting.power.outcomes.join("; "),
       whyYou: "Your input is needed for the topics assigned to you.",
@@ -831,6 +844,20 @@ export function v1xRoutes(store: Store, providers: Providers, config: Config) {
         [...closing.filter((existing) => existing.proposalId !== id), item],
         p.companyId,
       );
+      const reviewed = store
+        .list<MeetingProposal>("proposals", p)
+        .filter((x) => x.sessionId === proposal.sessionId);
+      const state = reviewLifecycle(reviewed);
+      if (meeting.state !== state)
+        store.put(
+          "meetings",
+          meeting.id,
+          version(
+            { ...meeting, state, updatedAt: new Date().toISOString() },
+            meeting.version + 1,
+          ),
+          p.companyId,
+        );
       return { body: { acknowledged: true, item } };
     }),
   );

@@ -91,7 +91,7 @@ route(B,'/sessions/{id}/finish','post',o({'session':r('Session'),'proposals':a(r
 route(B,'/sessions/{id}/speakers','get',r('SpeakerMap'))
 route(B,'/sessions/{id}/speakers','post',r('SpeakerMap'),o({'entries':a(o({'cluster':s(),'personKey':nullable(s()),'suggested':b,'confirmedBy':nullable(s())},['cluster','personKey']))}))
 route(B,'/sessions/{id}/proposals','get',o({'proposals':a(r('Proposal'))}))
-route(B,'/proposals/{id}/decision','post',r('Proposal'),o({'decision':s(enum=['accept','reject','edit']),'expectedVersion':i(minimum=1),'contentHash':hs,'editNote':s(maxLength=2000),'text':s(maxLength=12000),'ownerPersonKey':nullable(s()),'due':nullable(dt),'sources':a(r('Source'),minItems=1,maxItems=20)},['decision','expectedVersion']))
+route(B,'/proposals/{id}/decision','post',r('Proposal'),o({'decision':s(enum=['accept','reject','edit']),'expectedVersion':i(minimum=1),'contentHash':hs,'editNote':s(maxLength=2000),'text':s(maxLength=12000),'ownerPersonKey':nullable(s()),'due':nullable(dt),'sources':a(r('Source'),minItems=1,maxItems=20),'body':o({'kind':s(enum=['decision','action','open_question','task_card_delta','responsibility_delta','contradiction','claim'])},['kind'])},['decision','expectedVersion']))
 route(B,'/proposals/{id}/follow-up','post',obj,o({'personId':uid,'text':s(maxLength=4000)},['personId']),status='201')
 route(B,'/sessions/{id}/closing','post',o({'items':a(r('ClosingItem'))}),o({'items':a(r('ClosingItem'))}))
 route(B,'/sessions/{id}/export','get',o({'markdown':s(),'json':o({'meeting':r('Meeting'),'session':r('SessionSnapshot')})}))

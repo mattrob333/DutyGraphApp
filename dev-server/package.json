@@ -11,7 +11,8 @@
     "test": "env -u OPENAI_API_KEY -u OPENAI_LIVE_TRANSCRIBE_API_KEY tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "verify": "npm run typecheck && npm run lint && npm test"
+    "verify": "npm run typecheck && npm run lint && npm test",
+    "coverage:check": "c8 --all --include 'src/**/*.ts' --reporter=text --reporter=json-summary --reporter=lcov --check-coverage --lines 90 --statements 0 --branches 0 --functions 0 npm test"
   },
   "dependencies": {
     "express": "^5.1.0",
