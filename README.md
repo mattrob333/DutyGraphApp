@@ -72,9 +72,11 @@ npm --prefix mobile run export:web
 
 [Device and browser QA](docs/DEVICE-QA.md) contains reproducible E2E commands and the device checklist. Browser captures at 390×844 in both themes are in [docs/screens](docs/screens). [The build plan](docs/01-BUILD-PLAN.md), [decision log](DECISIONS-LOG.md) and [development log](DEVLOG.md) explain scope and implementation choices.
 
-Native recording, permissions, Bluetooth, interruptions, accessibility and long-session reliability still require device evidence. Native PCM streaming is implemented as a local Expo module; optional audio-only WebRTC uses `EXPO_PUBLIC_FACILITATOR_REALTIME=true`. Both require a new development build and native validation. Device recognition, typing and TTS remain fallback paths. No real-provider rehearsal, upstream deployment or app-store release has occurred. POWER is Carson Tate’s framework from *Work Simply*.
+Native recording, permissions, Bluetooth, interruptions, accessibility and long-session reliability still require device evidence. Native PCM streaming is implemented as a local Expo module; optional audio-only WebRTC uses `EXPO_PUBLIC_FACILITATOR_REALTIME=true`. Both require a new development build and native validation. Device recognition, typing and TTS remain fallback paths. One scripted real-provider rehearsal has run (PROGRESS.md); no upstream deployment or app-store release has occurred. POWER is Carson Tate’s framework from *Work Simply*.
 
 
 The HTTP browser suite starts a fresh credential-free fake server for each flow. After exporting an HTTP bundle with both origins set to `http://127.0.0.1:4417` and full scope, run `npm --prefix mobile run test:e2e:http`. It covers participant send/retry, Task Cards, Pulse, meetings, declined consent, source correction, wrap-up and setup.
 
-The manually triggered [native build workflow](.github/workflows/native-build.yml) compiles an Android debug app and an unsigned iOS simulator app. It has been added for toolchains unavailable in this workspace; no native build or device pass is implied by its presence.
+The [native build workflow](.github/workflows/native-build.yml) builds an installable Android APK (JavaScript bundled, debug-signed for sideloading) and, when run by hand, an unsigned iOS simulator app. Add the `build-android` label to a pull request, or run the workflow by hand and choose mock or http data. Download the `dutygraph-android-apk` artifact from the run and open it on an Android phone. iPhone builds need an Apple Developer account and EAS.
+
+Rehearse with real providers (paid, never in CI): start the dev server with `OPENAI_API_KEY` and `OPENAI_TEXT_MODEL` set, then run `npx tsx scripts/real-provider-rehearsal.ts` in `dev-server/` (needs ffmpeg).
