@@ -1,5 +1,8 @@
 name: Native builds
 on:
+  # Pushing a tag such as android-demo-1 builds the mock-data demo APK.
+  push:
+    tags: ["android-demo-*"]
   workflow_dispatch:
     inputs:
       data_source:
@@ -47,6 +50,7 @@ jobs:
           name: dutygraph-android-apk
           path: mobile/android/app/build/outputs/apk/release/*.apk
   ios:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 60
     env:
