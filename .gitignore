@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.expo/
+coverage/
+.env
+.env.local
+.env.*.local
+*.log
+dev-server/data/
+dev-server/audio/
+test-results/
+playwright-report/

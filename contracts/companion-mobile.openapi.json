@@ -1,0 +1,1633 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "DutyGraph Companion Mobile API",
+    "version": "1.3.0",
+    "description": "Contract for the DutyGraph Companion mobile client. This document pins request and response shapes so a React Native app can generate types and QA can write contract tests. The pinned endpoints are implemented in server/mobile-participant.ts and exercised by mobile API integration tests. Hosted provider and native-device acceptance remain separate.\n\nThe base path is /api/mobile/v1 on the same DutyGraph origin as the advisor application. PostgreSQL remains the only business database. These routes are wrappers over the same invitation and request records as the browser participant flows. They do not replace GET/POST /api/invitations/{token}/team, team transcription, or kickoff links.\n\nAuthentication is a participant bearer session. It is separate from the browser dg_session cookie and the X-CSRF-Token header. The server derives tenant, company, person, and device from the session. The role is participant_mobile. The client must not send a company id or person id as authority.\n\nA target that belongs to a different tenant or person returns 403 PERSON_FORBIDDEN. A stale expectedVersion returns 409 VERSION_CONFLICT. A content hash that does not match the saved request or the saved proposal returns 409 HASH_CONFLICT. An invitation token that is missing, already used, revoked, or expired returns 410 INVITATION_EXPIRED, the same outcome as browser team and kickoff links. A closed or past-due request returns 410 REQUEST_CLOSED.\n\nCommands that change state require Idempotency-Key, at most 128 characters. The same actor, path, and key with the same canonical body return the saved result. The same key with a different body returns 409 IDEMPOTENCY_CONFLICT.\n\nTranscription and understanding results are proposals. confirmationState is always proposed. Submit requires participantConfirmed true and the proposal hash. Submit records the participant's words and their confirmation of their understanding. It does not accept a Task Card as company truth, grant authority, or skip advisor review. Task field names match the existing participant card review schema. This contract does not define a second Task Card schema.\n\nProvider credentials never appear in this document or in client responses. Understanding calls are specified with provider retention off (store false).\n\nImplemented server extensions outside this generated-client pin (not mobile-client commitments): PUT /me/push-token, POST /requests/{requestId}/transcription-stream-ticket, and POST /updates.\n\nRevision 1.1 (2026-09-24, additive): submit accepts understanding null with understandingUnavailable true, so a participant can always send their own words for advisor review when understanding is unavailable, rate-limited, timed out, or proposes no tasks. Proposed and confirmed tasks may carry missingFields; incomplete steps are kept with \"Not stated\" instead of being dropped. Configuration errors are 503 *_NOT_CONFIGURED with retryable false and do not count against daily limits. Enroll accepts an optional Idempotency-Key for a two-minute replay window, and refuses web-only links (leadership, first-touch, setup and review links) with 409 USE_WEB_LINK before consuming them. Refresh honours the same Idempotency-Key once more inside a two-minute grace window. Repeat logout returns 204. The task-card list, detail and attest operations are now pinned so task checks can be answered in the app. Every keyed operation documents 400 IDEMPOTENCY_REQUIRED.\n\nRevision 1.2 (2026-10-09, additive): hands-free question cards. Each ParticipantQuestion may carry key (question.N, the web team page's answer key), short (a short title) and hints (the \"Try to cover\" chips: id, label, nudge, cues), and the request detail may carry advisorName. The app adds the \"Anything else?\" card itself; the server does not send it. POST /requests/{requestId}/coverage checks one card's words against that question's hints and answers hint ids only; any refusal or failure is 200 with available false and a reason, so the app's local check stands. The words are not stored and only the audit count changes, so it takes no Idempotency-Key. POST /requests/{requestId}/understand is the web team page's \"Here's what we heard\" (same body, response and daily limit). Submit's words path (understanding null) also accepts questionAnswers, questionUnderstood, questionSuggestions, questionResponses and responseText, with the web team page's limits, and saves the same response record as a web answer; with a non-null understanding they are 422 VALIDATION_ERROR. Every 1.1 request body is still valid.\n\nRevision 1.3 (2026-10-16, additive): the words path also accepts questionAnswerSources, where each answer's words came from (AnswerSource: typed, voice_openai, voice_device or voice_browser, with edited when the person changed transcribed words). It is stored as on a web team answer, only for answers that have words, so the advisor's review says which answers were transcribed. Every 1.2 request body is still valid.",
+    "x-dutygraph-status": "implemented-pinned-slice"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4317/api/mobile/v1",
+      "description": "Local DutyGraph server. Same process as the advisor app."
+    },
+    {
+      "url": "https://dutygraph.com/api/mobile/v1",
+      "description": "Hosted DutyGraph origin."
+    }
+  ],
+  "tags": [
+    { "name": "Enrollment", "description": "Exchange a single-use invitation token for a device session." },
+    { "name": "Session", "description": "Refresh and revoke participant mobile sessions." },
+    { "name": "Profile", "description": "Identity screen for the signed-in participant." },
+    { "name": "Requests", "description": "Needs-you inbox and question screen." },
+    { "name": "Transcription", "description": "Server-side speech-to-text." },
+    { "name": "Understanding", "description": "Proposed understanding. Never auto-confirmed." },
+    { "name": "Hands-free", "description": "v1.2 question cards: coverage check and Here's what we heard." }
+  ],
+  "security": [{ "participantBearer": [] }],
+  "paths": {
+    "/enroll": {
+      "post": {
+        "tags": ["Enrollment"],
+        "operationId": "enrollParticipant",
+        "summary": "Exchange an invitation token for a participant mobile session",
+        "description": "Send the invitation token in the body, not in the URL. The token is the same 64-character hex value used by browser team and kickoff links. The server hashes it the same way and does not echo it back.\n\nA missing, used, revoked, or expired token returns 410 INVITATION_EXPIRED. A token whose request is closed or past due returns 410 REQUEST_CLOSED. A token that does not grant this participant the matching team or kickoff request returns 403 PERSON_FORBIDDEN. A malformed token returns 422 VALIDATION_ERROR.\n\nSuccess consumes the invitation. A replay of the same token without an Idempotency-Key returns 410. v1.1: send an Idempotency-Key; if the 201 response is lost, repeat the call with the same key and token within two minutes to receive the same session (200, idempotentReplay true). A leadership, first-touch, account setup or review link returns 409 USE_WEB_LINK before the invitation is used; open it in the browser.\n\nNo bearer token is required. This call does not create a browser cookie session and does not return a CSRF token.",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/EnrollRequest" }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "New participant mobile session. Store both tokens. The access token is sent as Authorization Bearer on later calls.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ParticipantMobileSession" }
+              }
+            }
+          },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "410": { "$ref": "#/components/responses/InvitationGone" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "200": {
+            "description": "Replay of a lost enroll response (same Idempotency-Key and token within two minutes): the same session and device with a new token pair. idempotentReplay is true.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ParticipantMobileSession" }
+              }
+            }
+          },
+          "409": { "$ref": "#/components/responses/UseWebLink" }
+        },
+        "parameters": [{ "$ref": "#/components/parameters/OptionalIdempotencyKey" }]
+      }
+    },
+    "/session/refresh": {
+      "post": {
+        "tags": ["Session"],
+        "operationId": "refreshParticipantSession",
+        "summary": "Rotate the refresh token and issue a new access token",
+        "description": "Send the current refresh token in the body. Do not send the access token. A successful call revokes the presented refresh token and returns a new pair.\n\nIdempotency-Key is required. If the 200 response was lost, repeat the call with the same key and the same (previous) refresh token within two minutes: the server returns a new pair for the same session with idempotentReplay true. Presenting an already rotated token with a different key, or after the grace window, returns 401 REFRESH_REPLAY. An expired or revoked refresh token returns 401 SESSION_EXPIRED.",
+        "security": [],
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RefreshRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Rotated session. Replace the stored access token and refresh token with this body.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ParticipantMobileSession" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/IdempotencyConflict" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "400": { "$ref": "#/components/responses/IdempotencyRequired" }
+        }
+      }
+    },
+    "/session/logout": {
+      "post": {
+        "tags": ["Session"],
+        "operationId": "logoutParticipantSession",
+        "summary": "Revoke the current participant device session",
+        "description": "Revokes the device session identified by the bearer access token. Idempotency-Key is required. Logout is idempotent: a repeat for a session that is already revoked returns 204, whatever the key. This call does not revoke other devices. After logout the participant needs a new invitation from the advisor to reconnect.",
+        "parameters": [
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session revoked, or this Idempotency-Key already revoked it.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "$ref": "#/components/responses/IdempotencyConflict" },
+          "400": { "$ref": "#/components/responses/IdempotencyRequired" }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": ["Profile"],
+        "operationId": "getParticipantProfile",
+        "summary": "Read the signed-in participant profile",
+        "description": "Returns the minimal profile for the identity screen. personId and companyId are echoes of the server session. They are not credentials. A session whose person is missing or outside the session tenant returns 403 PERSON_FORBIDDEN. A missing or expired access token returns 401 SESSION_EXPIRED.",
+        "responses": {
+          "200": {
+            "description": "Profile for the session participant.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ParticipantProfile" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/requests": {
+      "get": {
+        "tags": ["Requests"],
+        "operationId": "listParticipantRequests",
+        "summary": "List requests for the Needs-you inbox",
+        "description": "Returns requests assigned to the session person. The default inbox is needs-you: state sent and not past due. scope=all also includes requests this person already returned or that are closed. The server ignores any client-supplied company or person filter. A session that cannot be scoped to one person returns 403 PERSON_FORBIDDEN. The list does not include another person's requests.",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "required": false,
+            "description": "needs-you is the inbox. all includes closed and returned requests for this person only.",
+            "schema": {
+              "type": "string",
+              "enum": ["needs-you", "all"],
+              "default": "needs-you"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Assigned requests. The array is empty when the inbox has no open requests.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ParticipantRequestList" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/requests/{requestId}": {
+      "get": {
+        "tags": ["Requests"],
+        "operationId": "getParticipantRequest",
+        "summary": "Read one request for the question screen",
+        "description": "Returns the question text, version, and contentHash the client must send back on transcription, understanding, and submit. A request assigned to a different person or tenant returns 403 PERSON_FORBIDDEN. An unknown id inside this session's company returns 404 REQUEST_NOT_FOUND. A closed or past-due request still returns 200 so the screen can explain that it is closed; needsYou is false. Submit and provider calls then return 410 REQUEST_CLOSED.\n\nv1.2: each question also carries key, short and hints, and the detail carries advisorName. The \"Anything else?\" card is not sent; the app adds it.",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" }
+        ],
+        "responses": {
+          "200": {
+            "description": "Question screen for this participant.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ParticipantRequestDetail" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/requests/{requestId}/transcriptions": {
+      "post": {
+        "tags": ["Transcription"],
+        "operationId": "createTranscription",
+        "summary": "Transcribe audio on the server",
+        "description": "Server-side speech-to-text only. The pinned model is grok-voice-transcribe-2.0. The provider credential stays on the server.\n\nSend either a multipart audio clip or JSON that points at an audio asset already stored for this request. Send one of those bodies, not both. The clip limit is 25 MB. Allowed types are audio/webm, audio/mp4, audio/m4a, audio/x-m4a, audio/aac, audio/ogg, audio/wav, and audio/mpeg. A language hint such as en-US is accepted; the server sends the primary language code. consent must be true.\n\nexpectedVersion and contentHash must match the request detail. A mismatch returns 409 VERSION_CONFLICT or 409 HASH_CONFLICT. A different person or tenant returns 403 PERSON_FORBIDDEN. A closed request returns 410 REQUEST_CLOSED. A clip that is too large returns 413. An unsupported type returns 422 AUDIO_TYPE. A missing provider configuration returns 503 TRANSCRIPTION_NOT_CONFIGURED. A provider deadline returns 504 TRANSCRIPTION_TIMEOUT. The daily limit returns 429 TRANSCRIPTION_LIMIT.\n\nIdempotency-Key is required. The same key and body return the saved job, with idempotentReplay true.\n\nThe transcript is a proposal. reviewRequired is true. The participant must read it before submit. A failed or unknown job does not delete the stored audio. The participant can type an answer instead.",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": { "$ref": "#/components/schemas/TranscriptionUpload" },
+              "encoding": {
+                "meta": { "contentType": "application/json" }
+              }
+            },
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/TranscriptionFromAsset" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Saved transcription job. text is present only when job.state is complete. A failed job still returns 200 so the client can show job.message and keep the audio.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/TranscriptionResult" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/VersionOrHashConflict" },
+          "410": { "$ref": "#/components/responses/RequestClosed" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "503": { "$ref": "#/components/responses/Unavailable" },
+          "504": { "$ref": "#/components/responses/ProviderTimeout" },
+          "400": { "$ref": "#/components/responses/IdempotencyRequired" }
+        }
+      }
+    },
+    "/requests/{requestId}/understanding": {
+      "post": {
+        "tags": ["Understanding"],
+        "operationId": "createUnderstanding",
+        "summary": "Propose a strict-schema understanding of the participant's words",
+        "description": "Turns participant-reviewed words into a proposed understanding. The pinned model is grok-4.7 with reasoning effort low, so the draft can finish inside the provider deadline. The call is specified with store false, no web search, and no file store. The provider credential stays on the server.\n\nsourceText must be the participant's typed answer or the transcript they have already read. The server must not replace those words with an unreviewed rewrite. When source is reviewed_transcript, transcriptJobId is required and must be a complete transcription job for this request.\n\nexpectedVersion and contentHash must match the request. A mismatch returns 409 VERSION_CONFLICT or 409 HASH_CONFLICT. A different person or tenant returns 403 PERSON_FORBIDDEN. A closed request returns 410 REQUEST_CLOSED. A missing provider configuration returns 503 UNDERSTANDING_NOT_CONFIGURED with retryable false, before any limit is counted. A provider deadline returns 504 UNDERSTANDING_TIMEOUT. The proposal is not submitted.\n\nIdempotency-Key is required. The same key and body return the saved proposal.\n\nconfirmationState is always proposed. The proposal is not company truth, not participant confirmation, and not an accepted Task Card. Missing steps stay in gaps. A step with an empty field is kept, reads \"Not stated\", lists the field in missingFields, and is named in gaps. The proposal does not invent authority from a job title. Field names match the existing participant card review schema, without the participant decision. Submit is a separate call.",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UnderstandingRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Proposed understanding. confirmationState is proposed. Show it to the participant before submit.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ProposedUnderstanding" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/VersionOrHashConflict" },
+          "410": { "$ref": "#/components/responses/RequestClosed" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "429": { "$ref": "#/components/responses/RateLimited" },
+          "503": { "$ref": "#/components/responses/Unavailable" },
+          "504": { "$ref": "#/components/responses/ProviderTimeout" },
+          "400": { "$ref": "#/components/responses/IdempotencyRequired" }
+        }
+      }
+    },
+    "/requests/{requestId}/coverage": {
+      "post": {
+        "tags": ["Hands-free"],
+        "operationId": "checkAnswerCoverage",
+        "summary": "v1.2: which hints of one question card the words already cover",
+        "description": "Optional server check for a hands-free card. The client sends the question key and the words said on that card so far. The server finds the question's hints itself and asks the company's approved AI connection which of them the words cover. The model answers hint ids only (strict JSON schema), and ids are filtered to that question's hints; the nudge text always comes from the hint table.\n\nEvery refusal is 200 with available false and a reason: AI_NOT_CONFIGURED (no approved AI connection), SAMPLE_COMPANY, COVERAGE_LIMIT (120 checks per request and 3000 per company in 24 hours), SPONSOR_UNAVAILABLE, TIMEOUT (about 4 seconds) or MODEL_ERROR. Then the app's local check stands. This operation never returns 429 or 503.\n\nThe words are not stored. Each attempt writes an audit event team.coverage_checked with the question key and without the words. There is no Idempotency-Key: nothing else changes. A different person or tenant returns 403 PERSON_FORBIDDEN. A closed request returns 410 REQUEST_CLOSED. A key that is not one of the request's questions returns 422 VALIDATION_ERROR.",
+        "parameters": [{ "$ref": "#/components/parameters/RequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/CoverageRequest" },
+              "examples": {
+                "card": {
+                  "summary": "Fictional card",
+                  "value": { "questionKey": "question.1", "text": "Noah Reed approves anything over 500 dollars. It takes about a day." }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "available true with the covered hint ids (possibly empty), or available false with a reason.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CoverageResult" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "410": { "$ref": "#/components/responses/RequestClosed" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/requests/{requestId}/understand": {
+      "post": {
+        "tags": ["Hands-free"],
+        "operationId": "understandParticipantAnswers",
+        "summary": "v1.2: Here's what we heard, one polished text per answer",
+        "description": "The web team page's POST /api/invitations/{token}/team/understand for the app: the same body, the same response and the same daily limit (8 per request and 120 per company in 24 hours, shared with the web page). The answers and the question texts are sent as untrusted data to the company's approved AI connection, which returns per answer the same meaning in clear words (understood) and at most 1 suggestion. A missing item means the app shows the person's own words for that answer.\n\nEvery refusal is 200 with available false and a reason: AI_NOT_CONFIGURED (no approved AI connection, or a sample company), UNDERSTAND_LIMIT, SPONSOR_UNAVAILABLE or MODEL_ERROR. Then the review shows the person's own words. Nothing is stored until submit; the polished text the person keeps goes in submit's questionUnderstood. There is no Idempotency-Key. A different person or tenant returns 403 PERSON_FORBIDDEN. A closed request returns 410 REQUEST_CLOSED.",
+        "parameters": [{ "$ref": "#/components/parameters/RequestId" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/UnderstandAnswersRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "available true with items, or available false with a reason.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/UnderstandAnswersResult" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "410": { "$ref": "#/components/responses/RequestClosed" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/requests/{requestId}/submit": {
+      "post": {
+        "tags": ["Requests"],
+        "operationId": "submitParticipantRequest",
+        "summary": "Submit the participant's answer and confirmed understanding",
+        "description": "Saves the participant's words, the confirmed understanding, and attestation hashes. expectedVersion must equal the request version. contentHash must equal the request contentHash from the detail response. A mismatch returns 409 VERSION_CONFLICT or 409 HASH_CONFLICT. Review the current detail after a 409. Do not retry the old body with a new Idempotency-Key.\n\nparticipantConfirmed must be true. understanding.contentHash must equal the contentHash of the proposed understanding the participant reviewed. attestation.requestContentHash must equal contentHash. attestation.understandingHash must equal understanding.contentHash. A body that disagrees with itself returns 422 VALIDATION_ERROR. A hash that does not match the saved request or the saved proposal returns 409 HASH_CONFLICT.\n\nEach task uses the existing participant card fields plus the participant's decision: correct, not_mine, or unsure. The decision is the participant's. The model does not set it. This submit does not mark Task Cards canonical and does not grant authority.\n\nIdempotency-Key is required. The same key and the same body return the saved SubmitResult with idempotentReplay true and do not create a second response. The same key with a different body returns 409 IDEMPOTENCY_CONFLICT.\n\nA different person or tenant returns 403 PERSON_FORBIDDEN. A closed or past-due request returns 410 REQUEST_CLOSED.\n\nThe participant's words are the committed result. A later reconciliation job may be queued only after that save. Reconciliation failure must not remove the submitted words. reconciliation.state not_requested means no follow-up job was queued.\n\nv1.1 words-only submit: send understanding null, understandingUnavailable true, and attestation without understandingHash (or null). The server saves the response and the participant's words as proposed evidence, creates no task cards, and returns reviewState words_unreviewed. Use it whenever understanding returned 429, 503 or 504, or proposed no tasks.\n\nv1.2 hands-free cards: the words path also accepts questionAnswers, questionUnderstood, questionSuggestions, questionResponses and responseText, keyed question.N, with the web team page's limits (4000 characters per answer, 400 per suggestion, 30000 for responseText, at most 12 keys). The server saves the same response record fields as a web team answer, returns the request, uses the invitation, queues the receipt and the follow-up jobs. Sending any of them with a non-null understanding is 422 VALIDATION_ERROR.",
+        "parameters": [
+          { "$ref": "#/components/parameters/RequestId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/SubmitRequest" },
+              "examples": {
+                "confirmed": {
+                  "summary": "Fictional confirmed answer",
+                  "value": {
+                    "expectedVersion": 3,
+                    "contentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "participantConfirmed": true,
+                    "text": "I check the example inbox each morning and send the summary to the team lead.",
+                    "source": "reviewed_transcript",
+                    "transcriptJobId": "00000000-0000-4000-8000-000000000010",
+                    "understanding": {
+                      "contentHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                      "tasks": [
+                        {
+                          "title": "Send the morning inbox summary",
+                          "duty": "Watch the shared inbox",
+                          "inputs": "Overnight messages in the example inbox",
+                          "instructions": "Read the new messages and write a short summary.",
+                          "output": "Morning summary",
+                          "handoff": "Team lead",
+                          "software": "Example mail",
+                          "decision": "correct"
+                        }
+                      ]
+                    },
+                    "attestation": {
+                      "requestContentHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                      "understandingHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                      "transcriptHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "First successful submit. requestState is returned. idempotentReplay is false.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SubmitResult" }
+              }
+            }
+          },
+          "200": {
+            "description": "Saved result for this Idempotency-Key. idempotentReplay is true. No second response was written.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/SubmitResult" }
+              }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": {
+            "description": "VERSION_CONFLICT when expectedVersion is stale. HASH_CONFLICT when contentHash or understandingHash does not match the saved request or proposal. IDEMPOTENCY_CONFLICT when this Idempotency-Key was already used with a different body. retryable is false. Reload the request before a new key.",
+            "headers": {
+              "X-Request-Id": { "$ref": "#/components/headers/RequestId" }
+            },
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ApiError" },
+                "examples": {
+                  "version": {
+                    "value": {
+                      "code": "VERSION_CONFLICT",
+                      "message": "The request changed. Reload before submitting.",
+                      "retryable": false,
+                      "requestId": "00000000-0000-4000-8000-000000000001"
+                    }
+                  },
+                  "hash": {
+                    "value": {
+                      "code": "HASH_CONFLICT",
+                      "message": "The request or understanding hash does not match the saved record.",
+                      "retryable": false,
+                      "requestId": "00000000-0000-4000-8000-000000000001"
+                    }
+                  },
+                  "idempotency": {
+                    "value": {
+                      "code": "IDEMPOTENCY_CONFLICT",
+                      "message": "This command key was already used with different content.",
+                      "retryable": false,
+                      "requestId": "00000000-0000-4000-8000-000000000001"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "410": { "$ref": "#/components/responses/RequestClosed" },
+          "422": { "$ref": "#/components/responses/ValidationError" },
+          "400": { "$ref": "#/components/responses/IdempotencyRequired" }
+        }
+      }
+    },
+    "/task-cards": {
+      "get": {
+        "tags": ["Task cards"],
+        "operationId": "listParticipantTaskCards",
+        "summary": "Task cards the participant performs or owns",
+        "description": "Lists the task cards where the session participant is the performer or the owner. needsAttestation is true when the current exact version has no attestation from this participant or the card is awaiting confirmation. state=needs_attestation filters to those cards.",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": { "type": "string", "enum": ["needs_attestation"] }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task cards.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TaskCardList" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    },
+    "/task-cards/{taskCardId}": {
+      "get": {
+        "tags": ["Task cards"],
+        "operationId": "getParticipantTaskCard",
+        "summary": "One task card",
+        "description": "A card the participant performs or owns. Another person's card returns 404 NOT_FOUND.",
+        "parameters": [
+          {
+            "name": "taskCardId",
+            "in": "path",
+            "required": true,
+            "schema": { "$ref": "#/components/schemas/Uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The task card.",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TaskCardView" } }
+            }
+          },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/task-cards/{taskCardId}/attest": {
+      "post": {
+        "tags": ["Task cards"],
+        "operationId": "attestParticipantTaskCard",
+        "summary": "Attest one exact task card version",
+        "description": "Records the participant's decision on one exact task card version (recordVersion and contentHash). It never changes the card. A version or hash that no longer matches returns 409 VERSION_CONFLICT. A different decision already recorded for this exact version returns 409 ATTESTATION_EXISTS. correction requires a correction in the participant's own words (422 CORRECTION_REQUIRED).\n\nWhen the card belongs to an open task check (a confirmation request in /requests), attesting the last card in that check returns the check to the advisor (checkReturned true); the advisor's acceptance makes the confirmations count. The attestation records the participant's account of their work. It does not grant authority.\n\nIdempotency-Key is required. The same key and body return the saved result.",
+        "parameters": [
+          {
+            "name": "taskCardId",
+            "in": "path",
+            "required": true,
+            "schema": { "$ref": "#/components/schemas/Uuid" }
+          },
+          { "$ref": "#/components/parameters/IdempotencyKey" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/AttestRequest" } }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Attestation saved (or the saved result of this Idempotency-Key).",
+            "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/AttestResult" } }
+            }
+          },
+          "400": { "$ref": "#/components/responses/IdempotencyRequired" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "$ref": "#/components/responses/VersionOrHashConflict" },
+          "422": { "$ref": "#/components/responses/ValidationError" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "participantBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "opaque",
+        "description": "Participant mobile access token from enroll or refresh. Send it as Authorization: Bearer. This is not the browser dg_session cookie, not X-CSRF-Token, and not a provider credential. The server loads tenant, company, person, device, and role participant_mobile from this token."
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "description": "1 to 128 characters. The same actor, path, and key with the same canonical body return the saved result. A different body for that key returns 409 IDEMPOTENCY_CONFLICT.",
+        "schema": { "type": "string", "minLength": 1, "maxLength": 128 }
+      },
+      "RequestId": {
+        "name": "requestId",
+        "in": "path",
+        "required": true,
+        "description": "Request record id assigned to the session participant.",
+        "schema": { "$ref": "#/components/schemas/Uuid" }
+      },
+      "OptionalIdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Optional on enroll. When sent, repeating enroll with the same key and invitation token within two minutes returns the same session (same deviceId, a new token pair) with idempotentReplay true and HTTP 200. Without a key, a repeat returns 410 INVITATION_EXPIRED.",
+        "schema": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    },
+    "headers": {
+      "RequestId": {
+        "description": "Same value as ApiError.requestId and a successful response's request correlation id. Not a credential.",
+        "schema": { "$ref": "#/components/schemas/Uuid" }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "401 SESSION_EXPIRED when the access or refresh token is missing or expired. 401 REFRESH_REPLAY when a rotated refresh token is presented outside its grace window or with a different Idempotency-Key. retryable is false.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "Forbidden": {
+        "description": "403 PERSON_FORBIDDEN. The session tenant or person does not match the invitation or request. retryable is false. The client cannot choose another company or person.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "NotFound": {
+        "description": "404 REQUEST_NOT_FOUND. No request with this id is visible in the session company. A known request for a different person is 403, not 404.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "InvitationGone": {
+        "description": "410 INVITATION_EXPIRED when the token is missing, already used, revoked, or past its expiry. 410 REQUEST_CLOSED when the invitation is valid but the request is closed or past due. Do not retry the same token. Ask the advisor for a replacement link. retryable is false.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "RequestClosed": {
+        "description": "410 REQUEST_CLOSED. The request is closed or past its due date. retryable is false.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "VersionOrHashConflict": {
+        "description": "409 VERSION_CONFLICT or 409 HASH_CONFLICT. Also 409 IDEMPOTENCY_CONFLICT when the key was reused with a different body. retryable is false.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "IdempotencyConflict": {
+        "description": "409 IDEMPOTENCY_CONFLICT. This Idempotency-Key was already used with different content. retryable is false.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "ValidationError": {
+        "description": "422 VALIDATION_ERROR. The body failed shape checks. fieldErrors lists the fields when the server can name them. retryable is false until the body changes. Audio type and size use codes AUDIO_TYPE and AUDIO_SIZE.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "413. The audio clip is over 25 MB. retryable is false until the client sends a smaller clip.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "RateLimited": {
+        "description": "429 RATE_LIMITED, VOICE_LIMIT, TRANSCRIPTION_LIMIT, or DRAFT_LIMIT. retryable is true after the client waits. Daily limits are per company and grow with the roster; failed provider attempts do not count. On DRAFT_LIMIT the participant can send their own words for advisor review (submit with understanding null).",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "ProviderTimeout": {
+        "description": "504 TRANSCRIPTION_TIMEOUT or UNDERSTANDING_TIMEOUT. The provider did not finish before the server deadline. retryable is true with a new Idempotency-Key. A failed key cannot be reused. The proposal is not company truth, and typed words can still be sent.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "Unavailable": {
+        "description": "503 TRANSCRIPTION_NOT_CONFIGURED or UNDERSTANDING_NOT_CONFIGURED. The provider is not configured for this workspace. retryable is false: repeating the call cannot succeed until an operator configures the provider. Configuration errors do not count against daily limits and no audio is stored. The participant can still send their own words (submit with understanding null).",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": {
+          "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } }
+        }
+      },
+      "IdempotencyRequired": {
+        "description": "400 IDEMPOTENCY_REQUIRED when the Idempotency-Key header is missing or longer than 128 characters. retryable is false; send the same request with a key.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+      },
+      "UseWebLink": {
+        "description": "409 USE_WEB_LINK when the token belongs to a link that opens in the browser (leadership, first-touch, account setup or company-picture review). The invitation is not consumed and the web link keeps working. retryable is false.",
+        "headers": { "X-Request-Id": { "$ref": "#/components/headers/RequestId" } },
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+      }
+    },
+    "schemas": {
+      "Uuid": {
+        "type": "string",
+        "format": "uuid"
+      },
+      "Sha256": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$",
+        "minLength": 64,
+        "maxLength": 64,
+        "description": "Lowercase SHA-256 hex digest. Record hashes use the same canonical JSON hashing rule as existing DutyGraph record hashes."
+      },
+      "OpaqueToken": {
+        "type": "string",
+        "minLength": 32,
+        "maxLength": 512,
+        "pattern": "^[A-Za-z0-9_-]+$",
+        "description": "Server-issued opaque token. Not a provider credential and not a browser session cookie."
+      },
+      "ApiError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["code", "message", "retryable", "requestId"],
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Z0-9_]+$",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "Stable machine code. Examples: PERSON_FORBIDDEN, VERSION_CONFLICT, HASH_CONFLICT, IDEMPOTENCY_CONFLICT, INVITATION_EXPIRED, REQUEST_CLOSED, SESSION_EXPIRED, VALIDATION_ERROR."
+          },
+          "message": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "retryable": {
+            "type": "boolean",
+            "description": "True when a later attempt with the same body can succeed, such as a rate limit or a temporary provider outage. False for version, hash, permission, and validation failures."
+          },
+          "requestId": {
+            "$ref": "#/components/schemas/Uuid",
+            "description": "Matches the X-Request-Id response header."
+          },
+          "fieldErrors": {
+            "type": "array",
+            "maxItems": 50,
+            "items": { "$ref": "#/components/schemas/FieldError" }
+          }
+        }
+      },
+      "FieldError": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "message"],
+        "properties": {
+          "path": { "type": "string", "maxLength": 200 },
+          "message": { "type": "string", "maxLength": 300 }
+        }
+      },
+      "EnrollRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["invitationToken"],
+        "properties": {
+          "invitationToken": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "Single-use invitation token. 64 lowercase hex characters. It arrives inside the /mobile/enroll?t= link or QR; never log, share, or put this value in analytics or crash reports."
+          },
+          "deviceLabel": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "Optional name the participant can recognize, such as a phone model. Not an authorization claim."
+          }
+        }
+      },
+      "RefreshRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["refreshToken"],
+        "properties": {
+          "refreshToken": { "$ref": "#/components/schemas/OpaqueToken" }
+        }
+      },
+      "ParticipantMobileSession": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "tokenType",
+          "accessToken",
+          "refreshToken",
+          "accessTokenExpiresAt",
+          "refreshTokenExpiresAt",
+          "role",
+          "deviceId",
+          "idempotentReplay"
+        ],
+        "properties": {
+          "tokenType": { "const": "Bearer" },
+          "accessToken": { "$ref": "#/components/schemas/OpaqueToken" },
+          "refreshToken": { "$ref": "#/components/schemas/OpaqueToken" },
+          "accessTokenExpiresAt": { "type": "string", "format": "date-time" },
+          "refreshTokenExpiresAt": { "type": "string", "format": "date-time" },
+          "role": {
+            "const": "participant_mobile",
+            "description": "Server role for this session. Not the participant's job title."
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/Uuid",
+            "description": "Server-assigned device id. Display and support only. Authorization comes from the bearer token."
+          },
+          "idempotentReplay": {
+            "type": "boolean",
+            "description": "True when this body replays an earlier enroll or refresh with the same Idempotency-Key (the earlier response was lost). The session and device are the same; the token pair is new and replaces any earlier pair."
+          }
+        }
+      },
+      "ParticipantProfile": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["personId", "companyId", "name", "email", "roleTitle", "team", "companyName"],
+        "properties": {
+          "personId": { "$ref": "#/components/schemas/Uuid" },
+          "companyId": { "$ref": "#/components/schemas/Uuid" },
+          "name": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "email": { "type": "string", "format": "email", "maxLength": 254 },
+          "roleTitle": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "Job title from the person record. This is not the session role and not permission to act for the company."
+          },
+          "team": { "type": "string", "maxLength": 200 },
+          "companyName": { "type": "string", "minLength": 1, "maxLength": 200 }
+        }
+      },
+      "ParticipantRequestSummary": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "version",
+          "contentHash",
+          "title",
+          "type",
+          "state",
+          "dueDate",
+          "questionCount",
+          "needsYou"
+        ],
+        "properties": {
+          "requestId": { "$ref": "#/components/schemas/Uuid" },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Current record version. Send this as expectedVersion on later commands."
+          },
+          "contentHash": {
+            "$ref": "#/components/schemas/Sha256",
+            "description": "Current request content hash. Send this as contentHash on later commands."
+          },
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "type": {
+            "type": "string",
+            "enum": ["work", "leadership", "confirmation"],
+            "description": "Request type. /requests lists only work questions and confirmation task checks; leadership and first-touch requests stay on their web links."
+          },
+          "state": {
+            "type": "string",
+            "enum": ["sent", "returned", "accepted", "withdrawn", "retracted", "superseded", "stale"]
+          },
+          "dueDate": { "type": "string", "format": "date" },
+          "questionCount": { "type": "integer", "minimum": 0, "maximum": 10 },
+          "needsYou": {
+            "type": "boolean",
+            "description": "True when the request is still open for this participant: state sent and not past due."
+          },
+          "noticePreview": { "type": "string", "maxLength": 500 },
+          "taskCardIds": {
+            "type": "array",
+            "maxItems": 50,
+            "items": { "$ref": "#/components/schemas/Uuid" },
+            "description": "v1.1. Present on confirmation requests (task checks): the task cards to read with GET /task-cards/{taskCardId} and attest."
+          }
+        }
+      },
+      "ParticipantRequestList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requests"],
+        "properties": {
+          "requests": {
+            "type": "array",
+            "maxItems": 50,
+            "items": { "$ref": "#/components/schemas/ParticipantRequestSummary" }
+          }
+        }
+      },
+      "ParticipantQuestion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["questionId", "text"],
+        "properties": {
+          "questionId": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "text": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "key": {
+            "$ref": "#/components/schemas/QuestionKey",
+            "description": "v1.2. The web team page's answer key for this question (question.0 is the first). Use it in coverage, understand and submit."
+          },
+          "short": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "description": "v1.2. Short title for the intro list and the review, for example \"Your tools\"."
+          },
+          "hints": {
+            "type": "array",
+            "maxItems": 3,
+            "items": { "$ref": "#/components/schemas/QuestionHint" },
+            "description": "v1.2. The \"Try to cover\" chips: the advisor's stored hints when the request has them, else DutyGraph's hint table. Deterministic, not written by AI."
+          }
+        }
+      },
+      "QuestionKey": {
+        "type": "string",
+        "pattern": "^question\\.\\d+$",
+        "maxLength": 20,
+        "description": "v1.2. question.N, 0-based, as on the web team page."
+      },
+      "QuestionHint": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "v1.2. One \"Try to cover\" chip. cues are lower-case words or short phrases for the app's local check: word* matches words that start with word; @name matches a capitalised name.",
+        "required": ["id", "label", "nudge", "cues"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "label": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "nudge": { "type": "string", "maxLength": 200 },
+          "cues": { "type": "array", "maxItems": 60, "items": { "type": "string", "maxLength": 60 } }
+        }
+      },
+      "CoverageRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["questionKey", "text"],
+        "properties": {
+          "questionKey": { "$ref": "#/components/schemas/QuestionKey" },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000,
+            "description": "The words said on this card so far. Checked, not stored."
+          }
+        }
+      },
+      "CoverageResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["available", "covered"],
+            "properties": {
+              "available": { "const": true },
+              "covered": {
+                "type": "array",
+                "maxItems": 3,
+                "items": { "type": "string", "maxLength": 40 },
+                "description": "Hint ids of this question that the words cover. Only ids of this question's hints."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["available", "reason"],
+            "properties": {
+              "available": { "const": false },
+              "reason": {
+                "type": "string",
+                "maxLength": 40,
+                "description": "AI_NOT_CONFIGURED, SAMPLE_COMPANY, COVERAGE_LIMIT, SPONSOR_UNAVAILABLE, TIMEOUT or MODEL_ERROR. Keep the local result."
+              }
+            }
+          }
+        ]
+      },
+      "UnderstandAnswer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "question", "text"],
+        "properties": {
+          "key": { "$ref": "#/components/schemas/QuestionKey" },
+          "question": { "type": "string", "minLength": 1, "maxLength": 300 },
+          "text": { "type": "string", "minLength": 1, "maxLength": 4000, "description": "The person's own words for this question." }
+        }
+      },
+      "UnderstandAnswersRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["answers"],
+        "properties": {
+          "answers": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "items": { "$ref": "#/components/schemas/UnderstandAnswer" }
+          }
+        }
+      },
+      "UnderstoodAnswer": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "understood", "suggestion"],
+        "properties": {
+          "key": { "$ref": "#/components/schemas/QuestionKey" },
+          "understood": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "suggestion": {
+            "oneOf": [{ "type": "string", "maxLength": 400 }, { "type": "null" }],
+            "description": "A recommendation, or null. Never a statement about what the company does."
+          }
+        }
+      },
+      "UnderstandAnswersResult": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["available", "items"],
+            "properties": {
+              "available": { "const": true },
+              "items": { "type": "array", "maxItems": 12, "items": { "$ref": "#/components/schemas/UnderstoodAnswer" } }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["available", "reason"],
+            "properties": {
+              "available": { "const": false },
+              "reason": {
+                "type": "string",
+                "maxLength": 40,
+                "description": "AI_NOT_CONFIGURED, UNDERSTAND_LIMIT, SPONSOR_UNAVAILABLE or MODEL_ERROR. Show the person's own words."
+              }
+            }
+          }
+        ]
+      },
+      "QuestionTextMap": {
+        "type": "object",
+        "maxProperties": 12,
+        "propertyNames": { "$ref": "#/components/schemas/QuestionKey" },
+        "additionalProperties": { "type": "string", "maxLength": 4000 }
+      },
+      "ParticipantRequestDetail": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Question screen. Includes every list field plus the questions the participant answers.",
+        "required": [
+          "requestId",
+          "version",
+          "contentHash",
+          "title",
+          "type",
+          "state",
+          "dueDate",
+          "questionCount",
+          "needsYou",
+          "questions",
+          "questionPlanVersion",
+          "gapFollowup"
+        ],
+        "properties": {
+          "requestId": { "$ref": "#/components/schemas/Uuid" },
+          "version": { "type": "integer", "minimum": 1 },
+          "contentHash": { "$ref": "#/components/schemas/Sha256" },
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "type": { "type": "string", "enum": ["work", "leadership", "confirmation"] },
+          "state": {
+            "type": "string",
+            "enum": ["sent", "returned", "accepted", "withdrawn", "retracted", "superseded", "stale"]
+          },
+          "dueDate": { "type": "string", "format": "date" },
+          "questionCount": { "type": "integer", "minimum": 0, "maximum": 10 },
+          "needsYou": { "type": "boolean" },
+          "noticePreview": { "type": "string", "maxLength": 500 },
+          "questions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": { "$ref": "#/components/schemas/ParticipantQuestion" }
+          },
+          "questionPlanVersion": { "type": "string", "maxLength": 100 },
+          "gapFollowup": { "type": "boolean" },
+          "stageLabel": { "type": "string", "maxLength": 200 },
+          "notice": { "type": "string", "maxLength": 20000 },
+          "advisorName": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "v1.2. The advisor's name as the web team page shows it, for \"Alex Rivera has 6 questions for you\" and the \"Anything else Alex should know?\" card. Empty when unknown."
+          }
+        }
+      },
+      "TranscriptionMeta": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expectedVersion", "contentHash", "consent"],
+        "properties": {
+          "expectedVersion": { "type": "integer", "minimum": 1 },
+          "contentHash": { "$ref": "#/components/schemas/Sha256" },
+          "consent": {
+            "type": "boolean",
+            "const": true,
+            "description": "The participant agrees the server may send this clip to the configured transcription provider."
+          },
+          "language": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 16,
+            "description": "Optional language hint, such as en. The server may ignore it."
+          }
+        }
+      },
+      "TranscriptionUpload": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["audio", "meta"],
+        "properties": {
+          "audio": {
+            "type": "string",
+            "format": "binary",
+            "description": "One audio clip, at most 25 MB. Types: audio/webm, audio/mp4, audio/m4a, audio/x-m4a, audio/aac, audio/ogg, audio/wav, audio/mpeg."
+          },
+          "meta": { "$ref": "#/components/schemas/TranscriptionMeta" }
+        }
+      },
+      "TranscriptionFromAsset": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["assetId", "expectedVersion", "contentHash", "consent"],
+        "properties": {
+          "assetId": {
+            "$ref": "#/components/schemas/Uuid",
+            "description": "Audio asset already stored for this request and this participant."
+          },
+          "expectedVersion": { "type": "integer", "minimum": 1 },
+          "contentHash": { "$ref": "#/components/schemas/Sha256" },
+          "consent": { "type": "boolean", "const": true },
+          "language": { "type": "string", "minLength": 2, "maxLength": 16 },
+          "retry": {
+            "type": "boolean",
+            "default": false,
+            "description": "When false, a saved job for this asset is returned instead of starting another provider call."
+          }
+        }
+      },
+      "ProviderJobMetadata": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Audit fields for a provider job. No credential is included.",
+        "required": [
+          "jobId",
+          "kind",
+          "state",
+          "provider",
+          "model",
+          "schemaVersion",
+          "promptVersion",
+          "requestHash",
+          "store",
+          "createdAt"
+        ],
+        "properties": {
+          "jobId": { "$ref": "#/components/schemas/Uuid" },
+          "kind": { "type": "string", "enum": ["audio_transcription", "proposed_understanding"] },
+          "state": { "type": "string", "enum": ["running", "complete", "failed", "unknown"] },
+          "provider": {
+            "const": "xai",
+            "description": "Provider name only."
+          },
+          "model": { "type": "string", "enum": ["grok-voice-transcribe-2.0", "grok-4.7"] },
+          "schemaVersion": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "promptVersion": { "type": "string", "minLength": 1, "maxLength": 64 },
+          "requestHash": { "$ref": "#/components/schemas/Sha256" },
+          "responseHash": { "$ref": "#/components/schemas/Sha256" },
+          "providerRequestId": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "Opaque id from the provider response, for audit. Not a credential."
+          },
+          "store": {
+            "type": "boolean",
+            "description": "Understanding jobs must report false. Transcription jobs report false unless the pinned provider has no retention flag."
+          },
+          "message": { "type": "string", "maxLength": 500 },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "finishedAt": { "type": ["string", "null"], "format": "date-time" }
+        }
+      },
+      "TranscriptionJob": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProviderJobMetadata" },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "const": "audio_transcription" },
+              "model": { "const": "grok-voice-transcribe-2.0" },
+              "schemaVersion": { "const": "xai-stt-companion-v1" }
+            }
+          }
+        ]
+      },
+      "UnderstandingJob": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProviderJobMetadata" },
+          {
+            "type": "object",
+            "properties": {
+              "kind": { "const": "proposed_understanding" },
+              "model": { "const": "grok-4.7" },
+              "schemaVersion": { "const": "companion-understanding-v1" },
+              "store": { "const": false }
+            }
+          }
+        ]
+      },
+      "TranscriptionResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["reviewRequired", "idempotentReplay", "job"],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000,
+            "description": "Present when job.state is complete. The participant must read this text before submit."
+          },
+          "reviewRequired": { "const": true },
+          "idempotentReplay": { "type": "boolean" },
+          "assetId": { "$ref": "#/components/schemas/Uuid" },
+          "audioChecksum": { "$ref": "#/components/schemas/Sha256" },
+          "job": { "$ref": "#/components/schemas/TranscriptionJob" }
+        }
+      },
+      "ProposedParticipantTask": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Proposal fields use the same names as the existing participant card review schema, except the participant decision. This is not a new Task Card schema and not a canonical record. Do not add owner or performer ids here. v1.1: a step with an empty field is kept; the empty field reads \"Not stated\" and is listed in missingFields, and gaps names the step.",
+        "required": ["title", "duty", "inputs", "instructions", "output", "handoff", "software"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "duty": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "purpose": { "type": "string", "maxLength": 3000 },
+          "trigger": { "type": "string", "maxLength": 3000 },
+          "humanGate": { "type": "string", "maxLength": 3000 },
+          "inputs": { "type": "string", "maxLength": 3000 },
+          "instructions": { "type": "string", "maxLength": 3000 },
+          "output": { "type": "string", "maxLength": 3000 },
+          "handoff": { "type": "string", "maxLength": 3000 },
+          "software": { "type": "string", "maxLength": 20000 },
+          "missingFields": {
+            "type": "array",
+            "maxItems": 7,
+            "items": {
+              "type": "string",
+              "enum": ["title", "duty", "inputs", "instructions", "output", "handoff", "software"]
+            },
+            "description": "v1.1. Fields the answer did not state. Their value is \"Not stated\". Ask the participant to fill them in or leave them as not stated. Echo the list back on submit; the server keeps only fields that are still \"Not stated\"."
+          }
+        }
+      },
+      "ConfirmedParticipantTask": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The proposed task plus the participant's decision. decision uses the existing participant card values: correct, not_mine, unsure.",
+        "required": ["title", "duty", "inputs", "instructions", "output", "handoff", "software", "decision"],
+        "properties": {
+          "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "duty": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "purpose": { "type": "string", "maxLength": 3000 },
+          "trigger": { "type": "string", "maxLength": 3000 },
+          "humanGate": { "type": "string", "maxLength": 3000 },
+          "inputs": { "type": "string", "maxLength": 3000 },
+          "instructions": { "type": "string", "maxLength": 3000 },
+          "output": { "type": "string", "maxLength": 3000 },
+          "handoff": { "type": "string", "maxLength": 3000 },
+          "software": { "type": "string", "maxLength": 20000 },
+          "decision": { "type": "string", "enum": ["correct", "not_mine", "unsure"] },
+          "missingFields": {
+            "type": "array",
+            "maxItems": 7,
+            "items": {
+              "type": "string",
+              "enum": ["title", "duty", "inputs", "instructions", "output", "handoff", "software"]
+            },
+            "description": "v1.1. Fields the answer did not state. Their value is \"Not stated\". Ask the participant to fill them in or leave them as not stated. Echo the list back on submit; the server keeps only fields that are still \"Not stated\"."
+          }
+        }
+      },
+      "UnderstandingRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["expectedVersion", "contentHash", "source", "sourceText"],
+        "properties": {
+          "expectedVersion": { "type": "integer", "minimum": 1 },
+          "contentHash": { "$ref": "#/components/schemas/Sha256" },
+          "source": { "type": "string", "enum": ["typed", "reviewed_transcript"] },
+          "sourceText": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000,
+            "description": "The participant's words after they typed them or read the transcript."
+          },
+          "transcriptJobId": {
+            "$ref": "#/components/schemas/Uuid",
+            "description": "Required when source is reviewed_transcript."
+          }
+        }
+      },
+      "ProposedUnderstanding": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["confirmationState", "summary", "tasks", "gaps", "contentHash", "idempotentReplay", "job"],
+        "properties": {
+          "confirmationState": {
+            "const": "proposed",
+            "description": "Always proposed. This operation never returns accepted, canonical, or company-truth."
+          },
+          "summary": { "type": "string", "maxLength": 3000 },
+          "tasks": {
+            "type": "array",
+            "maxItems": 30,
+            "items": { "$ref": "#/components/schemas/ProposedParticipantTask" }
+          },
+          "gaps": {
+            "type": "array",
+            "maxItems": 12,
+            "description": "Missing steps and unanswered questions. The model must not fill these with invented work.",
+            "items": { "type": "string", "minLength": 1, "maxLength": 200 }
+          },
+          "contentHash": {
+            "$ref": "#/components/schemas/Sha256",
+            "description": "Hash of this proposal. Submit must send this value as understanding.contentHash and attestation.understandingHash."
+          },
+          "idempotentReplay": { "type": "boolean" },
+          "job": { "$ref": "#/components/schemas/UnderstandingJob" }
+        }
+      },
+      "SubmitUnderstanding": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["contentHash", "tasks"],
+        "properties": {
+          "contentHash": {
+            "$ref": "#/components/schemas/Sha256",
+            "description": "contentHash from the proposed understanding the participant reviewed."
+          },
+          "tasks": {
+            "type": "array",
+            "maxItems": 30,
+            "items": { "$ref": "#/components/schemas/ConfirmedParticipantTask" }
+          }
+        }
+      },
+      "SubmitAttestation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["requestContentHash"],
+        "properties": {
+          "requestContentHash": {
+            "$ref": "#/components/schemas/Sha256",
+            "description": "Must equal the top-level contentHash."
+          },
+          "understandingHash": {
+            "oneOf": [{ "$ref": "#/components/schemas/Sha256" }, { "type": "null" }],
+            "description": "Must equal understanding.contentHash. Null or omitted when understanding is null."
+          },
+          "transcriptHash": {
+            "$ref": "#/components/schemas/Sha256",
+            "description": "Optional SHA-256 of the reviewed transcript text."
+          }
+        }
+      },
+      "SubmitRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "expectedVersion",
+          "contentHash",
+          "participantConfirmed",
+          "text",
+          "source",
+          "understanding",
+          "attestation"
+        ],
+        "properties": {
+          "expectedVersion": { "type": "integer", "minimum": 1 },
+          "contentHash": {
+            "$ref": "#/components/schemas/Sha256",
+            "description": "contentHash from the request detail the participant reviewed."
+          },
+          "participantConfirmed": {
+            "type": "boolean",
+            "const": true,
+            "description": "The participant attests they reviewed the understanding. Confirmation records their understanding. It does not accept Task Cards as company truth."
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100000,
+            "description": "The participant's submitted words. These words stay saved if a later provider job fails."
+          },
+          "source": { "type": "string", "enum": ["typed", "reviewed_transcript"] },
+          "transcriptJobId": { "$ref": "#/components/schemas/Uuid" },
+          "audioAssetId": { "$ref": "#/components/schemas/Uuid" },
+          "understanding": {
+            "oneOf": [{ "$ref": "#/components/schemas/SubmitUnderstanding" }, { "type": "null" }],
+            "description": "The understanding the participant reviewed, or null (v1.1) to send the participant's own words for advisor review without task cards. Null requires understandingUnavailable true."
+          },
+          "attestation": { "$ref": "#/components/schemas/SubmitAttestation" },
+          "understandingUnavailable": {
+            "type": "boolean",
+            "description": "v1.1. True exactly when understanding is null. Show \"Send my words for advisor review\" whenever understanding returned 429, 503 or 504, or proposed no tasks. The response is saved as words_unreviewed: no task cards are created and the advisor reviews the words."
+          },
+          "questionAnswers": {
+            "$ref": "#/components/schemas/QuestionTextMap",
+            "description": "v1.2, words path only. The person's own words per question key, as on the web team page. text stays the combined answer the advisor reads."
+          },
+          "questionUnderstood": {
+            "$ref": "#/components/schemas/QuestionTextMap",
+            "description": "v1.2, words path only. The polished text from understand that the person kept or edited, per question key."
+          },
+          "questionSuggestions": {
+            "type": "object",
+            "maxProperties": 12,
+            "propertyNames": { "$ref": "#/components/schemas/QuestionKey" },
+            "additionalProperties": { "type": "string", "maxLength": 400 },
+            "description": "v1.2, words path only. Suggestions from understand, stored as recommendations."
+          },
+          "questionResponses": {
+            "type": "object",
+            "maxProperties": 12,
+            "propertyNames": { "$ref": "#/components/schemas/QuestionKey" },
+            "additionalProperties": { "type": "string", "enum": ["unknown", "wrong_role"] },
+            "description": "v1.2, words path only. Why a question was skipped: unknown (I don't know yet) or wrong_role (someone else should answer)."
+          },
+          "responseText": {
+            "type": "string",
+            "maxLength": 30000,
+            "description": "v1.2, words path only. The \"Anything else?\" note on its own."
+          },
+          "questionAnswerSources": {
+            "type": "object",
+            "maxProperties": 12,
+            "propertyNames": { "$ref": "#/components/schemas/QuestionKey" },
+            "additionalProperties": { "$ref": "#/components/schemas/AnswerSource" },
+            "description": "v1.3, words path only. Where each answer's words came from, keyed like questionAnswers. Kept only for answers that have words."
+          }
+        }
+      },
+      "AnswerSource": {
+        "type": "object",
+        "required": ["via"],
+        "additionalProperties": false,
+        "properties": {
+          "via": {
+            "type": "string",
+            "enum": ["typed", "voice_openai", "voice_device", "voice_browser"],
+            "description": "typed; voice_openai (OpenAI transcription); voice_device (the phone's own speech recognizer, or on-device transcription on the web); voice_browser (a browser's live captions)."
+          },
+          "edited": { "type": "boolean", "description": "The person also typed in or changed the transcribed words." }
+        },
+        "description": "v1.3: one answer's source (shared/answer-sources.ts)."
+      },
+      "SubmitReconciliation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["state"],
+        "properties": {
+          "jobId": { "$ref": "#/components/schemas/Uuid" },
+          "state": {
+            "type": "string",
+            "enum": ["queued", "not_requested"],
+            "description": "queued means a follow-up job was saved after the response commit. It is not advisor approval."
+          }
+        }
+      },
+      "SubmitResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["responseId", "requestId", "requestState", "version", "idempotentReplay", "reconciliation"],
+        "properties": {
+          "responseId": { "$ref": "#/components/schemas/Uuid" },
+          "requestId": { "$ref": "#/components/schemas/Uuid" },
+          "requestState": { "const": "returned" },
+          "version": { "type": "integer", "minimum": 1 },
+          "idempotentReplay": {
+            "type": "boolean",
+            "description": "True when this Idempotency-Key already had a saved result."
+          },
+          "reconciliation": { "$ref": "#/components/schemas/SubmitReconciliation" },
+          "reviewState": {
+            "type": "string",
+            "enum": ["cards_proposed", "words_unreviewed"],
+            "description": "v1.1. words_unreviewed when the participant sent their own words without an understanding. Tell the participant: your answer is saved; your advisor will review it."
+          }
+        }
+      },
+      "TaskCardData": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "The versioned task card fields the participant reads before attesting. Values are the record's own fields; systems is a list.",
+        "properties": {
+          "duty": { "type": "string" },
+          "purpose": { "type": "string" },
+          "trigger": { "type": "string" },
+          "inputs": { "type": "string" },
+          "instructions": { "type": "string" },
+          "output": { "type": "string" },
+          "systems": { "type": "array", "items": { "type": "string" } },
+          "humanGate": { "type": "string" },
+          "destination": { "type": "string" },
+          "mode": { "type": "string" }
+        }
+      },
+      "TaskCardView": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "title",
+          "version",
+          "hash",
+          "state",
+          "needsAttestation",
+          "reviewed",
+          "data"
+        ],
+        "properties": {
+          "id": { "$ref": "#/components/schemas/Uuid" },
+          "title": { "type": "string" },
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Send as recordVersion when attesting."
+          },
+          "hash": {
+            "$ref": "#/components/schemas/Sha256",
+            "description": "Send as contentHash when attesting."
+          },
+          "state": { "type": "string" },
+          "needsAttestation": { "type": "boolean" },
+          "reviewed": { "type": "boolean" },
+          "data": { "$ref": "#/components/schemas/TaskCardData" }
+        }
+      },
+      "TaskCardList": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["taskCards"],
+        "properties": {
+          "taskCards": { "type": "array", "items": { "$ref": "#/components/schemas/TaskCardView" } }
+        }
+      },
+      "AttestRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["recordVersion", "contentHash", "decision"],
+        "properties": {
+          "recordVersion": { "type": "integer", "minimum": 1 },
+          "contentHash": { "$ref": "#/components/schemas/Sha256" },
+          "decision": { "type": "string", "enum": ["correct", "correction", "not_mine", "unsure"] },
+          "correction": {
+            "type": ["string", "null"],
+            "maxLength": 10000,
+            "description": "Required, in the participant's own words, when decision is correction."
+          }
+        }
+      },
+      "AttestResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ok", "taskCardId", "version", "hash", "decision", "taskUnchanged"],
+        "properties": {
+          "ok": { "const": true },
+          "taskCardId": { "$ref": "#/components/schemas/Uuid" },
+          "version": { "type": "integer" },
+          "hash": { "$ref": "#/components/schemas/Sha256" },
+          "decision": { "type": "string", "enum": ["correct", "correction", "not_mine", "unsure"] },
+          "taskUnchanged": { "const": true },
+          "checkReturned": {
+            "type": "boolean",
+            "description": "True when this attestation completed every card in an open task check; the check is returned to the advisor."
+          }
+        }
+      }
+    }
+  }
+}

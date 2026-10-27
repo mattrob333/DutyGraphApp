@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<style>
+@font-face{font-family:"DM Sans";src:url('assets/dm-sans-400.woff2') format('woff2');font-weight:400;font-display:swap}
+@font-face{font-family:"DM Sans";src:url('assets/dm-sans-500.woff2') format('woff2');font-weight:500;font-display:swap}
+@font-face{font-family:"DM Sans";src:url('assets/dm-sans-600.woff2') format('woff2');font-weight:600;font-display:swap}
+@font-face{font-family:"DM Sans";src:url('assets/dm-sans-700.woff2') format('woff2');font-weight:700;font-display:swap}
+:root{--f:"DM Sans",Arial,sans-serif;color-scheme:dark}
+body{margin:0;background:#0e0e0e;font-family:var(--f);-webkit-font-smoothing:antialiased}
+a{color:#e7e3db}a:hover{color:#fff}
+*{box-sizing:border-box}
+button,textarea,input{font-family:inherit}
+#app{--bg:#151515;--surface:#202020;--raised:#292929;--ink:#f0eeea;--muted:#b8b8b8;--faint:#999;--line:#3b3b3b;--soft:#2b2b2b;--nav:#101010;--sage:#9cccb7;--sage-bg:#23382f;--amber:#e3bd83;--amber-bg:#3b3020;--violet:#c6b5eb;--violet-bg:#332b46;--red:#e5a09a;--red-bg:#322423;--accent:#dedbd4;--accent-bg:#303030;--primary:#e7e3db;--primary-ink:#222;--focus:#dedbd4}
+#app[data-theme="light"]{--bg:#f3f2ef;--surface:#fffefa;--raised:#fff;--ink:#252525;--muted:#595959;--faint:#6b6b6b;--line:#d9d9d7;--soft:#eeede9;--nav:#eeede9;--sage:#416e51;--sage-bg:#e7efe7;--amber:#815622;--amber-bg:#f5ecdf;--violet:#6a4c94;--violet-bg:#eee8f7;--red:#a3443e;--red-bg:#f8e8e5;--accent:#494640;--accent-bg:#e9e7e2;--primary:#303030;--primary-ink:#fffefa;--focus:#59564f}
+#app :focus-visible{outline:2px solid var(--focus);outline-offset:4px}
+html,body,body *{scrollbar-color:#4a4a4a transparent;scrollbar-width:thin}
+::-webkit-scrollbar{width:6px;height:6px;background:transparent}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#4a4a4a;border-radius:3px}
+#app[data-theme="light"],#app[data-theme="light"] *{scrollbar-color:#c3c1bc transparent}
+#app ::-webkit-scrollbar{width:6px}
+#app ::-webkit-scrollbar-thumb{background:#4a4a4a;border-radius:3px}
+#app[data-theme="light"] ::-webkit-scrollbar-thumb{background:#c3c1bc}
+@keyframes dgwave{0%,100%{transform:scaleY(.25)}50%{transform:scaleY(1)}}
+@keyframes dgshim{0%{opacity:.35}50%{opacity:.75}100%{opacity:.35}}
+@keyframes dgin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes dgdrop{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+
+<div style="display:flex;gap:30px;align-items:flex-start;padding:30px;min-height:100vh;background:#0e0e0e;color:#f0eeea;font-family:var(--f)">
+
+<div style="flex:none;width:250px;position:sticky;top:30px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 60px);overflow-y:auto">
+  <div style="font:600 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:#8a8a8a">Prototype controls</div>
+  <div style="font:400 12px/1.5 var(--f);color:#6e6e6e">Outside the app. Jump to a state or simulate a condition. All content is fictional.</div>
+  <sc-for list="{{ controlGroups }}" as="g" hint-placeholder-count="3">
+    <div style="display:flex;flex-direction:column;gap:7px">
+      <div style="font:500 11px/1.3 var(--f);letter-spacing:.1em;text-transform:uppercase;color:#6e6e6e">{{ g.name }}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <sc-for list="{{ g.items }}" as="b" hint-placeholder-count="5">
+          <button onClick="{{ b.go }}" style="padding:7px 10px;border-radius:7px;border:1px solid #333;background:#1a1a1a;color:#cfcbc4;font:500 12px/1.2 var(--f);cursor:pointer" style-hover="background:#242424">{{ b.label }}</button>
+        </sc-for>
+      </div>
+    </div>
+  </sc-for>
+  <div style="height:1px;background:#242424"></div>
+  <div style="font:500 11px/1.3 var(--f);letter-spacing:.1em;text-transform:uppercase;color:#6e6e6e">States</div>
+  <div style="display:flex;flex-direction:column;gap:8px">
+    <sc-for list="{{ toggles }}" as="t" hint-placeholder-count="7">
+      <label style="display:flex;align-items:center;gap:9px;font:400 13px/1.3 var(--f);color:#b8b8b8;cursor:pointer"><input type="checkbox" checked="{{ t.on }}" onChange="{{ t.flip }}" style="width:16px;height:16px;accent-color:#e7e3db"/>{{ t.label }}</label>
+    </sc-for>
+  </div>
+  <button onClick="{{ reset }}" style="padding:9px 10px;border-radius:7px;border:1px solid #333;background:transparent;color:#8a8a8a;font:500 12px/1.2 var(--f);cursor:pointer" style-hover="color:#cfcbc4">Reset prototype</button>
+</div>
+
+<div id="app" data-theme="{{ theme }}" style="position:relative;flex:none;width:390px;height:844px;border-radius:44px;border:1px solid #3b3b3b;background:var(--bg);color:var(--ink);overflow:hidden;display:flex;flex-direction:column;box-shadow:0 20px 65px #0008;font:400 16px/1.5 var(--f)">
+
+  <div style="flex:none;height:52px;padding:0 26px 8px;display:flex;align-items:flex-end;justify-content:space-between;background:var(--nav);font:600 13px/1 var(--f)">
+    <span>9:41</span>
+    <span style="width:22px;height:10px;border-radius:3px;border:1px solid var(--muted);display:inline-block;position:relative"><span style="position:absolute;inset:2px;right:7px;background:var(--ink);border-radius:1px;display:block"></span></span>
+  </div>
+
+  <div style="flex:none;background:var(--nav);padding:6px 20px 12px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);min-height:52px">
+    <div style="display:flex;align-items:center;gap:9px">
+      <sc-if value="{{ isDark }}" hint-placeholder-val="{{ true }}"><img src="assets/symbol-ivory.svg" alt="" style="height:22px;width:auto;display:block"/></sc-if>
+      <sc-if value="{{ isLight }}" hint-placeholder-val="{{ false }}"><img src="assets/symbol-dark.svg" alt="" style="height:22px;width:auto;display:block"/></sc-if>
+      <span style="font:600 17px/1 var(--f);letter-spacing:-.3px">DutyGraph</span>
+    </div>
+    <sc-if value="{{ showBack }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ back }}" style="min-height:36px;padding:0 12px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 14px/1 var(--f);cursor:pointer">Back</button>
+    </sc-if>
+    <sc-if value="{{ showBell }}" hint-placeholder-val="{{ true }}">
+      <button onClick="{{ openNotifs }}" aria-label="Notifications" style="position:relative;width:40px;height:40px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer">
+        <svg width="18" height="18" viewBox="0 0 24 24" style="fill:none;stroke:currentColor;stroke-width:1.8;stroke-linejoin:round"><path d="M6 16v-5a6 6 0 1 1 12 0v5l1.5 2h-15z"></path><path d="M10 20.5a2 2 0 0 0 4 0"></path></svg>
+        <sc-if value="{{ unread }}" hint-placeholder-val="{{ true }}"><span style="position:absolute;top:7px;right:8px;width:7px;height:7px;border-radius:50%;background:var(--amber)"></span></sc-if>
+      </button>
+    </sc-if>
+  </div>
+
+  <sc-if value="{{ offline }}" hint-placeholder-val="{{ false }}">
+    <div style="flex:none;padding:9px 20px;background:var(--amber-bg);color:var(--amber);font:500 13px/1.4 var(--f);display:flex;gap:8px;align-items:center">
+      <span style="width:7px;height:7px;border-radius:50%;background:var(--amber);flex:none"></span>No connection. Keep going — sending waits until you're back.
+    </div>
+  </sc-if>
+
+  <div data-scroll="main" style="flex:1;overflow-y:auto;overflow-x:hidden">
+
+    <sc-if value="{{ isToday }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:22px 20px 28px;animation:dgin .25s ease both">
+        <div style="color:var(--faint);font:400 14px/1.4 var(--f)">Monday, 28 September</div>
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:4px 0 18px">Good morning, Dana</h1>
+
+        <sc-if value="{{ avoidedKnown }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ toAvoided }}" style="width:100%;text-align:left;display:block;background:var(--sage-bg);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:18px;cursor:pointer;color:var(--ink)">
+            <span style="display:block;font:600 16px/1.35 var(--f);margin-bottom:4px">You don't need to join the 11:00 meeting</span>
+            <span style="display:block;color:var(--sage);font:500 14px/1.4 var(--f)">50 minutes returned to you</span>
+          </button>
+        </sc-if>
+
+        <sc-if value="{{ hasDueNow }}" hint-placeholder-val="{{ true }}">
+          <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:10px">Due now</div>
+          <sc-for list="{{ dueNow }}" as="it" hint-placeholder-count="3">
+            <div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:12px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;min-height:22px">
+                <span style="font:500 12px/1.3 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">{{ it.type }}</span>
+                <sc-if value="{{ it.amber }}" hint-placeholder-val="{{ false }}"><span style="font:500 12px/1.2 var(--f);padding:5px 9px;border-radius:6px;background:var(--amber-bg);color:var(--amber);white-space:nowrap">{{ it.chip }}</span></sc-if>
+                <sc-if value="{{ it.red }}" hint-placeholder-val="{{ false }}"><span style="font:500 12px/1.2 var(--f);padding:5px 9px;border-radius:6px;background:var(--red-bg);color:var(--red);white-space:nowrap">{{ it.chip }}</span></sc-if>
+              </div>
+              <div style="font:600 17px/1.35 var(--f);text-wrap:pretty">{{ it.title }}</div>
+              <div style="color:var(--muted);font:400 14px/1.5 var(--f);margin-top:3px;text-wrap:pretty">{{ it.meta }}</div>
+              <sc-if value="{{ it.primary }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ it.go }}" style="margin-top:14px;width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">{{ it.cta }}</button>
+              </sc-if>
+              <sc-if value="{{ it.secondary }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ it.go }}" style="margin-top:14px;min-height:44px;padding:0 16px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">{{ it.cta }}</button>
+              </sc-if>
+            </div>
+          </sc-for>
+        </sc-if>
+        <sc-if value="{{ noDueNow }}" hint-placeholder-val="{{ false }}">
+          <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:12px;color:var(--muted);font:400 15px/1.5 var(--f)">Nothing needs you right now. We'll let you know when it does.</div>
+        </sc-if>
+
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:22px 0 10px">Later</div>
+        <sc-for list="{{ later }}" as="it" hint-placeholder-count="2">
+          <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:12px">
+            <div style="font:500 12px/1.3 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:8px">{{ it.type }}</div>
+            <div style="font:600 16px/1.35 var(--f);text-wrap:pretty">{{ it.title }}</div>
+            <div style="color:var(--muted);font:400 14px/1.5 var(--f);margin-top:3px;text-wrap:pretty">{{ it.meta }}</div>
+            <button onClick="{{ it.go }}" style="margin-top:12px;min-height:44px;padding:0 16px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">{{ it.cta }}</button>
+          </div>
+        </sc-for>
+
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:22px 0 10px">Done today</div>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 18px">
+          <sc-for list="{{ doneToday }}" as="d" hint-placeholder-count="1">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px 0;font:400 15px/1.4 var(--f);color:var(--muted)"><span style="width:7px;height:7px;border-radius:50%;background:var(--sage);flex:none"></span>{{ d }}</div>
+          </sc-for>
+        </div>
+
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:22px">
+          <button onClick="{{ toMe }}" style="text-align:left;background:transparent;border:1px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;color:var(--ink)">
+            <span style="display:block;font:600 20px/1.2 var(--f);letter-spacing:-.4px">3h 45m</span>
+            <span style="display:block;color:var(--faint);font:400 13px/1.4 var(--f);margin-top:4px">returned this month</span>
+          </button>
+          <button onClick="{{ toChangedIntro }}" style="text-align:left;background:transparent;border:1px solid var(--line);border-radius:12px;padding:14px 16px;cursor:pointer;color:var(--ink)">
+            <span style="display:block;font:600 16px/1.3 var(--f)">Something changed?</span>
+            <span style="display:block;color:var(--faint);font:400 13px/1.4 var(--f);margin-top:4px">Tell DutyGraph</span>
+          </button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isWork }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:22px 20px 28px;animation:dgin .25s ease both">
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:0 0 6px">My commitments</h1>
+        <p style="margin:0 0 6px;color:var(--muted);font:400 15px/1.5 var(--f)">What you owe, and what you're waiting on.</p>
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:20px 0 10px">Due today</div>
+        <sc-for list="{{ workToday }}" as="w" hint-placeholder-count="1">
+          <button onClick="{{ w.go }}" style="width:100%;text-align:left;display:block;background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:15px 18px;margin-bottom:10px;cursor:pointer;color:var(--ink)">
+            <span style="display:block;font:600 16px/1.35 var(--f)">{{ w.title }}</span>
+            <span style="display:block;color:var(--amber);font:500 14px/1.4 var(--f);margin-top:4px">{{ w.due }}</span>
+            <span style="display:block;color:var(--faint);font:400 13px/1.4 var(--f);margin-top:2px">From {{ w.from }}</span>
+          </button>
+        </sc-for>
+        <sc-if value="{{ workTodayEmpty }}" hint-placeholder-val="{{ false }}"><div style="color:var(--faint);font:400 14px/1.5 var(--f);padding:4px 0 8px">Nothing due today.</div></sc-if>
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:20px 0 10px">This week</div>
+        <sc-for list="{{ workWeek }}" as="w" hint-placeholder-count="1">
+          <button onClick="{{ w.go }}" style="width:100%;text-align:left;display:block;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:15px 18px;margin-bottom:10px;cursor:pointer;color:var(--ink)">
+            <span style="display:block;font:600 16px/1.35 var(--f)">{{ w.title }}</span>
+            <span style="display:block;color:var(--muted);font:400 14px/1.4 var(--f);margin-top:4px">{{ w.due }}</span>
+            <span style="display:block;color:var(--faint);font:400 13px/1.4 var(--f);margin-top:2px">From {{ w.from }}</span>
+          </button>
+        </sc-for>
+        <sc-if value="{{ workWeekEmpty }}" hint-placeholder-val="{{ false }}"><div style="color:var(--faint);font:400 14px/1.5 var(--f);padding:4px 0 8px">Nothing else this week.</div></sc-if>
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:20px 0 10px">Waiting on someone</div>
+        <sc-for list="{{ workWaiting }}" as="w" hint-placeholder-count="1">
+          <button onClick="{{ w.go }}" style="width:100%;text-align:left;display:block;background:transparent;border:1px dashed var(--line);border-radius:12px;padding:15px 18px;margin-bottom:10px;cursor:pointer;color:var(--ink)">
+            <span style="display:block;font:600 16px/1.35 var(--f)">{{ w.title }}</span>
+            <span style="display:block;color:var(--muted);font:400 14px/1.4 var(--f);margin-top:4px">{{ w.due }}</span>
+            <span style="display:block;color:var(--faint);font:400 13px/1.4 var(--f);margin-top:2px">You're waiting on this</span>
+          </button>
+        </sc-for>
+        <sc-if value="{{ hasCompleted }}" hint-placeholder-val="{{ false }}">
+          <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:20px 0 10px">Completed</div>
+          <sc-for list="{{ workDone }}" as="w" hint-placeholder-count="1">
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;color:var(--muted);font:400 15px/1.4 var(--f)"><span style="width:7px;height:7px;border-radius:50%;background:var(--sage);flex:none"></span>{{ w.title }}</div>
+          </sc-for>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isMeetings }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:22px 20px 28px;animation:dgin .25s ease both">
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:0 0 6px">Meetings</h1>
+        <p style="margin:0;color:var(--muted);font:400 15px/1.5 var(--f)">Only the ones that still need you live.</p>
+        <sc-for list="{{ meetingGroups }}" as="mg" hint-placeholder-count="2">
+          <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:22px 0 10px">{{ mg.name }}</div>
+          <sc-for list="{{ mg.items }}" as="m" hint-placeholder-count="2">
+            <button onClick="{{ m.go }}" style="width:100%;text-align:left;display:flex;gap:14px;background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:15px 16px;margin-bottom:10px;cursor:pointer;color:var(--ink)">
+              <span style="flex:none;width:62px;color:var(--faint);font:500 13px/1.4 var(--f)">{{ m.when }}</span>
+              <span style="flex:1;min-width:0">
+                <span style="display:block;font:600 16px/1.35 var(--f)">{{ m.title }}</span>
+                <sc-if value="{{ m.sage }}" hint-placeholder-val="{{ false }}"><span style="display:block;color:var(--sage);font:500 14px/1.4 var(--f);margin-top:4px">{{ m.status }}</span></sc-if>
+                <sc-if value="{{ m.amber }}" hint-placeholder-val="{{ false }}"><span style="display:block;color:var(--amber);font:500 14px/1.4 var(--f);margin-top:4px">{{ m.status }}</span></sc-if>
+                <sc-if value="{{ m.violet }}" hint-placeholder-val="{{ false }}"><span style="display:block;color:var(--violet);font:500 14px/1.4 var(--f);margin-top:4px">{{ m.status }}</span></sc-if>
+                <sc-if value="{{ m.plain }}" hint-placeholder-val="{{ true }}"><span style="display:block;color:var(--muted);font:400 14px/1.4 var(--f);margin-top:4px">{{ m.status }}</span></sc-if>
+              </span>
+            </button>
+          </sc-for>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isMe }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:22px 20px 28px;animation:dgin .25s ease both">
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:0 0 18px">You</h1>
+        <div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;gap:14px;align-items:center">
+          <div style="flex:none;width:44px;height:44px;border-radius:50%;background:var(--accent-bg);display:flex;align-items:center;justify-content:center;font:600 15px/1 var(--f)">DO</div>
+          <div><div style="font:600 16px/1.3 var(--f)">Dana Okafor</div><div style="color:var(--muted);font:400 14px/1.45 var(--f)">Operations Coordinator · North Dock</div></div>
+        </div>
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:24px 0 10px">This month</div>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px">
+          <div style="font:600 34px/1.1 var(--f);letter-spacing:-1px">3h 45m</div>
+          <div style="color:var(--muted);font:400 15px/1.5 var(--f);margin:4px 0 14px">Here's the time we gave back to you.</div>
+          <div style="height:1px;background:var(--line);margin-bottom:10px"></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;font:400 15px/1.4 var(--f)"><span>Status meetings replaced</span><span style="color:var(--muted)">3</span></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;font:400 15px/1.4 var(--f)"><span>Project check-ins shortened</span><span style="color:var(--muted)">2</span></div>
+          <div style="display:flex;justify-content:space-between;padding:6px 0;font:400 15px/1.4 var(--f)"><span>Reviews handled async</span><span style="color:var(--muted)">1</span></div>
+        </div>
+        <button onClick="{{ toChangedIntro }}" style="width:100%;margin-top:12px;min-height:52px;padding:0 18px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer;text-align:left">Something changed in my work</button>
+        <sc-for list="{{ prefGroups }}" as="pg" hint-placeholder-count="2">
+          <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:24px 0 10px">{{ pg.name }}</div>
+          <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 18px">
+            <sc-for list="{{ pg.items }}" as="p" hint-placeholder-count="2">
+              <label style="display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 0;cursor:pointer;min-height:58px;border-top:{{ p.border }}">
+                <span><span style="display:block;font:500 15px/1.4 var(--f)">{{ p.label }}</span><span style="display:block;color:var(--faint);font:400 13px/1.4 var(--f)">{{ p.sub }}</span></span>
+                <input type="checkbox" checked="{{ p.on }}" onChange="{{ p.flip }}" style="width:20px;height:20px;accent-color:var(--primary);flex:none"/>
+              </label>
+            </sc-for>
+          </div>
+        </sc-for>
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:24px 0 10px">Privacy</div>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;color:var(--muted);font:400 14px/1.6 var(--f);text-wrap:pretty">Nothing is recorded as your statement until you've seen what we understood and sent it yourself. You start and stop every recording.</div>
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin:24px 0 10px">Appearance</div>
+        <div style="display:flex;gap:8px">
+          <button onClick="{{ setDark }}" style="flex:1;min-height:48px;border-radius:7px;border:1px solid var(--line);background:{{ darkBtnBg }};color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Dark</button>
+          <button onClick="{{ setLight }}" style="flex:1;min-height:48px;border-radius:7px;border:1px solid var(--line);background:{{ lightBtnBg }};color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Light</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isNotifs }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:22px 20px 28px;animation:dgin .25s ease both">
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:0 0 16px">Notifications</h1>
+        <sc-for list="{{ notifs }}" as="n" hint-placeholder-count="5">
+          <button onClick="{{ n.go }}" style="width:100%;text-align:left;display:block;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer;color:var(--ink)">
+            <span style="display:flex;justify-content:space-between;gap:10px;margin-bottom:6px"><span style="font:500 12px/1.3 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">{{ n.type }}</span><span style="color:var(--faint);font:400 12px/1.3 var(--f)">{{ n.time }}</span></span>
+            <span style="display:block;font:600 15px/1.4 var(--f)">{{ n.title }}</span>
+            <span style="display:block;color:var(--muted);font:400 14px/1.5 var(--f);margin-top:2px">{{ n.body }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isPulseIntro }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:24px 20px 28px;animation:dgin .25s ease both">
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">Pulse · due 10:30 AM</div>
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:10px 0 12px;text-wrap:pretty">Let's do your Monday Pulse</h1>
+        <p style="margin:0 0 14px;color:var(--muted);font:400 16px/1.55 var(--f);text-wrap:pretty">I'll ask a few questions based on your current work. Answer naturally — I'll only follow up when something needs clarifying.</p>
+        <p style="margin:0 0 20px;color:var(--muted);font:400 16px/1.55 var(--f);text-wrap:pretty">Instead of the 60-minute status meeting, DutyGraph is collecting everyone's update individually.</p>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:12px"><span style="font:600 15px/1.4 var(--f)">Your Pulse will cover</span><span style="color:var(--faint);font:400 14px/1.4 var(--f)">about 4 min</span></div>
+          <div style="display:flex;flex-direction:column;gap:8px;color:var(--muted);font:400 15px/1.45 var(--f)">
+            <div style="display:flex;gap:10px"><span style="flex:none;width:18px;color:var(--faint)">1</span>Last week's commitment</div>
+            <div style="display:flex;gap:10px"><span style="flex:none;width:18px;color:var(--faint)">2</span>The NetSuite blocker you raised</div>
+            <div style="display:flex;gap:10px"><span style="flex:none;width:18px;color:var(--faint)">3</span>Inbound freight delays</div>
+            <div style="display:flex;gap:10px"><span style="flex:none;width:18px;color:var(--faint)">4</span>Anything the team should know</div>
+          </div>
+        </div>
+        <p style="margin:16px 0 0;color:var(--faint);font:400 13px/1.5 var(--f)">You can review everything before it's submitted.</p>
+        <button onClick="{{ openWhy }}" style="margin-top:8px;min-height:44px;padding:0;background:none;border:none;color:var(--muted);font:500 15px/1 var(--f);text-decoration:underline;cursor:pointer">Why am I being asked this?</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDiscovery }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:24px 20px 28px;animation:dgin .25s ease both">
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">Discovery</div>
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:10px 0 12px;text-wrap:pretty">DutyGraph wants to understand your work</h1>
+        <p style="margin:0 0 20px;color:var(--muted);font:400 16px/1.55 var(--f);text-wrap:pretty">Operations is mapping what actually happens on the north dock when inbound freight runs late — not the written process.</p>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:12px">
+          <div style="display:flex;justify-content:space-between;gap:16px;font:400 14px/1.4 var(--f)"><span style="color:var(--faint)">Questions</span><span style="font-weight:500">3</span></div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="display:flex;justify-content:space-between;gap:16px;font:400 14px/1.4 var(--f)"><span style="color:var(--faint)">Takes about</span><span style="font-weight:500">7 minutes</span></div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="display:flex;justify-content:space-between;gap:16px;font:400 14px/1.4 var(--f)"><span style="color:var(--faint)">Requested by</span><span style="font-weight:500">Operations</span></div>
+        </div>
+        <p style="margin:16px 0 0;color:var(--faint);font:400 13px/1.5 var(--f)">Nothing is sent until you review it and choose to send.</p>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isChangedIntro }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:24px 20px 28px;animation:dgin .25s ease both">
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:0 0 12px">Something changed?</h1>
+        <p style="margin:0 0 18px;color:var(--muted);font:400 16px/1.55 var(--f)">Tell DutyGraph when:</p>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 18px">
+          <div style="padding:11px 0;font:400 15px/1.45 var(--f)">Your responsibilities changed</div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="padding:11px 0;font:400 15px/1.45 var(--f)">A process works differently now</div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="padding:11px 0;font:400 15px/1.45 var(--f)">You started using new software</div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="padding:11px 0;font:400 15px/1.45 var(--f)">You stopped doing a task</div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="padding:11px 0;font:400 15px/1.45 var(--f)">Someone else owns something now</div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="padding:11px 0;font:400 15px/1.45 var(--f)">A recurring workflow changed</div>
+        </div>
+        <p style="margin:16px 0 0;color:var(--faint);font:400 13px/1.5 var(--f)">A sentence or two is plenty. We'll ask if we need more.</p>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isConsent }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:24px 20px 28px;animation:dgin .25s ease both">
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:0 0 12px">Answer out loud</h1>
+        <p style="margin:0 0 20px;color:var(--muted);font:400 16px/1.55 var(--f)">Before we turn on the microphone:</p>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:400 15px/1.5 var(--f)">You start and stop the conversation. There is no background listening.</div>
+          <div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:400 15px/1.5 var(--f)">You'll see the transcript as you speak, and DutyGraph may ask a short follow-up.</div>
+          <div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:14px 16px;font:400 15px/1.5 var(--f)">Nothing is submitted until you review what we understood.</div>
+        </div>
+        <p style="margin:18px 0 0;color:var(--faint);font:400 13px/1.5 var(--f)">Simulated in this mockup — no audio is captured.</p>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDenied }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:24px 20px 28px;animation:dgin .25s ease both">
+        <div style="background:var(--red-bg);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:20px">
+          <div style="display:flex;gap:9px;align-items:center;color:var(--red);font:600 15px/1.4 var(--f);margin-bottom:6px"><span style="width:7px;height:7px;border-radius:50%;background:var(--red)"></span>Microphone is blocked</div>
+          <div style="color:var(--muted);font:400 15px/1.5 var(--f)">Your browser is refusing microphone access, so voice answers aren't available right now.</div>
+        </div>
+        <div style="font:600 17px/1.3 var(--f);margin-bottom:10px">To turn it back on</div>
+        <ol style="margin:0;padding-left:20px;color:var(--muted);font:400 15px/1.7 var(--f)">
+          <li>Open the site settings for this page.</li>
+          <li>Set Microphone to Allow.</li>
+          <li>Come back and press Try again.</li>
+        </ol>
+        <p style="margin:18px 0 0;color:var(--muted);font:400 15px/1.55 var(--f)">Typing works just as well — DutyGraph treats your answer exactly the same.</p>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isConvo }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:18px 20px 24px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding-bottom:12px;border-bottom:1px solid var(--line)">
+          <span style="font:600 15px/1.3 var(--f)">{{ convoTitle }}</span>
+          <span style="color:var(--faint);font:400 13px/1.3 var(--f);white-space:nowrap">{{ qLabel }}</span>
+        </div>
+        <sc-for list="{{ thread }}" as="m" hint-placeholder-count="1">
+          <sc-if value="{{ m.isAgent }}" hint-placeholder-val="{{ true }}">
+            <div style="margin-top:20px;animation:dgin .3s ease both">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+                <span style="width:7px;height:7px;border-radius:50%;background:var(--violet)"></span>
+                <span style="font:500 12px/1.3 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">DutyGraph</span>
+                <sc-if value="{{ m.isFollow }}" hint-placeholder-val="{{ false }}"><span style="font:500 12px/1.2 var(--f);padding:4px 8px;border-radius:6px;background:var(--violet-bg);color:var(--violet)">Follow-up</span></sc-if>
+              </div>
+              <div style="font:500 19px/1.45 var(--f);letter-spacing:-.2px;text-wrap:pretty">{{ m.text }}</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ m.isAck }}" hint-placeholder-val="{{ false }}">
+            <div style="margin-top:14px;color:var(--muted);font:400 15px/1.5 var(--f);animation:dgin .3s ease both">{{ m.text }}</div>
+          </sc-if>
+          <sc-if value="{{ m.isMe }}" hint-placeholder-val="{{ false }}">
+            <div style="margin:14px 0 0 28px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;color:var(--muted);font:400 15px/1.55 var(--f);text-wrap:pretty">{{ m.text }}</div>
+          </sc-if>
+        </sc-for>
+        <sc-if value="{{ showLive }}" hint-placeholder-val="{{ false }}">
+          <div style="margin:14px 0 0 28px;border:1px dashed var(--line);border-radius:12px;padding:12px 14px;min-height:84px">
+            <div style="font:500 12px/1.3 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">{{ liveLabel }}</div>
+            <div style="font:400 16px/1.55 var(--f);text-wrap:pretty">{{ liveText }}</div>
+            <sc-if value="{{ liveEmpty }}" hint-placeholder-val="{{ false }}"><div style="color:var(--faint);font:400 15px/1.5 var(--f)">Go ahead — your words will appear here.</div></sc-if>
+          </div>
+        </sc-if>
+        <sc-if value="{{ isThinking }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:20px;display:flex;align-items:center;gap:10px;color:var(--muted);font:400 15px/1.4 var(--f)">
+            <span style="display:flex;gap:4px"><span style="width:6px;height:6px;border-radius:50%;background:var(--violet);animation:dgshim 1s ease-in-out infinite"></span><span style="width:6px;height:6px;border-radius:50%;background:var(--violet);animation:dgshim 1s .2s ease-in-out infinite"></span><span style="width:6px;height:6px;border-radius:50%;background:var(--violet);animation:dgshim 1s .4s ease-in-out infinite"></span></span>
+            Understanding your answer…
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isProcessing }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:40px 20px;animation:dgin .25s ease both">
+        <div style="font:600 20px/1.3 var(--f);margin-bottom:8px">Putting it together…</div>
+        <p style="margin:0 0 26px;color:var(--muted);font:400 15px/1.5 var(--f)">Turning what you said into plain sentences you can check.</p>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div style="height:86px;border-radius:12px;background:var(--soft);animation:dgshim 1.3s ease-in-out infinite"></div>
+          <div style="height:86px;border-radius:12px;background:var(--soft);animation:dgshim 1.3s .2s ease-in-out infinite"></div>
+          <div style="height:86px;border-radius:12px;background:var(--soft);animation:dgshim 1.3s .4s ease-in-out infinite"></div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isUnderstood }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:24px 20px 24px;animation:dgin .25s ease both">
+        <span style="display:inline-block;font:500 12px/1.2 var(--f);padding:5px 9px;border-radius:6px;background:var(--violet-bg);color:var(--violet);margin-bottom:12px">{{ uChip }}</span>
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:0 0 10px">{{ uTitle }}</h1>
+        <p style="margin:0 0 20px;color:var(--muted);font:400 16px/1.55 var(--f);text-wrap:pretty">{{ uSub }}</p>
+        <sc-for list="{{ cards }}" as="c" hint-placeholder-count="4">
+          <div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:12px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px;min-height:22px">
+              <span style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">{{ c.label }}</span>
+              <sc-if value="{{ c.isConfirmed }}" hint-placeholder-val="{{ false }}"><span style="font:500 12px/1.2 var(--f);padding:5px 9px;border-radius:6px;background:var(--sage-bg);color:var(--sage);white-space:nowrap">{{ c.doneLabel }}</span></sc-if>
+              <sc-if value="{{ c.isEdited }}" hint-placeholder-val="{{ false }}"><span style="font:500 12px/1.2 var(--f);padding:5px 9px;border-radius:6px;background:var(--accent-bg);color:var(--ink);white-space:nowrap">You changed this</span></sc-if>
+            </div>
+            <div style="font:400 16px/1.55 var(--f);text-wrap:pretty;margin-bottom:14px">{{ c.text }}</div>
+            <div style="display:flex;gap:8px">
+              <sc-if value="{{ c.isNew }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ c.confirm }}" style="flex:1;min-height:44px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">{{ c.primary }}</button>
+              </sc-if>
+              <sc-if value="{{ c.canChange }}" hint-placeholder-val="{{ true }}">
+                <button onClick="{{ c.edit }}" style="flex:1;min-height:44px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">{{ c.changeLabel }}</button>
+              </sc-if>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ canAdd }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ addCard }}" style="width:100%;min-height:48px;border-radius:12px;border:1px dashed var(--line);background:transparent;color:var(--muted);font:500 15px/1 var(--f);cursor:pointer">Add something we missed</button>
+        </sc-if>
+        <sc-if value="{{ sendError }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px;background:var(--red-bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px">
+            <div style="display:flex;gap:9px;align-items:center;color:var(--red);font:600 15px/1.4 var(--f);margin-bottom:6px"><span style="width:7px;height:7px;border-radius:50%;background:var(--red)"></span>Couldn't send</div>
+            <div style="color:var(--muted);font:400 15px/1.5 var(--f)">Everything is still here, exactly as you left it. Try again when you have a connection.</div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isSubmitted }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:40px 20px 28px;animation:dgin .25s ease both">
+        <div style="width:52px;height:52px;border-radius:50%;background:var(--sage-bg);margin-bottom:20px;display:flex;align-items:center;justify-content:center"><span style="display:block;width:16px;height:9px;border-left:2px solid var(--sage);border-bottom:2px solid var(--sage);transform:rotate(-45deg) translate(1px,-2px)"></span></div>
+        <h1 style="font:600 30px/1.2 var(--f);letter-spacing:-.9px;margin:0 0 8px">You're done</h1>
+        <p style="margin:0 0 22px;color:var(--muted);font:400 16px/1.55 var(--f)">Your Monday Pulse is complete.</p>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:6px 18px;margin-bottom:22px">
+          <div style="display:flex;justify-content:space-between;padding:11px 0;font:400 15px/1.4 var(--f)"><span style="color:var(--faint)">Time</span><span style="font-weight:500">3m 42s</span></div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="display:flex;justify-content:space-between;padding:11px 0;font:400 15px/1.4 var(--f)"><span style="color:var(--faint)">Next required update</span><span style="font-weight:500">None</span></div>
+        </div>
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:10px">What happened</div>
+        <div style="display:flex;flex-direction:column;gap:10px;font:400 16px/1.45 var(--f)">
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:8px;height:8px;border-radius:50%;background:var(--sage);flex:none"></span>1 commitment completed</div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:8px;height:8px;border-radius:50%;background:var(--amber);flex:none"></span>1 blocker reported</div>
+          <div style="display:flex;align-items:center;gap:12px"><span style="width:8px;height:8px;border-radius:50%;background:var(--violet);flex:none"></span>1 deadline may change</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isTeam }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:22px 20px 28px;animation:dgin .25s ease both">
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">Pulse · due 10:30 AM</div>
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:8px 0 4px">Operations Pulse</h1>
+        <div style="font:500 16px/1.4 var(--f);color:var(--muted)">{{ teamCount }} of 11 complete</div>
+        <div style="margin:14px 0 12px;height:4px;border-radius:2px;background:var(--soft);overflow:hidden"><div style="height:100%;border-radius:2px;background:var(--accent);width:{{ teamPct }};transition:width .5s ease"></div></div>
+        <div style="color:var(--muted);font:400 14px/1.5 var(--f);margin-bottom:18px">{{ teamNote }}</div>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 16px">
+          <sc-for list="{{ teamRows }}" as="r" hint-placeholder-count="11">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:50px;border-top:{{ r.border }}">
+              <span style="font:400 15px/1.3 var(--f)">{{ r.name }}<sc-if value="{{ r.you }}" hint-placeholder-val="{{ false }}"><span style="color:var(--faint)"> · you</span></sc-if></span>
+              <sc-if value="{{ r.done }}" hint-placeholder-val="{{ true }}"><span style="font:500 13px/1.2 var(--f);color:var(--sage);white-space:nowrap">Done</span></sc-if>
+              <sc-if value="{{ r.due }}" hint-placeholder-val="{{ false }}"><span style="font:500 13px/1.2 var(--f);color:var(--muted);white-space:nowrap">Due 10:30</span></sc-if>
+              <sc-if value="{{ r.late }}" hint-placeholder-val="{{ false }}"><span style="font:500 13px/1.2 var(--f);color:var(--red);white-space:nowrap">Overdue</span></sc-if>
+            </div>
+          </sc-for>
+        </div>
+        <p style="margin:14px 0 0;color:var(--faint);font:400 13px/1.5 var(--f)">Listed by last name. Everyone on the team sees the same status — no rankings or scores.</p>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDone }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:48px 20px 28px;text-align:center;animation:dgin .25s ease both">
+        <div style="width:56px;height:56px;border-radius:50%;background:var(--sage-bg);margin:0 auto 20px;display:flex;align-items:center;justify-content:center"><span style="display:block;width:16px;height:9px;border-left:2px solid var(--sage);border-bottom:2px solid var(--sage);transform:rotate(-45deg) translate(1px,-2px)"></span></div>
+        <h1 style="font:600 28px/1.25 var(--f);letter-spacing:-.8px;margin:0 0 10px">Sent. Thank you.</h1>
+        <p style="margin:0 auto;max-width:32ch;color:var(--muted);font:400 16px/1.55 var(--f);text-wrap:pretty">{{ doneBody }}</p>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isAvoided }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:32px 20px 28px;animation:dgin .25s ease both">
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">11:00 · Operations status meeting</div>
+        <h1 style="font:600 30px/1.2 var(--f);letter-spacing:-.9px;margin:10px 0 12px;text-wrap:pretty">You don't need to join the 11:00 meeting</h1>
+        <p style="margin:0 0 24px;color:var(--muted);font:400 16px/1.55 var(--f);text-wrap:pretty">DutyGraph collected the team's updates asynchronously. Two issues still need a live conversation, but neither requires you.</p>
+        <div style="background:var(--sage-bg);border:1px solid var(--line);border-radius:12px;padding:20px 18px">
+          <div style="color:var(--sage);font:500 13px/1.4 var(--f);letter-spacing:.08em;text-transform:uppercase">Time returned to you</div>
+          <div style="font:600 44px/1.1 var(--f);letter-spacing:-1.4px;margin-top:6px">50 min</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isShortened }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:32px 20px 28px;animation:dgin .25s ease both">
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">2:00 · Project review</div>
+        <h1 style="font:600 30px/1.2 var(--f);letter-spacing:-.9px;margin:10px 0 12px;text-wrap:pretty">Your live meeting is now 15 minutes</h1>
+        <p style="margin:0 0 24px;color:var(--muted);font:400 16px/1.55 var(--f);text-wrap:pretty">This morning's Pulses resolved most of the agenda. You're needed for one decision.</p>
+        <div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:18px">
+          <div style="font:600 26px/1.2 var(--f);letter-spacing:-.6px">2:00–2:15 PM</div>
+          <div style="color:var(--faint);font:400 14px/1.4 var(--f);margin-top:6px;text-decoration:line-through">Was 2:00–3:00 PM</div>
+          <div style="height:1px;background:var(--line);margin:14px 0"></div>
+          <div style="color:var(--sage);font:500 14px/1.4 var(--f)">45 minutes returned</div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isRequired }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:28px 20px 28px;animation:dgin .25s ease both">
+        <span style="display:inline-block;font:500 12px/1.2 var(--f);padding:5px 9px;border-radius:6px;background:var(--amber-bg);color:var(--amber)">Today · 2:00 PM</span>
+        <h1 style="font:600 30px/1.2 var(--f);letter-spacing:-.9px;margin:12px 0 6px">You're needed live</h1>
+        <div style="font:600 18px/1.35 var(--f);margin-bottom:12px">NetSuite rollout decision</div>
+        <p style="margin:0 0 22px;color:var(--muted);font:400 16px/1.55 var(--f);text-wrap:pretty">DutyGraph found one unresolved question that needs you, Jesse and Matt together.</p>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px 18px">
+          <div style="padding:13px 0"><div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:4px">Why you're needed</div><div style="font:400 15px/1.5 var(--f)">You own the current integration workflow and can confirm whether the workaround is viable.</div></div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="padding:13px 0"><div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:4px">Expected outcome</div><div style="font:400 15px/1.5 var(--f)">Choose the production rollout path.</div></div>
+          <div style="height:1px;background:var(--line)"></div>
+          <div style="padding:13px 0;display:flex;justify-content:space-between"><div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">Estimated time</div><div style="font:500 15px/1.4 var(--f)">14 minutes</div></div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isBrief }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:24px 20px 28px;animation:dgin .25s ease both">
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">NetSuite rollout decision · 2:00 PM</div>
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:10px 0 20px">Before you join</h1>
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">Purpose</div>
+        <div style="font:500 17px/1.45 var(--f);margin-bottom:18px">Choose the production rollout path.</div>
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:6px">Your role</div>
+        <div style="font:400 16px/1.5 var(--f);margin-bottom:22px">Provide the current integration constraints.</div>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:12px">
+          <div style="font:600 15px/1.4 var(--f);margin-bottom:10px">What DutyGraph already knows</div>
+          <div style="display:flex;flex-direction:column;gap:8px;color:var(--muted);font:400 15px/1.45 var(--f)">
+            <div style="display:flex;gap:10px"><span style="width:6px;height:6px;margin-top:8px;border-radius:50%;background:var(--sage);flex:none"></span>Finance approval is complete.</div>
+            <div style="display:flex;gap:10px"><span style="width:6px;height:6px;margin-top:8px;border-radius:50%;background:var(--amber);flex:none"></span>Production credentials are still outstanding.</div>
+            <div style="display:flex;gap:10px"><span style="width:6px;height:6px;margin-top:8px;border-radius:50%;background:var(--faint);flex:none"></span>Friday is still the target.</div>
+            <div style="display:flex;gap:10px"><span style="width:6px;height:6px;margin-top:8px;border-radius:50%;background:var(--faint);flex:none"></span>Two technical options remain.</div>
+          </div>
+        </div>
+        <div style="background:var(--raised);border:1px solid var(--line);border-radius:12px;padding:16px 18px">
+          <div style="font:600 15px/1.4 var(--f);margin-bottom:10px">We may need you to answer</div>
+          <div style="display:flex;flex-direction:column;gap:10px;font:400 15px/1.5 var(--f)">
+            <div style="display:flex;gap:10px"><span style="flex:none;width:16px;color:var(--faint)">1</span>Can Option B launch without the production credentials?</div>
+            <div style="display:flex;gap:10px"><span style="flex:none;width:16px;color:var(--faint)">2</span>What risk does that introduce?</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:20px 20px 24px;animation:dgin .25s ease both">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <span style="font:500 13px/1.3 var(--f);color:var(--faint)">In Google Meet · 3 people</span>
+          <span style="font:600 15px/1 var(--f);font-variant-numeric:tabular-nums">{{ liveRemaining }} left</span>
+        </div>
+        <h1 style="font:600 24px/1.25 var(--f);letter-spacing:-.6px;margin:10px 0 16px">NetSuite rollout decision</h1>
+        <div style="background:var(--violet-bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;gap:14px;align-items:center;margin-bottom:20px">
+          <div style="flex:none;height:26px;display:flex;align-items:center;gap:3px">
+            <span style="width:3px;height:100%;border-radius:2px;background:var(--violet);animation:dgwave 1.1s ease-in-out infinite"></span>
+            <span style="width:3px;height:100%;border-radius:2px;background:var(--violet);animation:dgwave .9s .15s ease-in-out infinite"></span>
+            <span style="width:3px;height:100%;border-radius:2px;background:var(--violet);animation:dgwave 1.3s .3s ease-in-out infinite"></span>
+            <span style="width:3px;height:100%;border-radius:2px;background:var(--violet);animation:dgwave 1s .1s ease-in-out infinite"></span>
+          </div>
+          <div>
+            <div style="font:600 15px/1.35 var(--f);color:var(--violet)">DutyGraph is facilitating</div>
+            <div style="color:var(--muted);font:400 13px/1.45 var(--f)">Listening for decisions, commitments, open questions and changes to your work. Announced to everyone in the call.</div>
+          </div>
+        </div>
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:8px">Current question</div>
+        <div style="font:500 20px/1.4 var(--f);letter-spacing:-.3px;margin-bottom:18px;text-wrap:pretty">{{ liveQuestion }}</div>
+        <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-bottom:12px">
+          <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:13px 14px">
+            <div style="color:var(--faint);font:400 13px/1.3 var(--f);margin-bottom:6px">Decision status</div>
+            <sc-if value="{{ liveReady }}" hint-placeholder-val="{{ false }}"><div style="font:600 15px/1.35 var(--f);color:var(--sage)">Ready to decide</div></sc-if>
+            <sc-if value="{{ liveNotReady }}" hint-placeholder-val="{{ true }}"><div style="font:600 15px/1.35 var(--f);color:var(--amber)">Not ready</div></sc-if>
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:13px 14px">
+            <div style="color:var(--faint);font:400 13px/1.3 var(--f);margin-bottom:6px">Still needed</div>
+            <div style="font:600 15px/1.35 var(--f)">{{ liveNeeded }}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button onClick="{{ openParking }}" style="flex:1;min-height:44px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 14px/1 var(--f);cursor:pointer">Parking lot · 2</button>
+          <button onClick="{{ openTranscript }}" style="flex:1;min-height:44px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 14px/1 var(--f);cursor:pointer">View transcript</button>
+        </div>
+        <sc-if value="{{ hand }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:14px;display:flex;gap:9px;align-items:center;background:var(--accent-bg);border-radius:7px;padding:11px 13px;font:500 14px/1.4 var(--f)"><span style="width:7px;height:7px;border-radius:50%;background:var(--ink);flex:none"></span>Your hand is up. DutyGraph will bring you in next.</div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:24px 20px 28px;animation:dgin .25s ease both">
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">{{ cmKind }}</div>
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:10px 0 12px;text-wrap:pretty">{{ cmTitle }}</h1>
+        <sc-if value="{{ cmDone }}" hint-placeholder-val="{{ false }}"><span style="display:inline-block;font:500 12px/1.2 var(--f);padding:5px 9px;border-radius:6px;background:var(--sage-bg);color:var(--sage);margin-bottom:8px">{{ cmDoneLabel }}</span></sc-if>
+        <div style="margin-top:10px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:0 18px">
+          <sc-for list="{{ cmFields }}" as="fd" hint-placeholder-count="5">
+            <div style="padding:13px 0;border-top:{{ fd.border }}">
+              <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-bottom:4px">{{ fd.k }}</div>
+              <div style="font:400 15px/1.5 var(--f);text-wrap:pretty">{{ fd.v }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isClarify }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:24px 20px 28px;animation:dgin .25s ease both">
+        <div style="font:500 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:var(--faint)">Clarification</div>
+        <h1 style="font:600 28px/1.2 var(--f);letter-spacing:-.8px;margin:10px 0 18px">DutyGraph needs your help</h1>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:10px">
+          <div style="color:var(--faint);font:400 13px/1.4 var(--f);margin-bottom:4px">You said, on 14 September</div>
+          <div style="font:400 16px/1.5 var(--f)">Finance owns invoice exceptions.</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:24px">
+          <div style="color:var(--faint);font:400 13px/1.4 var(--f);margin-bottom:4px">The current process record says</div>
+          <div style="font:400 16px/1.5 var(--f)">Operations owns them.</div>
+        </div>
+        <sc-if value="{{ clarifyOpen }}" hint-placeholder-val="{{ true }}">
+          <div style="font:600 19px/1.3 var(--f);margin-bottom:12px">Which is accurate today?</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button onClick="{{ pickFinance }}" style="min-height:52px;padding:0 16px;text-align:left;border-radius:7px;border:1px solid var(--line);background:var(--raised);color:var(--ink);font:500 16px/1 var(--f);cursor:pointer">Finance owns them</button>
+            <button onClick="{{ pickOps }}" style="min-height:52px;padding:0 16px;text-align:left;border-radius:7px;border:1px solid var(--line);background:var(--raised);color:var(--ink);font:500 16px/1 var(--f);cursor:pointer">Operations owns them</button>
+            <button onClick="{{ pickComplicated }}" style="min-height:52px;padding:0 16px;text-align:left;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 16px/1 var(--f);cursor:pointer">It's more complicated</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ clarifyPicked }}" hint-placeholder-val="{{ false }}">
+          <div style="background:var(--sage-bg);border:1px solid var(--line);border-radius:12px;padding:14px 16px">
+            <div style="color:var(--sage);font:600 15px/1.4 var(--f);margin-bottom:4px">Thanks — that settles it</div>
+            <div style="color:var(--muted);font:400 15px/1.5 var(--f)">Recorded as: {{ clarifyPick }}.</div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <button onClick="{{ toastGo }}" style="position:absolute;top:112px;left:12px;right:12px;z-index:6;text-align:left;background:var(--raised);border:1px solid var(--line);border-radius:14px;padding:13px 16px;box-shadow:0 12px 30px #0006;cursor:pointer;color:var(--ink);animation:dgdrop .3s ease both">
+      <span style="display:block;font:600 15px/1.35 var(--f)">{{ toastTitle }}</span>
+      <span style="display:block;color:var(--muted);font:400 13px/1.45 var(--f);margin-top:2px">{{ toastBody }}</span>
+    </button>
+  </sc-if>
+
+  <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;background:#00000088;display:flex;align-items:flex-end;z-index:7">
+      <div style="width:100%;background:var(--surface);border-top:1px solid var(--line);border-radius:18px 18px 0 0;padding:22px 20px 26px;animation:dgin .2s ease both">
+        <div style="font:600 19px/1.3 var(--f);margin-bottom:6px">Say it your way</div>
+        <p style="margin:0 0 14px;color:var(--muted);font:400 14px/1.5 var(--f)">Your wording replaces ours.</p>
+        <textarea value="{{ editDraft }}" onChange="{{ onEditDraft }}" rows="5" style="width:100%;border-radius:7px;border:1px solid var(--line);background:var(--raised);color:var(--ink);padding:14px;font:400 16px/1.6 var(--f);resize:vertical;min-height:130px"></textarea>
+        <div style="display:flex;gap:8px;margin-top:14px">
+          <button onClick="{{ cancelEdit }}" style="flex:1;min-height:48px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 16px/1 var(--f);cursor:pointer">Cancel</button>
+          <button onClick="{{ saveEdit }}" style="flex:1;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">Save wording</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ sheetOpen }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ closeSheet }}" style="position:absolute;inset:0;background:#00000088;display:flex;align-items:flex-end;z-index:7">
+      <div style="width:100%;background:var(--surface);border-top:1px solid var(--line);border-radius:18px 18px 0 0;padding:22px 20px 26px;animation:dgin .2s ease both">
+        <div style="font:600 19px/1.3 var(--f);margin-bottom:12px">{{ sheetTitle }}</div>
+        <sc-for list="{{ sheetLines }}" as="ln" hint-placeholder-count="2">
+          <p style="margin:0 0 12px;color:var(--muted);font:400 15px/1.55 var(--f);text-wrap:pretty">{{ ln }}</p>
+        </sc-for>
+        <button onClick="{{ closeSheet }}" style="width:100%;margin-top:6px;min-height:48px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 16px/1 var(--f);cursor:pointer">Close</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <div style="flex:none;background:var(--nav);border-top:1px solid var(--line);padding:12px 20px 10px">
+    <sc-if value="{{ showTabs }}" hint-placeholder-val="{{ true }}">
+      <div style="display:flex;gap:6px">
+        <sc-for list="{{ tabs }}" as="tb" hint-placeholder-count="4">
+          <button onClick="{{ tb.go }}" style="flex:1;min-height:48px;border-radius:7px;border:none;background:{{ tb.bg }};color:{{ tb.color }};font:500 14px/1 var(--f);cursor:pointer">{{ tb.label }}</button>
+        </sc-for>
+      </div>
+    </sc-if>
+    <sc-if value="{{ isPulseIntro }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ startPulseVoice }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">Start with voice</button>
+      <button onClick="{{ startPulseText }}" style="width:100%;min-height:44px;margin-top:8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Type instead</button>
+    </sc-if>
+    <sc-if value="{{ isDiscovery }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ startDiscVoice }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">Start with voice</button>
+      <button onClick="{{ startDiscText }}" style="width:100%;min-height:44px;margin-top:8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Type instead</button>
+    </sc-if>
+    <sc-if value="{{ isChangedIntro }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ startChangedVoice }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">Tell DutyGraph</button>
+      <button onClick="{{ startChangedText }}" style="width:100%;min-height:44px;margin-top:8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Type instead</button>
+    </sc-if>
+    <sc-if value="{{ isConsent }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ consentStart }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">Allow microphone and start</button>
+      <button onClick="{{ pendingText }}" style="width:100%;min-height:44px;margin-top:8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Type instead</button>
+    </sc-if>
+    <sc-if value="{{ isDenied }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ pendingText }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">Type my answer instead</button>
+      <button onClick="{{ consentStart }}" style="width:100%;min-height:44px;margin-top:8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Try again</button>
+    </sc-if>
+    <sc-if value="{{ convoVoice }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <div style="flex:1;height:30px;display:flex;align-items:center;gap:4px">
+          <sc-if value="{{ waveLive }}" hint-placeholder-val="{{ false }}">
+            <span style="flex:1;height:100%;border-radius:3px;background:var(--accent-bg);animation:dgwave 1.1s ease-in-out infinite"></span>
+            <span style="flex:1;height:100%;border-radius:3px;background:var(--accent-bg);animation:dgwave .9s .1s ease-in-out infinite"></span>
+            <span style="flex:1;height:100%;border-radius:3px;background:var(--accent-bg);animation:dgwave 1.3s .2s ease-in-out infinite"></span>
+            <span style="flex:1;height:100%;border-radius:3px;background:var(--accent-bg);animation:dgwave 1s .05s ease-in-out infinite"></span>
+            <span style="flex:1;height:100%;border-radius:3px;background:var(--accent-bg);animation:dgwave 1.2s .3s ease-in-out infinite"></span>
+            <span style="flex:1;height:100%;border-radius:3px;background:var(--accent-bg);animation:dgwave .95s .15s ease-in-out infinite"></span>
+            <span style="flex:1;height:100%;border-radius:3px;background:var(--accent-bg);animation:dgwave 1.15s .25s ease-in-out infinite"></span>
+            <span style="flex:1;height:100%;border-radius:3px;background:var(--accent-bg);animation:dgwave 1.05s .35s ease-in-out infinite"></span>
+          </sc-if>
+          <sc-if value="{{ waveIdle }}" hint-placeholder-val="{{ true }}">
+            <span style="flex:1;height:4px;border-radius:2px;background:var(--accent-bg)"></span>
+          </sc-if>
+        </div>
+        <span style="flex:none;font:600 15px/1 var(--f);font-variant-numeric:tabular-nums;color:var(--muted)">{{ clock }}</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onClick="{{ togglePause }}" style="flex:none;width:104px;min-height:48px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">{{ pauseLabel }}</button>
+        <button onClick="{{ doneAnswer }}" disabled="{{ notListening }}" style="flex:1;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer;opacity:{{ doneOpacity }}">{{ doneLabel }}</button>
+      </div>
+      <button onClick="{{ toTextMode }}" style="width:100%;min-height:40px;margin-top:4px;background:none;border:none;color:var(--muted);font:500 14px/1 var(--f);text-decoration:underline;cursor:pointer">Type instead</button>
+    </sc-if>
+    <sc-if value="{{ convoText }}" hint-placeholder-val="{{ false }}">
+      <textarea value="{{ typed }}" onChange="{{ onTyped }}" rows="3" placeholder="Type your answer…" style="width:100%;border-radius:7px;border:1px solid var(--line);background:var(--raised);color:var(--ink);padding:12px 14px;font:400 16px/1.5 var(--f);resize:none"></textarea>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button onClick="{{ toVoiceMode }}" style="flex:none;width:104px;min-height:48px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Use voice</button>
+        <button onClick="{{ doneAnswer }}" disabled="{{ notListening }}" style="flex:1;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer;opacity:{{ doneOpacity }}">{{ sendAnswerLabel }}</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{ isUnderstood }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="color:var(--faint);font:400 13px/1.3 var(--f)">{{ reviewLabel }}</span>
+        <sc-if value="{{ savedLocal }}" hint-placeholder-val="{{ false }}"><span style="color:var(--sage);font:500 13px/1.3 var(--f)">Saved on this device</span></sc-if>
+      </div>
+      <button onClick="{{ send }}" disabled="{{ sending }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">{{ sendLabel }}</button>
+      <button onClick="{{ finishLater }}" style="width:100%;min-height:44px;margin-top:8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Finish later</button>
+    </sc-if>
+    <sc-if value="{{ isSubmitted }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ toTeam }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">See team status</button>
+      <button onClick="{{ toToday }}" style="width:100%;min-height:44px;margin-top:8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Back to Today</button>
+    </sc-if>
+    <sc-if value="{{ bottomBackOnly }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ toToday }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">Back to Today</button>
+    </sc-if>
+    <sc-if value="{{ isAvoided }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ openSummary }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">View team summary</button>
+      <button onClick="{{ toToday }}" style="width:100%;min-height:44px;margin-top:8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Back to Today</button>
+    </sc-if>
+    <sc-if value="{{ isShortened }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ toRequired }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">View what we need from you</button>
+    </sc-if>
+    <sc-if value="{{ isRequired }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ joinMeeting }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">Join meeting</button>
+      <button onClick="{{ toBrief }}" style="width:100%;min-height:44px;margin-top:8px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">Review context</button>
+    </sc-if>
+    <sc-if value="{{ isBrief }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ joinMeeting }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">I'm ready</button>
+    </sc-if>
+    <sc-if value="{{ isLive }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;gap:8px">
+        <button onClick="{{ toggleHand }}" style="flex:1;min-height:48px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--ink);font:500 15px/1 var(--f);cursor:pointer">{{ handLabel }}</button>
+        <button onClick="{{ leaveMeeting }}" style="flex:1;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">Meeting ended</button>
+      </div>
+    </sc-if>
+    <sc-if value="{{ detailAction }}" hint-placeholder-val="{{ false }}">
+      <button onClick="{{ completeCm }}" style="width:100%;min-height:48px;border-radius:7px;border:none;background:var(--primary);color:var(--primary-ink);font:600 16px/1 var(--f);cursor:pointer">{{ cmAction }}</button>
+    </sc-if>
+    <div style="width:132px;height:5px;border-radius:3px;background:var(--line);margin:12px auto 0"></div>
+  </div>
+</div>
+
+<div style="flex:1;min-width:220px;max-width:330px;position:sticky;top:30px">
+  <div style="font:600 12px/1.4 var(--f);letter-spacing:.11em;text-transform:uppercase;color:#8a8a8a;margin-bottom:12px">Design notes</div>
+  <p style="margin:0 0 12px;color:#8a8a8a;font:400 13px/1.6 var(--f)">Companion 2.0 keeps v1's three primitives and builds around them: one voice conversation (Pulse, Discovery, Clarification, Something changed), one "Here's what we understood" review (also used for meeting wrap-up), one consent / type-instead layer.</p>
+  <p style="margin:0 0 12px;color:#8a8a8a;font:400 13px/1.6 var(--f)">Violet = DutyGraph speaking or unsent interpretation. Sage = confirmed, sent, or time returned. Amber = due. Red = error or overdue.</p>
+  <p style="margin:0 0 12px;color:#8a8a8a;font:400 13px/1.6 var(--f)">Suggested path: Pulse → Voice → answer 4 questions → submit → team status fills in → "no need to join" arrives. Then Meetings → 2:00 → join → Meeting ended → confirm outcome → it lands in Work.</p>
+  <p style="margin:0;color:#6e6e6e;font:400 12px/1.6 var(--f)">All content fictional; recording, storage and sync are simulated.</p>
+</div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1040,&quot;height&quot;:920},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;'dark' | 'light'&quot;}}">
+const SCRIPTS = {
+  pulse: { title: 'Monday Operations Pulse', total: 4, turns: [
+    { q: 1, agent: "Last Monday you committed to sending the revised dock schedule to Jesse. Did that happen?", answer: "Yes, I sent it Wednesday and he's already using it for the late-shift bays.", ack: "Got it. I'll mark that commitment complete." },
+    { q: 2, agent: "You said the carrier API was blocking the NetSuite rollout. Is that still unresolved?", answer: "Sort of. Finance signed off Thursday, so that part is done. Now we're stuck on production credentials." },
+    { q: 2, follow: true, agent: "One thing I want to clarify: what exactly are you waiting on, and who owns getting it to you?", answer: "The production API credentials. Samir in IT owns that, he said maybe Wednesday." },
+    { q: 2, follow: true, agent: "Does that change Friday's migration date?", answer: "Probably by a day, if Samir's Wednesday estimate holds.", ack: "Understood. I'll flag that the date may move." },
+    { q: 3, agent: "Anything new on the inbound freight delays you raised two weeks ago?", answer: "It's better. Two of the three carriers are hitting their windows now. Northline is still late most mornings.", ack: "Got it." },
+    { q: 4, agent: "Last one. Is there anything the team should know this week?", answer: "No, that's everything from me.", ack: "Thanks, Dana. That's all I needed." }
+  ]},
+  discovery: { title: 'Discovery · north dock', total: 3, turns: [
+    { q: 1, agent: "When an inbound load is running late, what's the first thing you do?", answer: "I call the carrier first. Not email, because you never get an answer back in time.", ack: "Got it." },
+    { q: 2, agent: "Once you know the real delay, who do you need to tell?", answer: "The dock leads, so they can re-sequence the bays. And billing, if the paperwork is going to land late." },
+    { q: 2, follow: true, agent: "How do you usually reach billing? A message, a call, something in a system?", answer: "Usually a message in Teams. There's no system for it.", ack: "That's helpful." },
+    { q: 3, agent: "Is any of this written down, or does it mostly live in people's heads?", answer: "Mostly in my head, honestly. There's an old SOP but nobody follows it.", ack: "Thanks. That's everything for now." }
+  ]},
+  changed: { title: 'Something changed', total: 1, turns: [
+    { q: 1, agent: "What's different now?", answer: "Dispatch owns carrier appointment scheduling now. It used to be warehouse operations, which is us." },
+    { q: 1, follow: true, agent: "When does that start, and who in dispatch owns it?", answer: "Starting next Monday. Priya Shah runs it." },
+    { q: 1, follow: true, agent: "Is there any part of that process you still do?", answer: "I still confirm the dock bay once dispatch books the slot.", ack: "Got it. I'll structure that for you to check." }
+  ]},
+  clarify: { title: 'Invoice exceptions', total: 1, turns: [
+    { q: 1, agent: "What makes it more complicated?", answer: "Finance owns the exception itself, but Operations has to flag it first and attach the delivery proof." },
+    { q: 1, follow: true, agent: "So who makes the final call on whether an exception is approved?", answer: "Finance. Always Finance.", ack: "Thanks, that clears it up." }
+  ]}
+};
+
+const LR = 'Looks right', CW = 'Change wording';
+const CARDS = {
+  pulse: [
+    { label: 'Commitment', text: "You sent the revised dock schedule to Jesse on Wednesday. It's in use for the late-shift bays." },
+    { label: 'Project status', text: 'The NetSuite migration is no longer blocked by Finance.' },
+    { label: 'New blocker', text: 'Production credentials are now waiting on IT.' },
+    { label: 'Owner', text: 'Samir in IT owns providing the credentials, expected Wednesday.' },
+    { label: 'Impact', text: "Friday's migration date may slip by one business day." },
+    { label: 'Inbound freight', text: 'Two of three carriers now hit their delivery windows. Northline is still late most mornings.' }
+  ],
+  confirm: [
+    { label: 'What you said', text: "Northline's morning deliveries arrive late about four days in five." },
+    { label: 'What you agreed', text: 'You will confirm carrier cutoff times with dispatch by 4:00 PM today.' }
+  ],
+  discovery: [
+    { label: 'First step', text: 'When an inbound load is late, you call the carrier directly. Email is too slow to be useful on the day.' },
+    { label: 'Who you tell', text: 'You tell the dock leads so they can re-sequence the bays, and message billing in Teams if paperwork will land late.' },
+    { label: 'Where it lives', text: "The process is mostly in your head. An older SOP exists but isn't followed." }
+  ],
+  changed: [
+    { label: 'What changed', text: 'Carrier appointment scheduling moved from warehouse operations to dispatch.' },
+    { label: 'Starts', text: 'Monday, 5 October.' },
+    { label: 'New owner', text: 'Priya Shah in dispatch.' },
+    { label: 'Your part now', text: 'You confirm the dock bay after dispatch books the slot.' }
+  ],
+  clarify: [
+    { label: 'Who flags it', text: 'Operations flags invoice exceptions and attaches the delivery proof.' },
+    { label: 'Who decides', text: 'Finance approves or rejects every invoice exception.' }
+  ],
+  wrapup: [
+    { label: 'Decision', text: "Use Option B for Friday's rollout.", primary: 'Confirm', doneLabel: 'Confirmed', noChange: true },
+    { label: 'Your commitment', text: 'Validate the fallback procedure by Thursday at 3:00 PM.', primary: 'Accept', change: 'Change', doneLabel: 'Accepted' },
+    { label: 'Open question', text: 'The delivery date for production credentials is still unknown.', noChange: true }
+  ]
+};
+
+const UCOPY = {
+  pulse: { chip: 'Our understanding · not submitted', title: "Here's what we understood", sub: "From your Monday Pulse. Fix anything that isn't right before it's submitted.", submit: 'Submit Pulse' },
+  confirm: { chip: 'Our understanding · not confirmed', title: "Here's what we understood", sub: "Two things DutyGraph took from Friday's Operations Review. Neither is recorded as yours until you confirm.", submit: 'Confirm' },
+  discovery: { chip: 'Our understanding · not sent', title: "Here's what we understood", sub: "Your words, tidied up. Fix anything that isn't right — it's your account, not ours.", submit: 'Save and send' },
+  changed: { chip: 'Our understanding · not sent', title: "Here's what we understood", sub: "Here's the change as DutyGraph would record it.", submit: 'Send this update' },
+  clarify: { chip: 'Our understanding · not sent', title: "Here's what we understood", sub: 'Check this settles who owns invoice exceptions.', submit: 'Send' },
+  wrapup: { chip: 'Captured in the meeting · not confirmed', title: 'Before we close this out', sub: 'DutyGraph captured these from the NetSuite rollout decision.', submit: 'Confirm meeting outcome' }
+};
+
+const DONE_BODY = {
+  confirm: "Friday's review is confirmed. Your cutoff-times commitment is in My Work.",
+  discovery: "Your account of the north dock is on its way to the discovery team.",
+  changed: "DutyGraph will update the workflow and let the people affected know.",
+  clarify: "Invoice exceptions are settled. DutyGraph won't ask again unless something changes."
+};
+
+const COMMITS = {
+  'c-cutoff': { kind: 'commit', group: 'today', title: 'Confirm carrier cutoff times', due: 'Due today · 4:00 PM', from: "Friday's Operations Review", fields: [
+    ['Outcome', "Send each carrier's latest drop-off time to dispatch."], ['Due', 'Today · 4:00 PM'], ['Why', 'Dispatch starts booking carrier appointments next Monday.'],
+    ['Authority', 'You set cutoff times for North Dock.'], ['Definition of done', 'All three carrier cutoffs sent to dispatch and acknowledged.'], ['Source', "Friday's Operations Review"]] },
+  'c-fallback': { kind: 'commit', group: 'week', title: 'Validate fallback procedure', due: 'Thursday · 3:00 PM', from: 'NetSuite rollout decision', fields: [
+    ['Outcome', 'Confirm Option B can operate safely without production credentials.'], ['Due', 'Thursday · 3:00 PM'], ['Why', "Required before Friday's production rollout."],
+    ['Authority', 'You may approve the technical fallback. Matt owns final rollout approval.'], ['Definition of done', 'Run the fallback test and record pass or fail, plus any risk you find.'], ['Source', 'NetSuite rollout decision · today']] },
+  'c-proposal': { kind: 'commit', group: 'week', title: "Review Northline's revised proposal", due: 'Thursday', from: 'Vendor rollout discussion', fields: [
+    ['Outcome', "Flag anything in Northline's proposal that conflicts with current dock hours."], ['Due', 'Thursday'], ['Why', 'Engineering picks a carrier-integration vendor on Friday.'],
+    ['Authority', 'You advise. Matt decides.'], ['Definition of done', 'Comments returned to Matt.'], ['Source', 'Vendor rollout discussion · last Tuesday']] },
+  'w-creds': { kind: 'wait', group: 'waiting', title: 'Production credentials', due: 'Owner: Samir Patel, IT', from: '', fields: [
+    ['Owner', 'Samir Patel, IT'], ['Needed for', "Friday's NetSuite production rollout"], ['Latest', 'Samir expects Wednesday — from your Monday Pulse.'],
+    ['What happens next', "DutyGraph will check with Samir on Wednesday and tell you either way. You don't need to chase it."]] }
+};
+
+const TEAM = [['Carter', 'John Carter'], ['Chen', 'Maya Chen'], ['Davis', 'Nate Davis'], ['Kim', 'Sarah Kim'], ['Nwosu', 'Amara Nwosu'], ['Okafor', 'Dana Okafor'], ['Reyes', 'Tom Reyes'], ['Romero', 'Luis Romero'], ['Shah', 'Priya Shah'], ['Sherrill', 'Jesse Sherrill'], ['Walsh', 'Ben Walsh']];
+const DONE_ORDER = ['Jesse Sherrill', 'Nate Davis', 'Sarah Kim', 'Priya Shah', 'Luis Romero', 'Amara Nwosu', 'Ben Walsh', 'Maya Chen', 'Tom Reyes', 'John Carter'];
+
+const SHEETS = {
+  why: ["Why am I being asked this?", ["Your team's Monday status meeting runs an hour. DutyGraph collects each person's update separately instead, so the meeting only happens if something truly needs a live conversation.", "The questions build on what you told DutyGraph last week, so you won't be asked to repeat yourself."]],
+  vendor: ['Vendor rollout decision', ['Engineering is choosing between two carrier-integration vendors this week.', "One open question — whether Northline's API supports same-day rebooking — may need your input. If Engineering answers it themselves, you won't hear from us."]],
+  summary: ['Team summary', ['8 of 11 people reported no blockers.', 'NetSuite rollout: production credentials are now with IT. Friday may slip a day.', 'Two issues need a live conversation. Finance and Engineering are covering them at 11:00.', 'Nothing in the summary needs action from you.']],
+  parking: ['Parking lot', ['Whether Northline moves to the new API before the holiday peak.', 'Who owns the rollback runbook after launch.']],
+  transcript: ['Recent transcript', ["Jesse: If we go with B we're relying on the batch export for two days.", "Matt: What's the risk if the batch fails overnight?", 'DutyGraph: Dana, you own the current integration workflow. Can Option B run without production credentials?']]
+};
+
+class Component extends DCLogic {
+  scrollRef = React.createRef();
+  state = this.initial();
+
+  initial() {
+    return {
+      screen: 'today', hist: [], theme: null, consented: false, pendingKind: 'pulse',
+      offline: false, micDenied: false, holdSend: false, failSend: false, overdue: false, teamStuck: false,
+      pulseDone: false, confirmDone: false, clarifyDone: false, clarifyPick: null, discDone: false, changedDone: false, wrapDone: false, avoidedKnown: false,
+      teamDone: 7, convo: null, kind: 'pulse', cards: [], editingId: null, editDraft: '',
+      sending: false, sendError: false, savedLocal: false, doneKind: 'discovery',
+      cmId: 'c-cutoff', completed: {}, liveT: 0, hand: false, sheet: null, toast: null, seenNotifs: false,
+      prefs: { pulse: true, meetings: true, due: true, quiet: true, voiceFirst: true, transcript: true }
+    };
+  }
+
+  componentDidMount() { this.iv = setInterval(this.tick, 600); }
+  componentWillUnmount() { this.clearAll(); clearInterval(this.iv); }
+  clearAll() { clearInterval(this.tv); [this.th, this.la, this.pt, this.st, this.tt].forEach(clearTimeout); }
+  componentDidUpdate(pp, ps) {
+    const el = document.querySelector('[data-scroll="main"]'); if (!el) return; const s = this.state;
+    if (ps.screen !== s.screen) el.scrollTop = s.screen === 'convo' ? el.scrollHeight : 0;
+    else if (s.screen === 'convo' && s.convo && ps.convo && (ps.convo.thread.length !== s.convo.thread.length || ps.convo.n !== s.convo.n || ps.convo.phase !== s.convo.phase)) el.scrollTop = el.scrollHeight;
+  }
+
+  tick = () => {
+    const s = this.state;
+    if (s.screen === 'convo' && s.convo && s.convo.phase === 'listening' && s.convo.mode === 'voice' && !s.convo.paused) {
+      const cv = s.convo; const len = SCRIPTS[cv.kind].turns[cv.idx].answer.split(' ').length;
+      this.setState({ convo: { ...cv, n: Math.min(len, cv.n + 2), el: cv.el + 1 } });
+    }
+    if (s.screen === 'live') this.setState({ liveT: s.liveT + 1 });
+  };
+
+  go = (screen, extra) => this.setState(st => ({ screen, hist: [...st.hist, st.screen], sheet: null, ...(extra || {}) }));
+  tab = (screen) => this.setState({ screen, hist: [], sheet: null });
+  back = () => this.setState(st => { const h = [...st.hist]; return { screen: h.pop() || 'today', hist: h, sheet: null }; });
+  toast = (title, body, go) => { clearTimeout(this.tt); this.setState({ toast: { title, body, go } }); this.tt = setTimeout(() => this.setState({ toast: null }), 6000); };
+  sheet = (k) => this.setState({ sheet: k });
+
+  startConvo = (kind, mode) => {
+    const s = this.state;
+    if (mode === 'voice') {
+      if (s.micDenied) return this.go('denied', { pendingKind: kind });
+      if (!s.consented) return this.go('consent', { pendingKind: kind });
+    }
+    this.beginConvo(kind, mode, 0);
+  };
+  beginConvo = (kind, mode, idx) => {
+    const turns = SCRIPTS[kind].turns; const thread = [];
+    for (let i = 0; i <= idx; i++) {
+      thread.push({ who: 'agent', text: turns[i].agent, follow: !!turns[i].follow });
+      if (i < idx) { thread.push({ who: 'me', text: turns[i].answer }); if (turns[i].ack) thread.push({ who: 'ack', text: turns[i].ack }); }
+    }
+    clearTimeout(this.la); clearTimeout(this.th);
+    this.setState(st => ({
+      screen: 'convo', sheet: null,
+      hist: ['consent', 'denied'].includes(st.screen) ? st.hist : [...st.hist, st.screen],
+      convo: { kind, idx, mode, phase: 'agent', thread, n: 0, el: 0, paused: false, typed: '' }
+    }));
+    this.la = setTimeout(() => this.setState(st => st.convo ? { convo: { ...st.convo, phase: 'listening', n: 0 } } : null), 900);
+  };
+  consentStart = () => {
+    if (this.state.micDenied) { if (this.state.screen !== 'denied') this.go('denied'); else this.toast('Microphone is still blocked', 'Check your browser settings, or type instead.'); return; }
+    this.setState({ consented: true }); this.beginConvo(this.state.pendingKind, 'voice', 0);
+  };
+  pendingText = () => this.beginConvo(this.state.pendingKind, 'text', 0);
+
+  doneAnswer = () => {
+    const cv = this.state.convo; if (!cv || cv.phase !== 'listening') return;
+    const t = SCRIPTS[cv.kind].turns[cv.idx];
+    const text = cv.mode === 'text' ? (cv.typed.trim() || t.answer) : (cv.n > 2 ? t.answer.split(' ').slice(0, cv.n).join(' ') : t.answer);
+    this.setState({ convo: { ...cv, thread: [...cv.thread, { who: 'me', text }], phase: 'thinking', n: 0, typed: '' } });
+    this.th = setTimeout(this.advance, 1400);
+  };
+  advance = () => {
+    const cv = this.state.convo; if (!cv) return;
+    const sc = SCRIPTS[cv.kind]; const t = sc.turns[cv.idx]; const nx = sc.turns[cv.idx + 1]; const add = [];
+    if (t.ack) add.push({ who: 'ack', text: t.ack });
+    if (nx) {
+      add.push({ who: 'agent', text: nx.agent, follow: !!nx.follow });
+      this.setState({ convo: { ...cv, idx: cv.idx + 1, thread: [...cv.thread, ...add], phase: 'agent' } });
+      this.la = setTimeout(() => this.setState(st => st.convo ? { convo: { ...st.convo, phase: 'listening', n: 0 } } : null), 1000);
+    } else {
+      this.setState({ convo: { ...cv, thread: [...cv.thread, ...add], phase: 'closing' } });
+      this.la = setTimeout(() => this.toUnderstood(cv.kind, true), 1400);
+    }
+  };
+
+  toUnderstood = (kind, processing) => {
+    const cards = CARDS[kind].map((c, i) => ({ ...c, id: kind + i, status: 'new' }));
+    clearTimeout(this.pt);
+    if (processing) {
+      this.setState({ screen: 'processing', kind, cards, sendError: false, savedLocal: true, convo: null });
+      this.pt = setTimeout(() => this.setState({ screen: 'understood' }), 1500);
+    } else this.go('understood', { kind, cards, sendError: false, savedLocal: false });
+  };
+
+  send = () => {
+    if (this.state.sending) return;
+    this.setState({ sending: true, sendError: false });
+    const attempt = () => {
+      const s = this.state;
+      if (s.holdSend) { this.st = setTimeout(attempt, 700); return; }
+      if (s.failSend || s.offline) { this.setState({ sending: false, sendError: true }); return; }
+      this.setState({ sending: false }); this.complete(s.kind);
+    };
+    this.st = setTimeout(attempt, 1400);
+  };
+  complete = (kind) => {
+    if (kind === 'pulse') { this.setState({ pulseDone: true, screen: 'submitted', hist: [] }); this.startTeam(); return; }
+    if (kind === 'wrapup') {
+      this.setState({ wrapDone: true, screen: 'work', hist: [] });
+      this.toast('Added to your commitments', 'Validate fallback procedure · Thursday 3:00 PM', () => this.openDetail('c-fallback'));
+      return;
+    }
+    const flag = { confirm: 'confirmDone', discovery: 'discDone', changed: 'changedDone', clarify: 'clarifyDone' }[kind];
+    this.setState({ [flag]: true, screen: 'done', doneKind: kind, hist: [], ...(kind === 'clarify' ? { clarifyPick: "it's shared — Operations flags, Finance decides" } : {}) });
+  };
+  startTeam = () => {
+    clearInterval(this.tv);
+    this.tv = setInterval(() => {
+      const s = this.state; if (s.teamStuck || s.teamDone >= 10) return;
+      const n = s.teamDone + 1; this.setState({ teamDone: n });
+      if (n >= 10) {
+        clearInterval(this.tv); this.setState({ avoidedKnown: true });
+        this.toast("You're no longer needed at 11:00", 'Your Pulse covered everything the team needed. 50 minutes returned.', () => this.go('avoided'));
+      }
+    }, 2600);
+  };
+  finishLater = () => { this.setState({ screen: 'today', hist: [] }); this.toast('Saved on this device', 'Pick it up from Today whenever you like.'); };
+
+  openDetail = (id) => this.go('detail', { cmId: id });
+  completeCm = () => this.setState(st => ({ completed: { ...st.completed, [st.cmId]: true } }));
+  openLive = () => this.go('live', { liveT: 0, hand: false });
+  joinMeeting = () => { this.openLive(); this.toast('Opening Google Meet', 'DutyGraph stays alongside the call here.'); };
+
+  editCard = (id) => this.setState(st => ({ editingId: id, editDraft: (st.cards.find(c => c.id === id) || {}).text || '' }));
+  saveEdit = () => this.setState(st => ({ editingId: null, cards: st.cards.map(c => c.id === st.editingId ? { ...c, text: st.editDraft, status: 'edited' } : c) }));
+  addCard = () => this.setState(st => { const id = 'add' + Date.now(); return { cards: [...st.cards, { id, label: 'Added by you', text: '', status: 'edited' }], editingId: id, editDraft: '' }; });
+
+  reset = () => { this.clearAll(); this.setState(this.initial()); };
+
+  renderVals() {
+    const s = this.state;
+    const theme = s.theme || this.props.theme || 'dark'; const isLight = theme === 'light';
+    const scr = s.screen; const is = (x) => scr === x;
+    const tabScreens = ['today', 'work', 'meetings', 'me'];
+    const b = (label, go) => ({ label, go });
+    const mk = (it) => ({ amber: false, red: false, primary: false, secondary: !it.primary, ...it });
+
+    const dueNow = [];
+    if (!s.pulseDone) dueNow.push(mk({ type: 'Pulse', title: 'Monday Operations Pulse', meta: '4 questions · about 4 min', chip: s.overdue ? 'Overdue' : 'Due 10:30 AM', amber: !s.overdue, red: s.overdue, cta: 'Start Pulse', primary: true, go: () => this.go('pulseIntro') }));
+    if (!s.confirmDone) dueNow.push(mk({ type: 'Confirmation', title: 'Confirm what we understood', meta: "2 items from Friday's Operations Review", cta: 'Review', go: () => this.toUnderstood('confirm') }));
+    if (!s.clarifyDone) dueNow.push(mk({ type: 'Clarification', title: 'Who owns invoice exceptions?', meta: 'Two answers disagree. One tap should settle it.', cta: 'Help clarify', go: () => this.go('clarify') }));
+    const later = [];
+    if (!s.wrapDone) later.push({ type: 'Meeting', title: 'Your 2:00 review is now 15 minutes', meta: "You're needed for one decision.", cta: 'See why', go: () => this.go('shortened') });
+    if (!s.discDone) later.push({ type: 'Discovery', title: 'DutyGraph wants to understand your work', meta: '3 questions · about 7 min', cta: 'Start', go: () => this.go('discovery') });
+    later.push({ type: 'Decision', title: 'Vendor rollout decision', meta: "You may be needed if Engineering can't resolve one open question.", cta: 'View context', go: () => this.sheet('vendor') });
+    const doneToday = [];
+    if (s.pulseDone) doneToday.push('Monday Operations Pulse');
+    if (s.confirmDone) doneToday.push("Friday's review confirmed");
+    if (s.clarifyDone) doneToday.push('Invoice exceptions clarified');
+    if (s.discDone) doneToday.push('North dock discovery');
+    if (s.changedDone) doneToday.push('Workflow change reported');
+    if (s.wrapDone) doneToday.push('NetSuite meeting outcome');
+    doneToday.push('Security acknowledgment');
+
+    const cmList = Object.entries(COMMITS).filter(([id]) => id !== 'c-fallback' || s.wrapDone || s.cmId === 'c-fallback')
+      .map(([id, c]) => ({ ...c, id, go: () => this.openDetail(id) }));
+    const open = cmList.filter(c => !s.completed[c.id]);
+    const workToday = open.filter(c => c.group === 'today'), workWeek = open.filter(c => c.group === 'week'), workWaiting = open.filter(c => c.group === 'waiting');
+    const workDone = cmList.filter(c => s.completed[c.id]);
+
+    const mt = (it) => ({ sage: false, amber: false, violet: false, plain: false, ...it });
+    const meetingGroups = [
+      { name: 'Async', items: [mt({ when: 'Due 10:30', title: 'Monday Operations Pulse', status: s.pulseDone ? 'Submitted · see team status' : '4 questions · about 4 min', sage: s.pulseDone, amber: !s.pulseDone, go: () => s.pulseDone ? this.go('team') : this.go('pulseIntro') })] },
+      { name: 'Today', items: [
+        mt({ when: '11:00 AM', title: 'Operations status meeting', status: s.avoidedKnown ? "You don't need to join · 50 min returned" : "Waiting on team Pulses. You'll know by 10:30.", sage: s.avoidedKnown, plain: !s.avoidedKnown, go: () => s.avoidedKnown ? this.go('avoided') : this.go('team') }),
+        mt({ when: '2:00 PM', title: 'Project review', status: s.wrapDone ? 'Outcome confirmed' : "Now 15 minutes · you're needed for one decision", sage: s.wrapDone, amber: !s.wrapDone, go: () => s.wrapDone ? this.tab('work') : this.go('shortened') })
+      ] },
+      { name: 'Recent', items: [mt({ when: 'Friday', title: 'Operations Review', status: s.confirmDone ? 'Confirmed by you' : '2 items to confirm', sage: s.confirmDone, violet: !s.confirmDone, go: () => s.confirmDone ? null : this.toUnderstood('confirm') })] }
+    ];
+
+    const notifs = [
+      { type: 'Pulse', title: 'Your Monday Operations Pulse is ready', body: 'About 4 minutes · due 10:30 AM', time: '8:02 AM', go: () => this.go('pulseIntro') },
+      { type: 'Meeting avoided', title: "You're no longer needed at the 11:00 meeting", body: 'Your Pulse covered everything the team needed.', time: 'After Pulses', go: () => this.go('avoided') },
+      { type: 'Meeting shortened', title: "You're needed for 15 minutes at 2:00", body: 'One decision remains unresolved.', time: 'After Pulses', go: () => this.go('shortened') },
+      { type: 'Clarification', title: 'DutyGraph found conflicting information', body: 'Can you help clarify who owns invoice exceptions?', time: '7:45 AM', go: () => this.go('clarify') },
+      { type: 'Commitment', title: 'Due at 4:00 PM', body: 'Confirm carrier cutoff times.', time: '7:30 AM', go: () => this.openDetail('c-cutoff') },
+      { type: 'Follow-up', title: 'Did this get finished?', body: "DutyGraph hasn't seen confirmation that the revised dock schedule reached Jesse.", time: 'Friday', go: () => this.go('pulseIntro') }
+    ];
+
+    const cv = s.convo; const sc = cv ? SCRIPTS[cv.kind] : null; const cur = sc ? sc.turns[cv.idx] : null;
+    const words = cur ? cur.answer.split(' ') : [];
+    const listening = !!cv && cv.phase === 'listening';
+    const secs = cv ? Math.floor(cv.el * 0.6) : 0;
+
+    const teamCount = s.teamDone + (s.pulseDone ? 1 : 0);
+    const teamRows = TEAM.map(([, name], i) => {
+      const you = name === 'Dana Okafor';
+      const done = you ? s.pulseDone : DONE_ORDER.indexOf(name) < s.teamDone;
+      return { name, you, done, due: !done && !s.overdue, late: !done && s.overdue, border: i ? '1px solid var(--line)' : 'none' };
+    });
+    const teamNote = teamCount >= 11 ? (s.avoidedKnown ? "Everyone's in. The 11:00 meeting isn't needed." : "Everyone's in.") : (s.overdue ? `${11 - teamCount} still to go · past the 10:30 deadline` : `${11 - teamCount} still to go · due 10:30 AM`);
+
+    const liveSec = Math.floor(s.liveT * 0.6); const rem = Math.max(0, 840 - liveSec); const ready = liveSec >= 10;
+    const cm = COMMITS[s.cmId]; const cmDone = !!s.completed[s.cmId]; const isWait = cm.kind === 'wait';
+    const u = UCOPY[s.kind]; const reviewed = s.cards.filter(c => c.status !== 'new').length;
+    const sh = s.sheet ? SHEETS[s.sheet] : null;
+    const P = s.prefs; const pf = (key, label, sub, i) => ({ label, sub, on: P[key], border: i ? '1px solid var(--line)' : 'none', flip: () => this.setState(st => ({ prefs: { ...st.prefs, [key]: !st.prefs[key] } })) });
+    const tg = (label, key) => ({ label, on: s[key], flip: () => this.setState(st => ({ [key]: !st[key] })) });
+
+    return {
+      theme, isLight, isDark: !isLight,
+      isToday: is('today'), isWork: is('work'), isMeetings: is('meetings'), isMe: is('me'), isNotifs: is('notifs'),
+      isPulseIntro: is('pulseIntro'), isDiscovery: is('discovery'), isChangedIntro: is('changedIntro'), isConsent: is('consent'), isDenied: is('denied'),
+      isConvo: is('convo'), isProcessing: is('processing'), isUnderstood: is('understood'), isSubmitted: is('submitted'), isTeam: is('team'), isDone: is('done'),
+      isAvoided: is('avoided'), isShortened: is('shortened'), isRequired: is('required'), isBrief: is('brief'), isLive: is('live'), isDetail: is('detail'), isClarify: is('clarify'),
+      showTabs: tabScreens.includes(scr), showBell: tabScreens.includes(scr), showBack: !tabScreens.includes(scr) && !['processing', 'submitted', 'done'].includes(scr),
+      bottomBackOnly: ['team', 'done'].includes(scr) || (is('clarify') && s.clarifyDone),
+      unread: !s.seenNotifs, openNotifs: () => this.go('notifs', { seenNotifs: true }),
+      tabs: [['Today', 'today'], ['Work', 'work'], ['Meetings', 'meetings'], ['Me', 'me']].map(([label, k]) => ({ label, go: () => this.tab(k), bg: scr === k ? 'var(--accent-bg)' : 'transparent', color: scr === k ? 'var(--ink)' : 'var(--muted)' })),
+      offline: s.offline, avoidedKnown: s.avoidedKnown,
+      dueNow, hasDueNow: dueNow.length > 0, noDueNow: dueNow.length === 0, later, doneToday,
+      workToday, workWeek, workWaiting, workDone, workTodayEmpty: !workToday.length, workWeekEmpty: !workWeek.length, hasCompleted: workDone.length > 0,
+      meetingGroups, notifs,
+      prefGroups: [
+        { name: 'Notifications', items: [pf('pulse', 'Pulse reminders', 'When a Pulse opens, and once before it is due', 0), pf('meetings', 'Meeting changes', 'Cancelled, shortened, or you are needed', 1), pf('due', 'Commitments due', 'Two hours before', 2), pf('quiet', 'Quiet hours', 'Nothing between 6 PM and 7 AM', 3)] },
+        { name: 'Voice', items: [pf('voiceFirst', 'Start with voice', 'Typing is always one tap away', 0), pf('transcript', 'Show live transcript', 'See your words as you speak', 1)] }
+      ],
+      darkBtnBg: isLight ? 'transparent' : 'var(--accent-bg)', lightBtnBg: isLight ? 'var(--accent-bg)' : 'transparent',
+      setDark: () => this.setState({ theme: 'dark' }), setLight: () => this.setState({ theme: 'light' }),
+
+      convoTitle: sc ? sc.title : '', qLabel: cur ? (sc.total > 1 ? `Question ${cur.q} of ${sc.total}` : (cur.follow ? 'Follow-up' : '')) : '',
+      thread: cv ? cv.thread.map(m => ({ text: m.text, isAgent: m.who === 'agent', isMe: m.who === 'me', isAck: m.who === 'ack', isFollow: !!m.follow })) : [],
+      showLive: listening && cv.mode === 'voice', liveLabel: cv && cv.paused ? 'Paused' : 'Listening…',
+      liveText: cv ? words.slice(0, cv.n).join(' ') : '', liveEmpty: !!cv && cv.n === 0,
+      isThinking: !!cv && cv.phase === 'thinking',
+      convoVoice: is('convo') && !!cv && cv.mode === 'voice', convoText: is('convo') && !!cv && cv.mode === 'text',
+      waveLive: listening && !cv.paused, waveIdle: !(listening && !cv.paused),
+      clock: String(Math.floor(secs / 60)).padStart(2, '0') + ':' + String(secs % 60).padStart(2, '0'),
+      pauseLabel: cv && cv.paused ? 'Resume' : 'Pause',
+      notListening: !listening, doneOpacity: listening ? 1 : 0.45,
+      doneLabel: !cv ? '' : cv.phase === 'listening' ? 'Done answering' : cv.phase === 'thinking' ? 'Understanding…' : cv.phase === 'closing' ? 'Wrapping up…' : 'DutyGraph is asking…',
+      sendAnswerLabel: listening ? 'Send answer' : 'Waiting…',
+      typed: cv ? cv.typed : '', onTyped: (e) => { const v = e.target.value; this.setState(st => ({ convo: { ...st.convo, typed: v } })); },
+      togglePause: () => this.setState(st => ({ convo: { ...st.convo, paused: !st.convo.paused } })),
+      toTextMode: () => this.setState(st => ({ convo: { ...st.convo, mode: 'text' } })),
+      toVoiceMode: () => { if (this.state.micDenied) { this.toast('Microphone is blocked', 'Keep typing, or allow the microphone in your browser settings.'); return; } this.setState(st => ({ consented: true, convo: { ...st.convo, mode: 'voice', n: 0 } })); },
+      doneAnswer: this.doneAnswer,
+      startPulseVoice: () => this.startConvo('pulse', 'voice'), startPulseText: () => this.startConvo('pulse', 'text'),
+      startDiscVoice: () => this.startConvo('discovery', 'voice'), startDiscText: () => this.startConvo('discovery', 'text'),
+      startChangedVoice: () => this.startConvo('changed', 'voice'), startChangedText: () => this.startConvo('changed', 'text'),
+      consentStart: this.consentStart, pendingText: this.pendingText,
+
+      uChip: u.chip, uTitle: u.title, uSub: u.sub, canAdd: s.kind !== 'wrapup',
+      cards: s.cards.map(c => ({ ...c, primary: c.primary || LR, changeLabel: c.change || CW, doneLabel: c.doneLabel || 'Confirmed by you', canChange: !c.noChange, isNew: c.status === 'new', isConfirmed: c.status === 'confirmed', isEdited: c.status === 'edited',
+        confirm: () => this.setState(st => ({ cards: st.cards.map(x => x.id === c.id ? { ...x, status: 'confirmed' } : x) })), edit: () => this.editCard(c.id) })),
+      addCard: this.addCard, editing: !!s.editingId, editDraft: s.editDraft,
+      onEditDraft: (e) => this.setState({ editDraft: e.target.value }), cancelEdit: () => this.setState({ editingId: null }), saveEdit: this.saveEdit,
+      reviewLabel: `${reviewed} of ${s.cards.length} checked`, savedLocal: s.savedLocal && !s.sendError,
+      sending: s.sending, sendError: s.sendError, sendLabel: s.sending ? 'Sending…' : s.sendError ? 'Try again' : u.submit,
+      send: this.send, finishLater: this.finishLater,
+      doneBody: DONE_BODY[s.doneKind] || '',
+
+      teamCount, teamPct: Math.round(teamCount / 11 * 100) + '%', teamRows, teamNote,
+      liveRemaining: Math.floor(rem / 60) + ':' + String(rem % 60).padStart(2, '0'),
+      liveQuestion: ready ? 'Does the group choose Option B for Friday?' : 'Can Option B launch safely before production credentials arrive?',
+      liveReady: ready, liveNotReady: !ready, liveNeeded: ready ? 'Nothing — risk is understood' : 'Engineering risk assessment',
+      hand: s.hand, handLabel: s.hand ? 'Lower hand' : 'Raise a point', toggleHand: () => this.setState(st => ({ hand: !st.hand })),
+      leaveMeeting: () => this.toUnderstood('wrapup'), joinMeeting: this.joinMeeting,
+      openParking: () => this.sheet('parking'), openTranscript: () => this.sheet('transcript'), openSummary: () => this.sheet('summary'), openWhy: () => this.sheet('why'),
+
+      cmKind: isWait ? 'Waiting on someone' : 'Commitment', cmTitle: cm.title, cmDone, cmDoneLabel: isWait ? 'Received' : 'Completed',
+      cmFields: cm.fields.map(([k, v], i) => ({ k, v, border: i ? '1px solid var(--line)' : 'none' })),
+      detailAction: is('detail') && !cmDone, cmAction: isWait ? "I've received it" : 'Mark complete', completeCm: this.completeCm,
+
+      clarifyOpen: !s.clarifyDone, clarifyPicked: s.clarifyDone, clarifyPick: s.clarifyPick || '',
+      pickFinance: () => this.setState({ clarifyDone: true, clarifyPick: 'Finance owns invoice exceptions' }),
+      pickOps: () => this.setState({ clarifyDone: true, clarifyPick: 'Operations owns invoice exceptions' }),
+      pickComplicated: () => this.startConvo('clarify', this.state.prefs.voiceFirst ? 'voice' : 'text'),
+
+      toast: !!s.toast, toastTitle: s.toast ? s.toast.title : '', toastBody: s.toast ? s.toast.body : '',
+      toastGo: () => { const g = s.toast && s.toast.go; this.setState({ toast: null }); if (g) g(); },
+      sheetOpen: !!sh, sheetTitle: sh ? sh[0] : '', sheetLines: sh ? sh[1] : [], closeSheet: (e) => { if (e && e.target !== e.currentTarget) return; this.setState({ sheet: null }); },
+
+      scrollRef: this.scrollRef, back: this.back, reset: this.reset,
+      toToday: () => this.tab('today'), toMe: () => this.tab('me'), toTeam: () => this.go('team'), toAvoided: () => this.go('avoided'),
+      toChangedIntro: () => this.go('changedIntro'), toRequired: () => this.go('required'), toBrief: () => this.go('brief'),
+
+      controlGroups: [
+        { name: 'Core', items: [b('Today', () => this.tab('today')), b('Pulse', () => this.go('pulseIntro')), b('Voice', () => this.beginConvo('pulse', 'voice', 0)), b('Follow-up', () => this.beginConvo('pulse', 'voice', 2)), b('Understood', () => this.toUnderstood('pulse')), b('Submitted', () => { this.setState({ pulseDone: true }); this.go('submitted'); this.startTeam(); }), b('Team status', () => this.go('team'))] },
+        { name: 'Meeting', items: [b('Meeting avoided', () => this.go('avoided')), b('Meeting shortened', () => this.go('shortened')), b('Meeting required', () => this.go('required')), b('Pre-meeting', () => this.go('brief')), b('Live', this.openLive), b('Wrap-up', () => this.toUnderstood('wrapup'))] },
+        { name: 'Work', items: [b('My commitments', () => this.tab('work')), b('Commitment detail', () => this.openDetail('c-fallback')), b('Waiting', () => this.openDetail('w-creds')), b('Clarification', () => this.go('clarify')), b('Something changed', () => this.go('changedIntro')), b('Discovery', () => this.go('discovery')), b('Notifications', () => this.go('notifs', { seenNotifs: true })), b('Me', () => this.tab('me'))] }
+      ],
+      toggles: [tg('Offline', 'offline'), tg('Microphone blocked', 'micDenied'), tg('Hold on "Sending…"', 'holdSend'), tg('Sending fails', 'failSend'), tg('Pulse overdue', 'overdue'), tg('Team incomplete', 'teamStuck'),
+        { label: 'Light theme', on: isLight, flip: () => this.setState({ theme: isLight ? 'dark' : 'light' }) }]
+    };
+  }
+}
+</script>
+</body>
+</html>

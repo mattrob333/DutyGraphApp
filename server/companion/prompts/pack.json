@@ -1,0 +1,31 @@
+{
+  "name": "companion-prompts",
+  "version": "2026-09-29.1",
+  "modes": [
+    "pulse",
+    "discovery",
+    "clarification",
+    "change-report",
+    "decision",
+    "problem-solving",
+    "brainstorming",
+    "team-building",
+    "instructional",
+    "informational",
+    "meeting-wrap-up"
+  ],
+  "layers": [
+    { "id": "core", "kind": "static", "files": ["facilitator/core.md"] },
+    { "id": "meeting-doctrine", "kind": "static", "files": ["facilitator/meeting-doctrine.md"] },
+    { "id": "mode", "kind": "mode", "files": ["modes/{mode}.md", "facilitator/closing.md"] },
+    { "id": "voice-style", "kind": "static", "files": ["facilitator/voice-style.md"] },
+    { "id": "anti-overquestioning", "kind": "static", "files": ["facilitator/anti-overquestioning.md"] },
+    { "id": "participant-context", "kind": "data" },
+    { "id": "dutygraph-context", "kind": "data" },
+    { "id": "purpose-outcome", "kind": "data" },
+    { "id": "state", "kind": "data" },
+    { "id": "judgments", "kind": "data" },
+    { "id": "confirmed-statements", "kind": "data" },
+    { "id": "turn-window", "kind": "data" }
+  ]
+}
