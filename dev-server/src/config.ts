@@ -6,6 +6,9 @@ export interface Config {
   autoAdvance: boolean;
   budgetLive: number;
   budgetRecord: number;
+  /** Required to mint advisor pairing codes when set, and always on a non-loopback HOST. */
+  devAdminToken?: string;
+  loopbackOnly: boolean;
 }
 export function configFromEnv(env: NodeJS.ProcessEnv): Config {
   return {
@@ -30,5 +33,9 @@ export function configFromEnv(env: NodeJS.ProcessEnv): Config {
     autoAdvance: env.FEATURE_AUTO_ADVANCE === "true",
     budgetLive: Number(env.MEETING_BUDGET_CENTS_LIVE ?? 1500),
     budgetRecord: Number(env.MEETING_BUDGET_CENTS_RECORD ?? 200),
+    devAdminToken: env.DEV_ADMIN_TOKEN || undefined,
+    loopbackOnly: ["127.0.0.1", "::1", "localhost"].includes(
+      env.HOST ?? "127.0.0.1",
+    ),
   };
 }

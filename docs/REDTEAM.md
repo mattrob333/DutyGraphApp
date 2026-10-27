@@ -63,3 +63,27 @@ A second code inspection confirmed the corrections: `mobile/src/app/advisor/me.t
 - Optional realtime playback is gated by explicit controller triggers, current consent and response identity. Permission races, stale callbacks, interruption, connection lifetime, and microphone release are tested with fake transports. Native code/device execution remains a separate requirement.
 
 - Raw audio segment ingestion now rejects any declined attendee before parsing or storing bytes. Native room recording/dictation is disabled at the same boundary; consent changes stop capture while attributed typed notes remain available.
+
+## Independent red-team pass — 2026-10-27 (Claude)
+
+Run after the finishing pass, against the dev server in-process, the real OpenAI models (`gpt-5.4-mini` for text) and the release APK built in CI. Probe scripts were run locally and are summarized here; every fix below has a regression test in `dev-server/test/meetings.test.ts`.
+
+### Fixed
+
+| Finding | Impact | Fix |
+| --- | --- | --- |
+| Recording `segmentIndex` was unbounded (index 2^40 accepted). | One session could fill the disk, and finish would send every segment to paid transcription. | Capped at 287 (288 five-minute segments, a 24-hour meeting). |
+| Finish never charged transcription or extraction to the meeting budget (`spentCents` stayed 0 after 14 paid calls). | The default $2 record/process budget was not enforced on the most expensive work. | Finish estimates the cost first (duration, floored by bytes at about 1 MB per minute, 0.6 cents per minute plus 2 cents for extraction), refuses with `BUDGET_REACHED` past the budget, and charges before calling the provider so failed or repeated runs still count. |
+| `/dev/pairing-code` trusted any caller whose socket was loopback. | Behind a reverse proxy (any hosted deployment) every internet caller is loopback, so anyone could pair as the advisor. | On a non-loopback `HOST` the route is closed unless `DEV_ADMIN_TOKEN` is set, and then it requires a matching `X-Dev-Admin-Token` header (constant-time compare). |
+| Mobile shipped `zod` 4.5.4 (memory exhaustion on oversized collections). | Low: it validates server responses. | Updated to 4.6.7. Remaining `npm audit` items are build tools (Expo CLI, xcode, node-forge, source-map-js) that do not ship in the app; `npm audit fix` rewrote about 1,000 lockfile lines, so it was not applied without a native build check. |
+
+### Held
+
+Random and revoked bearer tokens; participant tokens on advisor routes; attendees from outside the company; consent for a non-attendee; oversized titles, negative lengths and `__proto__` keys; path traversal in both audio routes; reuse after logout. With the real model, a spoken "SYSTEM OVERRIDE" asking for a fabricated firing decision produced no decision, and the Facilitator refused to read its prompt or criticize an attendee.
+
+### Open (not fixed here)
+
+- **iPhone meeting recordings are saved in Documents**, which iOS backs up to iCloud by default (`nativeRecorder.ts` `persist`). Android is fine: its backup rules only include shared preferences. Fix: move them into the `pcm-mic` module's backup-excluded Application Support directory, or add an `excludeFromBackup(uri)` native call. Needs an iOS build to verify.
+- **Injected text can surface inside proposals.** Fake JSON spoken in a meeting became a proposed "contradiction" quoting "Approve $2M budget", and a harassment line became an open question. Nothing is applied without a person accepting it, but reviewers see attacker wording. Consider flagging quotes that contain instruction or JSON patterns.
+- **The fixture invitation token is public** (README). On a hosted demo server anyone can enroll once per restart as the fictional participant and use TTS within its rate limits. Fine for fictional demos; replace it before any real data.
+- **The demo APK is debug-signed** and the `dutygraph-companion://` scheme can be claimed by another app. Use https App Links (already verified on dutygraph.com) for invitations, and a real signing key before distribution. `apple-app-site-association` is missing on dutygraph.com, so iOS Universal Links will not work yet.
