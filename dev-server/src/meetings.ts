@@ -798,6 +798,12 @@ export function meetingRoutes(
       const p = principal(res),
         s = getSession(String(req.params.id), p);
       requireRecording(s, p);
+      if (s.consents.some((consent) => consent.state !== "consented"))
+        fail(
+          409,
+          "CONSENT_REVIEW_REQUIRED",
+          "Microphone audio needs every attendee's consent. Use attributed notes instead.",
+        );
       const b = z
         .object({
           segmentIndex: z.number().int().min(0),

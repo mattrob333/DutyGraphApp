@@ -197,6 +197,46 @@ test("attributed notes remain atomic and can finish with another attendee declin
     await f.close();
   }
 });
+test("raw audio cannot be ingested with a declined attendee while attributed notes remain available", async () => {
+  const f = await setup();
+  try {
+    const { s, consent } = await start(f, "capture", true);
+    await f.call(`${api}/sessions/${s.id}/consent`, consent);
+    const audio = Buffer.from("inseparable room audio");
+    const upload = await f.call(`${api}/sessions/${s.id}/segments`, {
+      segmentIndex: 0,
+      chunkIndex: 0,
+      chunkCount: 1,
+      sha256: digest(audio),
+      segmentSha256: digest(audio),
+      data: audio.toString("base64"),
+    });
+    assert.equal(upload.status, 409);
+    assert.equal(upload.body.code, "CONSENT_REVIEW_REQUIRED");
+    assert.equal(f.store.records.segments?.[`${s.id}:0`], undefined);
+    const note = {
+      id: uuid(),
+      revision: 1,
+      startMs: 0,
+      endMs: 1000,
+      text: "Noah will check the queue.",
+      personKey: IDS.participant,
+    };
+    assert.equal(
+      (await f.call(`${api}/sessions/${s.id}/transcript`, { segments: [note] }))
+        .status,
+      200,
+    );
+    const finish = await f.call(`${api}/sessions/${s.id}/finish`, {});
+    assert.equal(finish.status, 200);
+    assert.equal(
+      finish.body.proposals[0].sources[0].personKey,
+      IDS.participant,
+    );
+  } finally {
+    await f.close();
+  }
+});
 test("fictional wrap-up is reachable, private to its owner and disappears when rejected", async () => {
   const f = await setup();
   try {
