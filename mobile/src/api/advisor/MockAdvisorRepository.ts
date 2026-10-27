@@ -244,8 +244,13 @@ export class MockAdvisorRepository implements AdvisorRepository {
       });
     return copy(this.pulses.get(id) ?? { total: 0, done: 0, people: [] });
   }
-  async start(id: string, mode: MeetingSession["mode"], key: string) {
-    return this.run(key, { id, mode }, () => {
+  async start(
+    id: string,
+    mode: MeetingSession["mode"],
+    key: string,
+    voice: "tts_lines" | "realtime" = "tts_lines",
+  ) {
+    return this.run(key, { id, mode, voice }, () => {
       const m = this.get(id);
       const gate = gateMeeting({
         ...m,
@@ -294,6 +299,11 @@ export class MockAdvisorRepository implements AdvisorRepository {
       return s;
     });
   }
+  async realtime(): Promise<
+    import("@/features/voice/meeting/realtime/types").RealtimeGrant
+  > {
+    return { available: false, reason: "DEMO_USES_SPOKEN_LINES" };
+  }
   async session(id: string) {
     return copy(this.live(id));
   }
@@ -317,13 +327,35 @@ export class MockAdvisorRepository implements AdvisorRepository {
   }
   async transcript(
     id: string,
-    segments: SessionDetail["transcript"],
+    segments: import("./types").TranscriptInput[],
     key: string,
   ) {
     this.run(key, { id, segments }, () => {
       const s = this.live(id);
       if (!s.startedAt) return problem("Consent is required first.");
       for (const segment of segments) {
+        if (
+          segment.personKey &&
+          !s.consents.some(
+            (c) => c.personKey === segment.personKey && c.state === "consented",
+          )
+        )
+          return problem("Choose a consenting speaker first.");
+      }
+      for (const input of segments) {
+        const { personKey, ...segment } = input;
+        if (personKey) {
+          segment.speakerCluster = `N_${segment.id}`;
+          s.speakerMap.entries = s.speakerMap.entries.filter(
+            (e) => e.cluster !== segment.speakerCluster,
+          );
+          s.speakerMap.entries.push({
+            cluster: segment.speakerCluster,
+            personKey,
+            suggested: false,
+            confirmedBy: "leader",
+          });
+        }
         const previous = s.transcript.findIndex((t) => t.id === segment.id);
         if (previous >= 0) {
           if (segment.revision <= s.transcript[previous].revision) continue;
@@ -384,6 +416,24 @@ export class MockAdvisorRepository implements AdvisorRepository {
       }
     });
   }
+  async control(
+    id: string,
+    control: "mute" | "unmute" | "stop" | "skip",
+    key: string,
+  ) {
+    this.run(key, { id, control }, () => {
+      this.live(id).log.push({
+        at: now(),
+        actor: "leader",
+        kind: {
+          mute: "ai_muted",
+          unmute: "ai_unmuted",
+          stop: "ai_stopped",
+          skip: "ai_skipped",
+        }[control],
+      });
+    });
+  }
   async topic(id: string, topicId: string | null, key: string) {
     this.run(key, { id, topicId }, () => {
       const s = this.live(id);
@@ -399,6 +449,23 @@ export class MockAdvisorRepository implements AdvisorRepository {
       const s = this.live(id);
       if (!s.transcript.some((t) => t.committed && !t.excluded))
         return problem("Add a confirmed note or transcript before finishing.");
+      if (
+        s.consents.some((person) => person.state === "declined") &&
+        s.transcript.some(
+          (segment) =>
+            segment.committed &&
+            !segment.excluded &&
+            !s.speakerMap.entries.some(
+              (entry) =>
+                entry.cluster === segment.speakerCluster &&
+                entry.personKey &&
+                entry.confirmedBy,
+            ),
+        )
+      )
+        return problem(
+          "Map or remove unknown speakers before extracting proposals.",
+        );
       s.endedAt = now();
       this.get(s.meetingId).state = "REVIEW_PENDING";
       s.speakerMap.entries = [
@@ -407,12 +474,15 @@ export class MockAdvisorRepository implements AdvisorRepository {
             .map((t) => t.speakerCluster)
             .filter((v): v is string => !!v),
         ),
-      ].map((cluster) => ({
-        cluster,
-        personKey: null,
-        suggested: false,
-        confirmedBy: null,
-      }));
+      ].map(
+        (cluster) =>
+          s.speakerMap.entries.find((entry) => entry.cluster === cluster) ?? {
+            cluster,
+            personKey: null,
+            suggested: false,
+            confirmedBy: null,
+          },
+      );
       if (!s.proposals.length)
         s.proposals = s.transcript
           .filter((t) => t.committed && !t.excluded)
@@ -465,16 +535,45 @@ export class MockAdvisorRepository implements AdvisorRepository {
           problem("Proposal was not found.");
       if (p.version !== proposal.version)
         return problem("This proposal changed. Reload it.");
-      if (
-        decision === "accept" &&
-        (p.state === "stale" ||
-          !p.sources.length ||
-          !p.sources.some((ref) => ref.personKey))
-      )
-        return problem(
-          "Confirm the speaker and current source before accepting.",
-        );
-      if (decision === "edit" && body) p.body = body;
+      if (decision === "accept") {
+        const allowed = canAccept(p, s.transcript, s.speakerMap);
+        if (!allowed.ok)
+          return problem(
+            allowed.reason ?? "Check the source before accepting.",
+          );
+        p.sources = p.sources.map((ref) => ({
+          ...ref,
+          personKey:
+            s.speakerMap.entries.find(
+              (entry) =>
+                entry.cluster === ref.speakerCluster && entry.confirmedBy,
+            )?.personKey ?? null,
+        }));
+      }
+      if (decision === "edit") {
+        if (
+          !proposal.sources.length ||
+          proposal.sources.some((ref) => {
+            const segment = s.transcript.find(
+              (item) => item.id === ref.segmentId,
+            );
+            return (
+              !segment ||
+              !segment.committed ||
+              !!segment.excluded ||
+              segment.revision !== ref.revision ||
+              segment.speakerCluster !== ref.speakerCluster ||
+              !ref.quote.trim() ||
+              !segment.text.includes(ref.quote)
+            );
+          })
+        )
+          return problem("Check the current source before editing.");
+        if (body && body.kind !== p.kind)
+          return problem("Keep the proposal kind when editing.");
+        p.sources = copy(proposal.sources);
+        if (body) p.body = body;
+      }
       p.state =
         decision === "accept"
           ? "accepted"

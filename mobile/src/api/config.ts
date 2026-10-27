@@ -10,6 +10,8 @@ export type DataSource = "mock" | "http";
 export type CompanionScope = "questions" | "full";
 
 export const config = {
+  /** Optional native WebRTC facilitator. Off until a development build opts in. */
+  facilitatorRealtime: process.env.EXPO_PUBLIC_FACILITATOR_REALTIME === "true",
   dataSource: (process.env.EXPO_PUBLIC_DATA_SOURCE === "http"
     ? "http"
     : "mock") as DataSource,

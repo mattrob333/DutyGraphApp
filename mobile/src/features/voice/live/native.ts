@@ -50,6 +50,10 @@ export class NativeLiveSpeech implements LiveSpeech {
   readonly source = 'voice_device' as const;
   reset() { this.committed = ''; this.interim = ''; this.watchdogRestarts = 0; this.soundSince = null; this.lastWordAt = this.now(); }
   private run = 0;
+  // The native module's events have no task id. Wait for abort's terminal end before
+  // installing listeners for the next task; otherwise old results can reach a new card.
+  private abortBarrier: Promise<void> = Promise.resolve();
+  private unsafeToRestart = false;
   private active = false;
   private subs: Subscription[] = [];
   private appState: NativeEventSubscription | null = null;
@@ -75,7 +79,14 @@ export class NativeLiveSpeech implements LiveSpeech {
   ) {}
 
   async start(options: LiveSpeechStartOptions, handlers: LiveSpeechHandlers): Promise<void> {
-    await this.stop();
+    const stopping = this.stop();
+    const intent = this.run;
+    await stopping;
+    if (intent !== this.run) return;
+    if (this.unsafeToRestart) {
+      handlers.onError({ code: 'not_available' });
+      return;
+    }
     const run = ++this.run;
     let granted = false;
     try {
@@ -127,6 +138,7 @@ export class NativeLiveSpeech implements LiveSpeech {
   async stop(): Promise<void> {
     this.run += 1;
     this.release(true);
+    await this.abortBarrier;
   }
 
   private begin(run: number) {
@@ -227,7 +239,26 @@ export class NativeLiveSpeech implements LiveSpeech {
     this.appState = null;
     this.handlers = null;
     this.markOpen();
-    if (abort && wasActive) this.safe(() => this.mod.abort(), undefined);
+    if (abort && wasActive) {
+      // Abort is asynchronous on both platforms. Do not allow the next run to subscribe
+      // until the old recognizer has reported end. On timeout, fail closed for this adapter.
+      this.abortBarrier = new Promise<void>((resolve) => {
+        let settled = false;
+        let subscription: Subscription | null = null;
+        let timeout: ReturnType<typeof setTimeout> | null = null;
+        const finish = (ended: boolean) => {
+          if (settled) return;
+          settled = true;
+          if (timeout) clearTimeout(timeout);
+          subscription?.remove();
+          if (!ended) this.unsafeToRestart = true;
+          resolve();
+        };
+        subscription = this.mod.addListener('end', () => finish(true));
+        timeout = setTimeout(() => finish(false), OPEN_TIMEOUT_MS);
+        try { this.mod.abort(); } catch { finish(false); }
+      });
+    }
   }
 
   private safe<T>(fn: () => T, fallback: T): T {

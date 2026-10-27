@@ -2,6 +2,7 @@ import type {
   LiveSpeech,
   LiveSpeechHandlers,
   LiveSpeechStartOptions,
+  SpeechBackupBatch,
 } from "./types";
 export type TranscriptionGrant =
   | { available: false; reason?: string }
@@ -11,11 +12,19 @@ export type TranscriptionGrant =
       url?: string;
       model?: string;
       keywords?: string[];
+      expiresAt?: number;
     };
 export interface PcmCapture {
+  beginBackup?(
+    id: string,
+    onFinished: (batch: SpeechBackupBatch) => Promise<void>,
+  ): Promise<void>;
+  finishBackup?(failed?: boolean): Promise<void>;
+  markBackupFailed?(): void;
   readonly available: boolean;
   start(
     onSamples: (samples: Float32Array, sampleRate: number) => void,
+    onError?: LiveSpeechHandlers["onError"],
   ): Promise<void>;
   stop(): Promise<void>;
 }
@@ -141,6 +150,13 @@ export class OpenAiLiveSpeech implements LiveSpeech {
   private items = new TranscriptItems();
   private run = 0;
   private cancelOpen: (() => void) | undefined;
+  private cachedGrant: Extract<TranscriptionGrant, { available: true }> | null =
+    null;
+  private grantExpiresAt = 0;
+  private lastStart: {
+    options: LiveSpeechStartOptions;
+    handlers: LiveSpeechHandlers;
+  } | null = null;
   constructor(
     private options: {
       grant: () => Promise<TranscriptionGrant>;
@@ -148,8 +164,24 @@ export class OpenAiLiveSpeech implements LiveSpeech {
       socket?: (url: string, protocols: string[]) => SocketPort;
     },
   ) {}
-  reset() {
-    this.items.reset();
+  beginBackup(
+    id: string,
+    onFinished: (batch: SpeechBackupBatch) => Promise<void>,
+  ) {
+    if (!this.options.capture.beginBackup)
+      return Promise.reject(new Error("Capture backups are unavailable"));
+    return this.options.capture.beginBackup(id, onFinished);
+  }
+  finishBackup(failed = false) {
+    return this.options.capture.finishBackup?.(failed) ?? Promise.resolve();
+  }
+  markBackupFailed() {
+    this.options.capture.markBackupFailed?.();
+  }
+  async reset(options?: LiveSpeechStartOptions) {
+    const current = this.lastStart;
+    if (current) await this.start(options ?? current.options, current.handlers);
+    else this.items.reset();
   }
   commit() {
     if (this.socket?.readyState === 1)
@@ -158,6 +190,7 @@ export class OpenAiLiveSpeech implements LiveSpeech {
   async start(_options: LiveSpeechStartOptions, handlers: LiveSpeechHandlers) {
     await this.stop();
     const run = ++this.run;
+    this.lastStart = { options: _options, handlers };
     if (!this.options.capture.available) {
       handlers.onError({ code: "not_available" });
       return;
@@ -166,12 +199,27 @@ export class OpenAiLiveSpeech implements LiveSpeech {
       // A rejected/expired kept key gets one fresh grant before device fallback.
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const grant = await this.options.grant();
+          const grant =
+            attempt === 0 &&
+            this.cachedGrant &&
+            Date.now() < this.grantExpiresAt
+              ? this.cachedGrant
+              : await this.options.grant();
           if (run !== this.run) return;
           if (!grant.available) throw new Error("Unavailable");
+          this.cachedGrant = grant;
+          const expiry =
+            grant.expiresAt === undefined
+              ? Date.now() + 540000
+              : grant.expiresAt < 1000000000000
+                ? grant.expiresAt * 1000
+                : grant.expiresAt;
+          this.grantExpiresAt = expiry - 5000;
           await this.open(grant, run, handlers);
           return;
         } catch {
+          this.cachedGrant = null;
+          this.grantExpiresAt = 0;
           this.socket?.close();
           this.socket = null;
           await this.options.capture.stop().catch(() => {});
@@ -230,20 +278,25 @@ export class OpenAiLiveSpeech implements LiveSpeech {
         /* Ignore malformed provider frames. */
       }
     };
-    await this.options.capture.start((samples, rate) => {
-      if (run !== this.run || socket.readyState !== 1) return;
-      const level = Math.sqrt(
-        samples.reduce((sum, value) => sum + value * value, 0) /
-          Math.max(1, samples.length),
-      );
-      handlers.onLevel?.(level);
-      socket.send(
-        JSON.stringify({
-          type: "input_audio_buffer.append",
-          audio: base64(pcm16(samples, rate)),
-        }),
-      );
-    });
+    await this.options.capture.start(
+      (samples, rate) => {
+        if (run !== this.run || socket.readyState !== 1) return;
+        const level = Math.sqrt(
+          samples.reduce((sum, value) => sum + value * value, 0) /
+            Math.max(1, samples.length),
+        );
+        handlers.onLevel?.(level);
+        socket.send(
+          JSON.stringify({
+            type: "input_audio_buffer.append",
+            audio: base64(pcm16(samples, rate)),
+          }),
+        );
+      },
+      (error) => {
+        if (run === this.run) handlers.onError(error);
+      },
+    );
   }
   async stop() {
     this.run++;
@@ -256,10 +309,11 @@ export class OpenAiLiveSpeech implements LiveSpeech {
       socket.close();
     }
     await this.options.capture.stop();
-    this.reset();
+    this.items.reset();
+    this.lastStart = null;
   }
 }
-/** Native Expo Audio records encoded files; it does not expose microphone PCM frames. */
+/** Explicit unavailable capability for unsupported builds and tests. */
 export const unavailablePcmCapture: PcmCapture = {
   available: false,
   start: async () => {

@@ -56,7 +56,7 @@ export class SourcePlayback {
     this.disposed = true;
     this.stop();
   }
-  async play(sessionId: string, startMs: number) {
+  async play(sessionId: string, startMs: number, recorded = true) {
     this.stop();
     const generation = this.generation,
       scope = this.ports.scope();
@@ -66,12 +66,18 @@ export class SourcePlayback {
       scope === this.ports.scope();
     if (!scope) return;
     this.ports.onError("");
+    if (!recorded) {
+      this.ports.onError(
+        "This live note has no linked recording. Read the source quote.",
+      );
+      return;
+    }
     try {
       const source = await this.ports.source(sessionId, startMs);
       if (!active()) return;
       if (!source) {
         this.ports.onError(
-          "This source is a typed note. No audio was recorded.",
+          "No matching recording is available. Read the source quote.",
         );
         return;
       }
@@ -153,7 +159,8 @@ export function useSourcePlayback() {
   return {
     error,
     playing,
-    play: (id: string, startMs: number) => engine.current!.play(id, startMs),
+    play: (id: string, startMs: number, recorded = true) =>
+      engine.current!.play(id, startMs, recorded),
     stop: () => engine.current!.stop(),
   };
 }

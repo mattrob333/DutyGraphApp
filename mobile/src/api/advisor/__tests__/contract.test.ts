@@ -18,10 +18,8 @@ jest.mock("expo-secure-store", () => {
 import { HttpAdvisorRepository } from "../HttpAdvisorRepository";
 import type { AdvisorSession, MeetingProposal, CreateMeeting } from "../types";
 import { advisorTokens } from "@/storage/advisor";
-const Ajv =
-  require("ajv/dist/2020").default;
-const formats =
-  require("ajv-formats").default;
+const Ajv = require("ajv/dist/2020").default;
+const formats = require("ajv-formats").default;
 const contract = require("../../../../../contracts/meeting-mobile.openapi.json");
 const ajv = new Ajv({ strict: false, allErrors: true });
 formats(ajv);
@@ -154,7 +152,8 @@ const cases: {
             startMs: 0,
             endMs: 1000,
             text: "Words",
-            speakerCluster: "S1",
+            speakerCluster: `N_${proposalId}`,
+            personKey: personId,
             source: "live",
             committed: true,
           },
@@ -317,6 +316,35 @@ const cases: {
     execute: (r) => r.logout("key"),
   },
 ];
+cases.push(
+  {
+    name: "realtime voice session",
+    path: "/meetings/{id}/sessions",
+    method: "post",
+    execute: (repository) =>
+      repository.start(meetingId, "facilitator", "key", "realtime"),
+  },
+  {
+    name: "realtime SDP and bounded summary",
+    path: "/sessions/{id}/realtime",
+    method: "post",
+    execute: (repository) =>
+      repository.realtime(
+        sessionId,
+        {
+          sdp: "v=0\naudio-only-offer",
+          summary: "Current topic and confirmed context.",
+        },
+        "key",
+      ),
+  },
+  {
+    name: "AI stop control",
+    path: "/sessions/{id}/state",
+    method: "post",
+    execute: (repository) => repository.control(sessionId, "stop", "key"),
+  },
+);
 it.each(cases)(
   "validates the actual $name adapter body against the independent OpenAPI schema",
   async ({ path, method, execute }) => {

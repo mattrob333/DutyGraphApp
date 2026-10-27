@@ -34,7 +34,7 @@ function output() {
   };
   return { out, emit: (event: VoiceEvent) => listener?.(event) };
 }
-test("spoken deck waits for actual output completion and keeps one native source warm", async () => {
+test("spoken deck waits for output completion and starts a fresh listening session", async () => {
   const speech = new FakeSpeech();
   const reset = jest.fn<() => void>();
   Object.assign(speech, { reset });
@@ -60,8 +60,8 @@ test("spoken deck waits for actual output completion and keeps one native source
     voice.emit({ type: "end", lineId: id });
   });
   expect(hook.result.current.state.phase).toBe("listening");
-  expect(speech.starts).toHaveLength(1);
-  expect(reset).toHaveBeenCalled();
+  expect(speech.starts).toHaveLength(2);
+  expect(reset).not.toHaveBeenCalled();
   await hook.unmount();
 });
 test("two new words interrupt output without accepting possible speaker echo", async () => {
@@ -85,6 +85,38 @@ test("two new words interrupt output without accepting possible speaker echo", a
   expect(hook.result.current.state.phase).toBe("listening");
   expect(deckText(hook.result.current.state)).toBe("");
   expect(voice.out.stop).toHaveBeenCalled();
+  await hook.unmount();
+});
+
+test("barge-in fences callbacks from the speaking session", async () => {
+  const speech = new FakeSpeech(),
+    voice = output();
+  const hook = await renderHook(() =>
+    useHandsFreeDeck({
+      set: questionSet(),
+      mode: "voice",
+      speech,
+      voiceOut: voice.out,
+      speak: true,
+      repo: new FakeRepo(),
+      clock: new ManualClock(),
+    }),
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  const old = speech.handlers!;
+  await speech.say("Let me");
+  expect(hook.result.current.state.phase).toBe("listening");
+  await act(async () => {
+    old.onText("Late echo from the speaking session");
+    old.onPause?.();
+    old.onError({ code: "permission_denied" });
+  });
+  expect(deckText(hook.result.current.state)).toBe("");
+  expect(hook.result.current.state.micBlocked).toBe(false);
+  await speech.say("My own answer");
+  expect(deckText(hook.result.current.state)).toBe("My own answer");
   await hook.unmount();
 });
 
@@ -268,5 +300,67 @@ test("screen readers hear acknowledgement status once while questions remain aud
   });
   expect(hook.result.current.state.phase).toBe("got");
   expect(voice.out.play).toHaveBeenCalledTimes(1);
+  await hook.unmount();
+});
+
+test("native PCM backup excludes question and replay audio before reopening an answer window", async () => {
+  const order: string[] = [];
+  const speech = Object.assign(new FakeSpeech("openai"), {
+    finishBackup: async () => {
+      order.push("close-backup");
+    },
+  });
+  const voice = output();
+  (voice.out.play as jest.Mock<VoiceOut["play"]>).mockImplementation(
+    async () => {
+      order.push("prompt");
+    },
+  );
+  const startPcm = jest.fn<
+    NonNullable<import("../cardBackup").CardBackup["startPcm"]>
+  >(async () => {
+    order.push("open-backup");
+  });
+  const backup = {
+    pending: async () => [],
+    remove: async () => {},
+    start: jest.fn<() => Promise<void>>(async () => {}),
+    startPcm,
+    finish: async () => {},
+    flush: async () => {},
+  };
+  const hook = await renderHook(() =>
+    useHandsFreeDeck({
+      set: questionSet(),
+      mode: "voice",
+      speech,
+      voiceOut: voice.out,
+      speak: true,
+      repo: new FakeRepo(),
+      backup,
+      clock: new ManualClock(),
+    }),
+  );
+  await act(async () => {
+    await Promise.resolve();
+  });
+  expect(hook.result.current.state.phase).toBe("speaking");
+  expect(startPcm).not.toHaveBeenCalled();
+  await speech.say("Prompt");
+  expect(startPcm).not.toHaveBeenCalled();
+  const id = (voice.out.play as jest.Mock<VoiceOut["play"]>).mock.calls[0][0];
+  await act(async () => {
+    voice.emit({ type: "end", lineId: id });
+  });
+  expect(startPcm).toHaveBeenCalledTimes(1);
+  expect(backup.start).not.toHaveBeenCalled();
+  await act(async () => {
+    hook.result.current.replay();
+  });
+  expect(hook.result.current.state.phase).toBe("speaking");
+  expect(startPcm).toHaveBeenCalledTimes(1);
+  expect(order.lastIndexOf("close-backup")).toBeLessThan(
+    order.lastIndexOf("prompt"),
+  );
   await hook.unmount();
 });

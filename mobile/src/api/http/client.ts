@@ -62,6 +62,15 @@ export function toStoredSession(s: ParticipantMobileSession): StoredSession {
  * refresh-token rotation rules from docs/companion-mobile-api.md. It never
  * logs tokens, request bodies or response bodies.
  */
+let participantGeneration = 0;
+export function invalidateParticipantRequests() {
+  participantGeneration++;
+}
+export const getParticipantSessionGeneration = () => participantGeneration;
+export const assertParticipantGeneration = (owner: number) => {
+  if (owner !== participantGeneration) throw sessionEnded();
+};
+
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly doFetch: FetchLike;
@@ -91,24 +100,33 @@ export class ApiClient {
     opts: RequestOptions = {},
   ): Promise<T> {
     const auth = opts.auth !== false;
+    const owner = participantGeneration;
     let token: string | undefined;
     if (auth) {
       let session = await this.tokens.get();
+      assertParticipantGeneration(owner);
       if (!session) throw sessionEnded();
       if (this.isNearExpiry(session)) session = await this.refresh();
+      assertParticipantGeneration(owner);
       token = session.accessToken;
     }
     let res = await this.send(method, path, opts, token);
+    if (auth) assertParticipantGeneration(owner);
     if (res.status === 401 && auth && opts.retryOn401 !== false) {
       const current = await this.tokens.get();
+      assertParticipantGeneration(owner);
       // Another request may already have rotated the token while ours was in flight.
       const fresh =
         current && current.accessToken !== token
           ? current
           : await this.refresh();
+      assertParticipantGeneration(owner);
       res = await this.send(method, path, opts, fresh.accessToken);
+      assertParticipantGeneration(owner);
     }
-    return this.parse<T>(res);
+    const result = await this.parse<T>(res);
+    if (auth) assertParticipantGeneration(owner);
+    return result;
   }
 
   get<T>(path: string, opts: RequestOptions = {}) {
@@ -120,13 +138,32 @@ export class ApiClient {
   }
 
   clearSession() {
+    participantGeneration++;
+    this.refreshing = null;
     this.refreshKey = null;
     return this.tokens.clear();
   }
 
   /** Persist a freshly issued session (enroll). */
   saveSession(s: ParticipantMobileSession) {
+    participantGeneration++;
+    this.refreshing = null;
+    this.refreshKey = null;
     return this.tokens.set(toStoredSession(s));
+  }
+
+  /** Clear local credentials first; a delayed logout can only revoke its captured bearer. */
+  async revokeSession(): Promise<void> {
+    const owner = participantGeneration;
+    const session = await this.tokens.get();
+    assertParticipantGeneration(owner);
+    await this.clearSession();
+    if (session)
+      await this.request("POST", "/session/logout", {
+        auth: false,
+        retryOn401: false,
+        headers: { Authorization: `Bearer ${session.accessToken}` },
+      });
   }
 
   private isNearExpiry(s: StoredSession): boolean {
@@ -137,15 +174,18 @@ export class ApiClient {
   /** Single-flight: concurrent callers share one rotation. */
   refresh(): Promise<StoredSession> {
     if (!this.refreshing) {
-      this.refreshing = this.doRefresh().finally(() => {
-        this.refreshing = null;
+      const running = this.doRefresh().finally(() => {
+        if (this.refreshing === running) this.refreshing = null;
       });
+      this.refreshing = running;
     }
     return this.refreshing;
   }
 
   private async doRefresh(): Promise<StoredSession> {
+    const owner = participantGeneration;
     const session = await this.tokens.get();
+    assertParticipantGeneration(owner);
     if (!session) throw sessionEnded();
     if (!this.refreshKey || this.refreshKey.token !== session.refreshToken) {
       this.refreshKey = { token: session.refreshToken, key: this.newKey() };
@@ -160,6 +200,7 @@ export class ApiClient {
       },
       undefined,
     );
+    assertParticipantGeneration(owner);
     if (
       res.status === 401 ||
       res.status === 403 ||
@@ -173,6 +214,7 @@ export class ApiClient {
     }
     const body = await this.parse<ParticipantMobileSession>(res);
     const stored = toStoredSession(body);
+    assertParticipantGeneration(owner);
     await this.tokens.set(stored);
     this.refreshKey = null;
     return stored;

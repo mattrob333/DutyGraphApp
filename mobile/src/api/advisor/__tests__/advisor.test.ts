@@ -190,12 +190,10 @@ describe("advisor transport and secure drafts", () => {
   it("clears another advisor’s local drafts even when the company is unchanged", async () => {
     await useAdvisorStore.getState().setSession(session());
     await saveAdvisorDraft("private", "first advisor");
-    await useAdvisorStore
-      .getState()
-      .setSession({
-        ...session("second"),
-        advisor: { id: "another-advisor", name: "Morgan" },
-      });
+    await useAdvisorStore.getState().setSession({
+      ...session("second"),
+      advisor: { id: "another-advisor", name: "Morgan" },
+    });
     expect(await loadAdvisorDraft("private")).toBeNull();
     expect(useAdvisorStore.getState().identity?.advisor.id).toBe(
       "another-advisor",
@@ -261,15 +259,13 @@ describe("advisor transport and secure drafts", () => {
     await Promise.all([r.people(), r.people(), r.people()]);
     expect(refreshes).toBe(1);
     await useAdvisorStore.getState().setSession(session("two", 1000));
-    jest
-      .spyOn(global, "fetch")
-      .mockResolvedValue(
-        response(401, {
-          code: "REFRESH_REPLAY",
-          message: "Pair again",
-          retryable: false,
-        }),
-      );
+    jest.spyOn(global, "fetch").mockResolvedValue(
+      response(401, {
+        code: "REFRESH_REPLAY",
+        message: "Pair again",
+        retryable: false,
+      }),
+    );
     await expect(
       new HttpAdvisorRepository("http://localhost").people(),
     ).rejects.toMatchObject({ status: 401 });
@@ -313,4 +309,36 @@ describe("advisor transport and secure drafts", () => {
     ).rejects.toMatchObject({ code: "NOT_AVAILABLE" });
     expect(fetcher).not.toHaveBeenCalled();
   });
+});
+
+it("locates source playback using actual completed segment durations after interruptions", async () => {
+  await advisorTokens.set(session());
+  jest.spyOn(global, "fetch").mockResolvedValue(
+    response(200, {
+      segments: [
+        { segmentIndex: 7, complete: true, durationMs: 2000 },
+        { segmentIndex: 3, complete: true, durationMs: 1000 },
+      ],
+    }),
+  );
+  const source = await new HttpAdvisorRepository(
+    "https://api.example.test",
+  ).audioSource("meeting-session", 1500);
+  expect(source).toMatchObject({
+    uri: "https://api.example.test/api/mobile/meetings/v1/sessions/meeting-session/audio/7",
+    offsetSeconds: 0.5,
+  });
+});
+it("does not guess a recording offset when duration metadata is missing or the time is out of bounds", async () => {
+  await advisorTokens.set(session());
+  jest
+    .spyOn(global, "fetch")
+    .mockResolvedValue(
+      response(200, {
+        segments: [{ segmentIndex: 0, complete: true, durationMs: 0 }],
+      }),
+    );
+  const repo = new HttpAdvisorRepository("https://api.example.test");
+  expect(await repo.audioSource("meeting-session", 1500)).toBeNull();
+  expect(await repo.audioSource("meeting-session", -1)).toBeNull();
 });

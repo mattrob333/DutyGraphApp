@@ -2,6 +2,7 @@ import type {
   LiveSpeech,
   LiveSpeechHandlers,
   LiveSpeechStartOptions,
+  SpeechBackupBatch,
 } from "./types";
 /** A single fallback preserves the card's words and advertises the service actually in use. */
 export class ResilientLiveSpeech implements LiveSpeech {
@@ -55,6 +56,7 @@ export class ResilientLiveSpeech implements LiveSpeech {
           if (this.restarts++ < 3) {
             this.prefix = [this.prefix, this.text].filter(Boolean).join(" ");
             this.text = "";
+            this.current.markBackupFailed?.();
             void this.current
               .stop()
               .then(start)
@@ -73,6 +75,13 @@ export class ResilientLiveSpeech implements LiveSpeech {
     ) => {
       if (run !== this.run) return;
       if (
+        error.code === "other" &&
+        (error.message === "interrupted" || error.message === "background")
+      ) {
+        handlers.onError(error);
+        return;
+      }
+      if (
         !this.fallbackUsed &&
         this.current === this.primary &&
         error.code !== "permission_denied"
@@ -80,6 +89,7 @@ export class ResilientLiveSpeech implements LiveSpeech {
         this.fallbackUsed = true;
         this.prefix = [this.prefix, this.text].filter(Boolean).join(" ");
         this.text = "";
+        this.current.markBackupFailed?.();
         await this.current.stop();
         if (run !== this.run) return;
         this.current = this.fallback;
@@ -94,6 +104,20 @@ export class ResilientLiveSpeech implements LiveSpeech {
     this.soundSince = null;
     this.lastWords = this.now();
     await this.current.reset?.(options);
+  }
+  beginBackup(
+    id: string,
+    onFinished: (batch: SpeechBackupBatch) => Promise<void>,
+  ) {
+    if (!this.current.beginBackup)
+      return Promise.reject(new Error("Capture backups are unavailable"));
+    return this.current.beginBackup(id, onFinished);
+  }
+  finishBackup(failed = false) {
+    return this.current.finishBackup?.(failed) ?? Promise.resolve();
+  }
+  markBackupFailed() {
+    this.current.markBackupFailed?.();
   }
   commit() {
     this.current.commit?.();

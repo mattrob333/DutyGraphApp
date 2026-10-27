@@ -138,6 +138,7 @@ function fakeModule(over: Partial<SpeechModuleLike> = {}) {
     supportsOnDeviceRecognition: jest.fn(() => true),
     emit,
     listenerCount: () => [...listeners.values()].reduce((n, s) => n + s.size, 0),
+    snapshot: (event: string) => [...(listeners.get(event) ?? [])],
     ...over,
   };
   return mod;
@@ -177,6 +178,59 @@ describe('createLiveSpeech', () => {
 });
 
 describe('native live speech (fake module)', () => {
+  it('fences old task callbacks after stopping and starting a new session', async () => {
+    const mod = fakeModule();
+    const speech = new NativeLiveSpeech(mod);
+    const first = recorder(), second = recorder();
+    await speech.start({ lang: 'en-US' }, first.handlers);
+    const prior = mod.snapshot('result')[0];
+    await speech.stop();
+    await speech.start({ lang: 'en-US' }, second.handlers);
+    prior({ isFinal: true, results: [{ transcript: 'old card words' }] });
+    expect(second.texts).toEqual([]);
+    mod.emit('result', { isFinal: false, results: [{ transcript: 'new card words' }] });
+    expect(second.texts).toEqual(['new card words']);
+    await speech.stop();
+  });
+
+  it('fails closed if the old recognizer never reports a terminal end', async () => {
+    jest.useFakeTimers();
+    try {
+      const mod = fakeModule();
+      mod.abort = () => { mod.aborts += 1; };
+      const speech = new NativeLiveSpeech(mod);
+      const first = recorder(), second = recorder();
+      await speech.start({ lang: 'en-US' }, first.handlers);
+      const stopping = speech.stop();
+      jest.advanceTimersByTime(2000);
+      await stopping;
+      await speech.start({ lang: 'en-US' }, second.handlers);
+      expect(mod.starts).toHaveLength(1);
+      expect(second.errors).toEqual([{ code: 'not_available' }]);
+    } finally { jest.useRealTimers(); }
+  });
+
+  it('waits for the native abort end before opening the next recognizer task', async () => {
+    const mod = fakeModule();
+    mod.abort = () => { mod.aborts += 1; };
+    const speech = new NativeLiveSpeech(mod);
+    const first = recorder(), second = recorder();
+    await speech.start({ lang: 'en-US' }, first.handlers);
+    const stopping = speech.stop();
+    const starting = speech.start({ lang: 'en-US' }, second.handlers);
+    await Promise.resolve();
+    expect(mod.starts).toHaveLength(1);
+    mod.emit('result', { isFinal: true, results: [{ transcript: 'late old result' }] });
+    expect(second.texts).toEqual([]);
+    mod.emit('end');
+    await stopping;
+    await starting;
+    expect(mod.starts).toHaveLength(2);
+    mod.emit('result', { isFinal: false, results: [{ transcript: 'new session' }] });
+    expect(second.texts).toEqual(['new session']);
+    const finalStop = speech.stop(); mod.emit('end'); await finalStop;
+  });
+
   it('starts on-device with interim results and adds final phrases to the text', async () => {
     const mod = fakeModule();
     const speech = new NativeLiveSpeech(mod);

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { View, TextInput } from "react-native";
 import { router } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -29,7 +29,7 @@ import {
 type Draft = {
   choices: Record<
     string,
-    { decision: "confirm" | "change" | "not_mine"; note?: string }
+    { decision?: "confirm" | "change" | "not_mine"; note?: string }
   >;
   inputs?: ConfirmationDecisionInput[];
   hash: string;
@@ -43,29 +43,70 @@ export function WrapUpScreen({ id }: { id: string }) {
   if (q.isPending) return <LoadingState />;
   if (q.isError || !q.data)
     return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
-  return <WrapUpRun detail={q.data} />;
+  const revision = q.data.items
+    .map(
+      (i) =>
+        `${i.id}:${i.version}:${i.hash}:${String(i.confirmation ?? "pending")}`,
+    )
+    .join("|");
+  return (
+    <WrapUpRun
+      key={`${id}:${revision}`}
+      detail={q.data}
+      onReload={() => void q.refetch()}
+    />
+  );
 }
-function WrapUpRun({ detail }: { detail: ParticipantConfirmation }) {
+function WrapUpRun({
+  detail,
+  onReload,
+}: {
+  detail: ParticipantConfirmation;
+  onReload: () => void;
+}) {
   const repo = useParticipantExtrasRepository();
   const qc = useQueryClient();
   const c = useColors();
+  const submitting = useRef(false);
+  const items = useMemo(
+    () =>
+      detail.items.filter(
+        (i) => i.confirmation == null || i.confirmation === "pending",
+      ),
+    [detail.items],
+  );
   const [draft, setDraft] = useState<Draft | null>(null);
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const hash = detail.items
-    .map((i) => `${i.id}:${i.version}:${i.hash}`)
-    .join("|");
+  const hash = items.map((i) => `${i.id}:${i.version}:${i.hash}`).join("|");
   const storageId = `wrapup:${detail.id}`;
   useEffect(() => {
     let alive = true;
-    void loadReviewValue<Draft>(storageId).then((d) => {
-      if (alive) setDraft(d?.hash === hash ? d : { choices: {}, hash });
-    });
+    void loadReviewValue<Draft>(storageId)
+      .then((d) => {
+        if (alive)
+          setDraft(
+            d?.hash === hash
+              ? d
+              : {
+                  choices: Object.fromEntries(
+                    items
+                      .filter((i) => d?.choices[i.id]?.note)
+                      .map((i) => [i.id, { note: d!.choices[i.id].note }]),
+                  ),
+                  hash,
+                },
+          );
+      })
+      .catch((e) => {
+        if (alive) setError(errorMessage(e));
+      });
     return () => {
       alive = false;
     };
-  }, [storageId, hash]);
+  }, [storageId, hash, loadAttempt, items]);
   const change = (itemId: string, patch: Partial<Draft["choices"][string]>) => {
     if (!draft) return;
     const next: Draft = {
@@ -85,18 +126,28 @@ function WrapUpRun({ detail }: { detail: ParticipantConfirmation }) {
     );
   };
   const send = async () => {
-    if (!draft || sending) return;
+    if (!draft || submitting.current) return;
+    if (
+      !items.every(
+        (i) =>
+          draft.choices[i.id]?.decision &&
+          (draft.choices[i.id].decision !== "change" ||
+            draft.choices[i.id].note?.trim()),
+      )
+    )
+      return;
+    submitting.current = true;
     setSending(true);
     setError(null);
     try {
       const inputs =
         draft.inputs ??
-        detail.items
+        items
           .filter((i) => draft.choices[i.id])
           .map((i) => ({
             id: detail.id,
             itemId: i.id,
-            decision: draft.choices[i.id].decision,
+            decision: draft.choices[i.id].decision!,
             note: draft.choices[i.id].note?.trim() || undefined,
             expectedVersion: i.version,
             contentHash: i.hash,
@@ -107,16 +158,28 @@ function WrapUpRun({ detail }: { detail: ParticipantConfirmation }) {
       await saveReviewValue(storageId, next);
       for (const input of inputs) await repo.decideConfirmation(input);
       setSent(true);
-      await clearTaskReview(storageId);
+      await clearTaskReview(storageId, next);
       void qc.invalidateQueries({ queryKey: qk.today });
     } catch (e) {
       setError(errorMessage(e));
     } finally {
+      submitting.current = false;
       setSending(false);
     }
   };
-  if (!draft) return <LoadingState />;
-  if (sent || !detail.items.length)
+  if (!draft)
+    return error ? (
+      <ErrorState
+        error={new Error(error)}
+        onRetry={() => {
+          setError(null);
+          setLoadAttempt((n) => n + 1);
+        }}
+      />
+    ) : (
+      <LoadingState />
+    );
+  if (sent || !items.length)
     return (
       <Screen>
         <Heading>
@@ -133,9 +196,9 @@ function WrapUpRun({ detail }: { detail: ParticipantConfirmation }) {
         />
       </Screen>
     );
-  const ready = detail.items.every(
+  const ready = items.every(
     (i) =>
-      !!draft.choices[i.id] &&
+      !!draft.choices[i.id]?.decision &&
       (draft.choices[i.id].decision !== "change" ||
         !!draft.choices[i.id].note?.trim()),
   );
@@ -161,11 +224,18 @@ function WrapUpRun({ detail }: { detail: ParticipantConfirmation }) {
         Check each item. Your response is a proposal for your advisor to review.
       </Text>
       {error ? (
-        <Text color="red" accessibilityRole="alert">
-          {error} Your review is saved on this phone.
-        </Text>
+        <View>
+          <Text color="red" accessibilityRole="alert">
+            {error} Your review is saved on this phone.
+          </Text>
+          <Button
+            label="Reload current items"
+            disabled={sending}
+            onPress={onReload}
+          />
+        </View>
       ) : null}
-      {detail.items.map((item) => (
+      {items.map((item) => (
         <View
           key={item.id}
           style={{

@@ -308,6 +308,19 @@ describe('submitAnswers', () => {
     expect(await pendingAnswers.list()).toEqual([]);
   });
 
+  it('does not restore an old pending answer when its request fails after logout', async () => {
+    let finish!: (reply: { status: number; body: unknown }) => void;
+    const { repo, calls } = setup(c => c.path.endsWith('/submit') ? new Promise(resolve => { finish = resolve; }) : { status: 200, body: detail12() });
+    const body = await input(repo);
+    const outcome = repo.submitAnswers(body).catch(e => e);
+    for (let i = 0; i < 20 && !calls.some(c => c.path.endsWith('/submit')); i++) await new Promise(resolve => setTimeout(resolve, 1));
+    await repo.logout();
+    expect(await pendingAnswers.list()).toEqual([]);
+    finish({ status: 503, body: { code: 'SUBMIT_UNAVAILABLE', message: 'Try again', retryable: true } });
+    expect(await outcome).toMatchObject({ code: 'SESSION_ENDED' });
+    expect(await pendingAnswers.list()).toEqual([]);
+  });
+
   it('logout removes saved answers from the device', async () => {
     const { repo } = setup((c) => (c.method === 'GET' ? { status: 200, body: detail12() } : err(503, 'PROVIDER_UNAVAILABLE', true)));
     await expect(repo.submitAnswers(await input(repo))).rejects.toBeTruthy();

@@ -33,3 +33,12 @@ jobs:
       - run: npm ci && npm run verify && npm run coverage:check
         working-directory: dev-server
         if: hashFiles('dev-server/package-lock.json') != ''
+      - run: npx expo export --platform web --clear
+        working-directory: mobile
+        env:
+          EXPO_PUBLIC_DATA_SOURCE: http
+          EXPO_PUBLIC_COMPANION_SCOPE: full
+          EXPO_PUBLIC_API_BASE_URL: http://127.0.0.1:4417
+          EXPO_PUBLIC_MEETINGS_API_BASE_URL: http://127.0.0.1:4417
+      - run: npm run test:e2e:http
+        working-directory: mobile

@@ -10,7 +10,7 @@ export type FacilitatorLine = { id: string; text: string };
 export interface FacilitatorVoice {
   readonly kind: "tts_lines" | "realtime" | "simulated";
   prepare(sessionId: string): Promise<void>;
-  speak(line: FacilitatorLine): Promise<void>;
+  speak(line: FacilitatorLine, trigger?: FacilitatorTrigger): Promise<void>;
   stop(): void;
   setMuted(muted: boolean): void;
   dispose(): Promise<void>;
@@ -36,7 +36,11 @@ export class TtsFacilitatorVoice implements FacilitatorVoice {
 }
 /** Clock-driven turn taking: no timer can create a turn outside one of six explicit triggers. */
 export class MeetingTurnController {
-  private pending: { line: FacilitatorLine; queuedAt: number } | null = null;
+  private pending: {
+    line: FacilitatorLine;
+    trigger: FacilitatorTrigger;
+    queuedAt: number;
+  } | null = null;
   private speaking: FacilitatorLine | null = null;
   private lastSpeech = 0;
   private muted = false;
@@ -61,7 +65,7 @@ export class MeetingTurnController {
       this.stopped
     )
       return;
-    this.pending = { line, queuedAt: this.now() };
+    this.pending = { line, trigger, queuedAt: this.now() };
   }
   speechDetected() {
     this.lastSpeech = this.now();
@@ -89,11 +93,12 @@ export class MeetingTurnController {
       }
       return;
     }
-    const line = this.pending.line;
+    const line = this.pending.line,
+      trigger = this.pending.trigger;
     this.pending = null;
     this.speaking = line;
     try {
-      await this.voice.speak(line);
+      await this.voice.speak(line, trigger);
     } catch {
       this.showLine(line);
     } finally {

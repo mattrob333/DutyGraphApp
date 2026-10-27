@@ -126,3 +126,77 @@ describe('ApiClient', () => {
     expect(await newClient(fetch).get('/me').catch((e: any) => e)).toMatchObject({ code: 'SESSION_ENDED', status: 401 });
   });
 });
+
+it("never retries an old request with a replacement enrollment bearer", async () => {
+  await store(1);
+  let finish!: (reply: { status: number; body: unknown }) => void;
+  const { fetch, calls } = makeFetch(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const api = newClient(fetch);
+  const outcome = api
+    .post("/task-cards/old/attest", { decision: "correct" })
+    .catch((e) => e);
+  for (let i = 0; i < 20 && !calls.length; i++)
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  await api.saveSession({
+    ...sessionDto(2),
+    tokenType: "Bearer",
+    role: "participant_mobile",
+  });
+  finish({ status: 401, body: { code: "SESSION_EXPIRED" } });
+  expect(await outcome).toMatchObject({ code: "SESSION_ENDED" });
+  expect(calls).toHaveLength(1);
+  expect((await tokenStore.get())?.accessToken).toBe(sessionDto(2).accessToken);
+});
+it("a delayed refresh cannot overwrite a newer enrollment", async () => {
+  await store(1, 1000);
+  let finish!: (reply: { status: number; body: unknown }) => void;
+  const { fetch, calls } = makeFetch(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const api = newClient(fetch);
+  const outcome = api.get("/me").catch((e) => e);
+  for (let i = 0; i < 20 && !calls.length; i++)
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  await api.saveSession({
+    ...sessionDto(3),
+    tokenType: "Bearer",
+    role: "participant_mobile",
+  });
+  finish({ status: 200, body: sessionDto(2) });
+  expect(await outcome).toMatchObject({ code: "SESSION_ENDED" });
+  expect((await tokenStore.get())?.accessToken).toBe(sessionDto(3).accessToken);
+});
+it("revokes its captured bearer without clearing a later enrollment", async () => {
+  await store(1);
+  let finish!: (reply: { status: number; body: unknown }) => void;
+  const { fetch, calls } = makeFetch(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const api = newClient(fetch);
+  const revocation = api.revokeSession();
+  for (let i = 0; i < 20 && !calls.length; i++)
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  expect(await tokenStore.get()).toBeNull();
+  await api.saveSession({
+    ...sessionDto(2),
+    tokenType: "Bearer",
+    role: "participant_mobile",
+  });
+  finish({ status: 200, body: { ok: true } });
+  await revocation;
+  expect(calls[0].headers.Authorization).toBe(
+    `Bearer ${sessionDto(1).accessToken}`,
+  );
+  expect((await tokenStore.get())?.accessToken).toBe(sessionDto(2).accessToken);
+});

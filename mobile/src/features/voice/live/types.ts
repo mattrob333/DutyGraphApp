@@ -9,13 +9,13 @@
  * The deck (src/features/handsfree) owns the timing: it treats "no new words for N ms" as a
  * pause. A recognizer that reports its own end of speech may also call `onPause`.
  */
-export type LiveSpeechKind = 'native' | 'openai' | 'simulated' | 'unavailable';
+export type LiveSpeechKind = "native" | "openai" | "simulated" | "unavailable";
 
 export type LiveSpeechError =
-  | { code: 'permission_denied' }
-  | { code: 'not_available' }
-  | { code: 'network' }
-  | { code: 'other'; message?: string };
+  | { code: "permission_denied" }
+  | { code: "not_available" }
+  | { code: "network" }
+  | { code: "other"; message?: string };
 
 export type LiveSpeechHandlers = {
   /** The full text heard since `start`, interim words included. Replaces the previous value. */
@@ -35,11 +35,29 @@ export type LiveSpeechStartOptions = {
 
 export interface LiveSpeech {
   readonly kind: LiveSpeechKind;
-  readonly source?: 'voice_device' | 'voice_openai' | 'voice_browser';
+  readonly source?: "voice_device" | "voice_openai" | "voice_browser";
   reset?(options?: LiveSpeechStartOptions): Promise<void> | void;
   commit?(): void;
+  beginBackup?(
+    id: string,
+    onFinished: (batch: SpeechBackupBatch) => Promise<void>,
+  ): Promise<void>;
+  finishBackup?(failed?: boolean): Promise<void>;
+  markBackupFailed?(): void;
   /** Starts listening. Resolves once the microphone is open. */
-  start(options: LiveSpeechStartOptions, handlers: LiveSpeechHandlers): Promise<void>;
+  start(
+    options: LiveSpeechStartOptions,
+    handlers: LiveSpeechHandlers,
+  ): Promise<void>;
   /** Stops and releases the microphone. Safe to call twice. */
   stop(): Promise<void>;
 }
+
+export type SpeechBackupFile = {
+  id: string;
+  groupId: string;
+  uri: string;
+  durationMs: number;
+  bytes: number;
+};
+export type SpeechBackupBatch = { files: SpeechBackupFile[]; failed: boolean };

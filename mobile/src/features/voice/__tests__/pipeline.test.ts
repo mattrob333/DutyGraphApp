@@ -154,6 +154,7 @@ test("backup retains an offline clip across restart and removes it only after ap
   expect(apply).toHaveBeenCalledWith(
     expect.objectContaining({ id: "a" }),
     "restored answer",
+    expect.any(Function),
   );
   expect(stored).toEqual([]);
 });
@@ -358,4 +359,95 @@ test("Stop during server preparation prevents late speech after leaving the room
   expect(playback.play).not.toHaveBeenCalled();
   expect(device.speak).not.toHaveBeenCalled();
   await out.dispose();
+});
+
+test("reset uses a fresh socket generation but reuses the valid grant, and keeps a first pre-commit word", async () => {
+  const sockets: SocketPort[] = [];
+  const factory = () => {
+    const socket: SocketPort = {
+      readyState: 1,
+      send: () => {},
+      close: () => {},
+      onopen: null,
+      onclose: null,
+      onerror: null,
+      onmessage: null,
+    };
+    sockets.push(socket);
+    return socket;
+  };
+  const grant = jest.fn<() => Promise<{ available: true; secret: string }>>(
+    async () => ({ available: true, secret: "fictional" }),
+  );
+  const source = new OpenAiLiveSpeech({
+    grant,
+    capture: { available: true, start: async () => {}, stop: async () => {} },
+    socket: factory,
+  });
+  const words = jest.fn();
+  const begin = source.start(
+    { lang: "en-US" },
+    { onText: words, onError: () => {} },
+  );
+  for (let i = 0; i < 6; i++) await Promise.resolve();
+  sockets[0].onopen?.();
+  await begin;
+  const late = sockets[0].onmessage!;
+  const reset = source.reset();
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  sockets[1].onopen?.();
+  await reset;
+  late({
+    data: JSON.stringify({
+      type: "conversation.item.input_audio_transcription.completed",
+      item_id: "old",
+      transcript: "Previous card words",
+    }),
+  });
+  sockets[1].onmessage?.({
+    data: JSON.stringify({
+      type: "conversation.item.input_audio_transcription.delta",
+      item_id: "new",
+      delta: "First",
+    }),
+  });
+  sockets[1].onmessage?.({
+    data: JSON.stringify({
+      type: "input_audio_buffer.committed",
+      item_id: "new",
+    }),
+  });
+  expect(words).toHaveBeenCalledTimes(1);
+  expect(words).toHaveBeenLastCalledWith("First");
+  expect(grant).toHaveBeenCalledTimes(1);
+  await source.stop();
+});
+
+test("invalidating a backup queue prevents delayed transcription from applying after logout", async () => {
+  let resolve!: (value: { text: string }) => void;
+  const apply = jest.fn<(clip: unknown, text: string) => void>();
+  const queue = new RecordedBackupQueue({
+    load: async () => [],
+    save: async () => {},
+    transcribe: () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  });
+  await queue.add({
+    id: "a",
+    requestId: "r",
+    questionKey: "q",
+    session: 1,
+    uri: "file",
+    mimeType: "audio/wav",
+    durationMs: 1000,
+  });
+  const pending = queue.flush(apply);
+  for (let i = 0; i < 5; i++) await Promise.resolve();
+  await queue.invalidate();
+  resolve({ text: "Late private words" });
+  await pending;
+  expect(apply).not.toHaveBeenCalled();
+  expect(await queue.pending()).toEqual([]);
 });

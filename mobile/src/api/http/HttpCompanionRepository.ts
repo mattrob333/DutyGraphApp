@@ -59,7 +59,12 @@ import type {
 import { newIdempotencyKey } from "@/utils/id";
 import type { components } from "../generated/companion-mobile-v1";
 import { REVIEW_COPY } from "../mock/scripts";
-import { ApiClient, TRANSCRIBE_TIMEOUT_MS } from "./client";
+import {
+  ApiClient,
+  getParticipantSessionGeneration,
+  assertParticipantGeneration,
+  TRANSCRIBE_TIMEOUT_MS,
+} from "./client";
 import { isUnderstandingUnavailable, notAvailable } from "./errors";
 import {
   coverageBody,
@@ -235,22 +240,20 @@ export class HttpCompanionRepository implements CompanionRepository {
   }
 
   async logout(): Promise<void> {
-    try {
-      await this.api.request("POST", "/session/logout", { retryOn401: false });
-    } catch {
-      // The device forgets the session either way; the server session also expires.
-    }
-    await this.api.clearSession();
+    const revocation = this.api.revokeSession().catch(() => {});
+    const drafts = clearAllDrafts();
+    this.me = null;
+    this.sessions.clear();
+    this.questionSets.clear();
+    this.sending.clear();
     try {
       await localState.clearParticipantData();
       await pendingAnswers.clear();
     } catch {
-      /* best effort */
+      /* The remote device session still expires when offline. */
     }
-    await clearAllDrafts();
-    this.me = null;
-    this.sessions.clear();
-    this.questionSets.clear();
+    await drafts;
+    await revocation;
   }
 
   // ---- Today ---------------------------------------------------------------
@@ -1096,9 +1099,10 @@ export class HttpCompanionRepository implements CompanionRepository {
   submitAnswers(input: SubmitAnswersInput): Promise<SubmitAnswersResult> {
     const running = this.sending.get(input.requestId);
     if (running) return running;
-    const p = this.sendAnswers(input).finally(() =>
-      this.sending.delete(input.requestId),
-    );
+    const p = this.sendAnswers(input).finally(() => {
+      if (this.sending.get(input.requestId) === p)
+        this.sending.delete(input.requestId);
+    });
     this.sending.set(input.requestId, p);
     return p;
   }
@@ -1106,6 +1110,7 @@ export class HttpCompanionRepository implements CompanionRepository {
   private async sendAnswers(
     input: SubmitAnswersInput,
   ): Promise<SubmitAnswersResult> {
+    const owner = getParticipantSessionGeneration();
     const s = input.submission;
     const hasAnswer =
       !!(s.questionAnswers && Object.keys(s.questionAnswers).length) ||
@@ -1118,6 +1123,7 @@ export class HttpCompanionRepository implements CompanionRepository {
         false,
       );
     const saved = await pendingAnswers.get(input.requestId);
+    assertParticipantGeneration(owner);
     const pending =
       saved && sameAnswers(saved, input)
         ? saved
@@ -1131,6 +1137,7 @@ export class HttpCompanionRepository implements CompanionRepository {
             attempts: 0,
           };
     await pendingAnswers.save(pending);
+    assertParticipantGeneration(owner);
     let res: S["SubmitResult"];
     try {
       if (pulseIdFromRequest(input.requestId)) {
@@ -1147,6 +1154,7 @@ export class HttpCompanionRepository implements CompanionRepository {
         { idempotencyKey: pending.idempotencyKey },
       );
     } catch (e) {
+      if (owner !== getParticipantSessionGeneration()) throw e;
       try {
         if (isTerminalAnswersError(e))
           await pendingAnswers.remove(input.requestId);

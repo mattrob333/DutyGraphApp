@@ -1,8 +1,8 @@
 import React from "react";
 import { beforeEach, expect, it, jest } from "@jest/globals";
-import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { ReviewScreen } from "../ReviewScreen";
-import { newDraft, useDraftStore } from "../draft";
+import { clearAllDrafts, saveDraft, newDraft, useDraftStore } from "../draft";
 import {
   FakeRepo,
   REQUEST_ID,
@@ -204,4 +204,41 @@ it("routes acknowledged Pulse answers to Pulse completion", async () => {
     }),
   );
   expect(repo.submits[0].requestId).toBe("pulse:pulse-1");
+});
+
+it("does not apply a late understanding result to a replacement enrollment draft", async () => {
+  seed("Old private answer.");
+  let finish!: (value: import("@/types/handsfree").UnderstandResult) => void;
+  repo.understandAnswers = () =>
+    new Promise((resolve) => {
+      finish = resolve;
+    });
+  await renderWithProviders(<ReviewScreen requestId={REQUEST_ID} />, repo);
+  await flush();
+  await act(async () => {
+    await clearAllDrafts();
+    const fresh = newDraft(repo.set, "text");
+    fresh.answers[0] = {
+      status: "saved",
+      raw: "New participant answer.",
+      covered: [],
+    };
+    fresh.understood = null;
+    await saveDraft(fresh);
+    finish({
+      available: true,
+      items: [
+        {
+          key: "question.0",
+          understood: "Old private summary.",
+          suggestion: null,
+        },
+      ],
+    });
+  });
+  await flush();
+  expect(useDraftStore.getState().drafts[REQUEST_ID]?.answers[0]?.raw).toBe(
+    "New participant answer.",
+  );
+  expect(useDraftStore.getState().drafts[REQUEST_ID]?.understood).toBeNull();
 });

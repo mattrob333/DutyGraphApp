@@ -84,6 +84,27 @@ describe('DeckScreen (hands-free cards)', () => {
     expect(screen.getByLabelText('What you do first')).toBeTruthy();
   });
 
+  it('ignores callbacks captured by a previous microphone session after advancing', async () => {
+    await renderDeck();
+    await startListening();
+    const old = speech.handlers!;
+    await speech.say(`${ANSWER_1.first} ${ANSWER_1.second} ${ANSWER_1.third}`);
+    await pressNext();
+    await clock.fire(1300);
+    await clock.fire(1300);
+    expect(screen.getByText('Question 2 of 6')).toBeTruthy();
+    await act(async () => {
+      old.onText('Late words from the previous card');
+      old.onError({ code: 'permission_denied' });
+      old.onPause?.();
+      old.onLevel?.(1);
+    });
+    expect(screen.queryByText('Late words from the previous card')).toBeNull();
+    expect(screen.queryByText(/Microphone blocked/)).toBeNull();
+    await speech.say('The order system');
+    expect(screen.getByText('The order system')).toBeTruthy();
+  });
+
   it('shows Got it with Keep talking, which reopens the card', async () => {
     await renderDeck();
     await startListening();

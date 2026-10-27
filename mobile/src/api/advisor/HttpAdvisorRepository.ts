@@ -257,13 +257,23 @@ export class HttpAdvisorRepository implements AdvisorRepository {
       gate: value.gate,
     };
   }
-  start(id: string, mode: MeetingSession["mode"], key: string) {
+  start(
+    id: string,
+    mode: MeetingSession["mode"],
+    key: string,
+    voice: "tts_lines" | "realtime" = "tts_lines",
+  ) {
     return this.request<MeetingSession>(
       `/meetings/${encodeURIComponent(id)}/sessions`,
       "POST",
-      { mode, voice: mode === "facilitator" ? "tts_lines" : undefined },
+      { mode, voice: mode === "facilitator" ? voice : undefined },
       key,
     );
+  }
+  realtime(id: string, input: { sdp: string; summary?: string }, key: string) {
+    return this.request<
+      import("@/features/voice/meeting/realtime/types").RealtimeGrant
+    >(`/sessions/${encodeURIComponent(id)}/realtime`, "POST", input, key);
   }
   session(id: string) {
     return this.request<SessionDetail>(`/sessions/${encodeURIComponent(id)}`);
@@ -286,7 +296,7 @@ export class HttpAdvisorRepository implements AdvisorRepository {
   }
   async transcript(
     id: string,
-    segments: SessionDetail["transcript"],
+    segments: import("./types").TranscriptInput[],
     key: string,
   ) {
     await this.request(
@@ -334,6 +344,18 @@ export class HttpAdvisorRepository implements AdvisorRepository {
       `/sessions/${encodeURIComponent(id)}/state`,
       "POST",
       { to },
+      key,
+    );
+  }
+  async control(
+    id: string,
+    control: "mute" | "unmute" | "stop" | "skip",
+    key: string,
+  ) {
+    await this.request(
+      `/sessions/${encodeURIComponent(id)}/state`,
+      "POST",
+      { control },
       key,
     );
   }
@@ -469,6 +491,34 @@ export class HttpAdvisorRepository implements AdvisorRepository {
   }
   async audioSource(id: string, startMs: number) {
     if (!this.origin) return notAvailable();
+    if (!Number.isFinite(startMs) || startMs < 0) return null;
+    const manifest = await this.request<{
+      segments: {
+        segmentIndex: number;
+        complete: boolean;
+        durationMs: number;
+      }[];
+    }>(`/sessions/${encodeURIComponent(id)}/segments`);
+    const segments = manifest.segments
+      .filter((segment) => segment.complete)
+      .sort((a, b) => a.segmentIndex - b.segmentIndex);
+    let segmentIndex: number | null = null,
+      offsetMs = startMs;
+    for (const segment of segments) {
+      if (
+        !Number.isInteger(segment.segmentIndex) ||
+        segment.segmentIndex < 0 ||
+        !Number.isFinite(segment.durationMs) ||
+        segment.durationMs <= 0
+      )
+        return null;
+      if (offsetMs < segment.durationMs) {
+        segmentIndex = segment.segmentIndex;
+        break;
+      }
+      offsetMs -= segment.durationMs;
+    }
+    if (segmentIndex === null) return null;
     let session = await advisorTokens.get();
     if (!session)
       throw new CompanionApiError(
@@ -481,11 +531,10 @@ export class HttpAdvisorRepository implements AdvisorRepository {
       session = await this.refresh();
     const origin = new URL(this.origin);
     if (!["http:", "https:"].includes(origin.protocol)) return notAvailable();
-    const segmentIndex = Math.floor(Math.max(0, startMs) / 300000);
     return {
       uri: `${origin.origin}/api/mobile/meetings/v1/sessions/${encodeURIComponent(id)}/audio/${segmentIndex}`,
       headers: { Authorization: `Bearer ${session.accessToken}` },
-      offsetSeconds: (Math.max(0, startMs) % 300000) / 1000,
+      offsetSeconds: offsetMs / 1000,
     };
   }
   async notes(id: string, notes: KickoffNote[], key: string) {

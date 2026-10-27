@@ -11,13 +11,13 @@ const app = path.resolve(here, '..');
 const args = process.argv.slice(2);
 const read = (name, fallback) => { const i = args.indexOf(name); return i < 0 ? fallback : args[i + 1]; };
 if (args.includes('--help')) {
-  console.log(`Usage: node scripts/e2e-web.mjs [--mode mock|http] [--flow participant|advisor|offline|task|pulse|facilitator|kickoff|setup|all] [--base-url URL] [--api-url URL]\nExport the web bundle first with matching EXPO_PUBLIC_DATA_SOURCE and API URLs. HTTP mode requires a running fake dev server. Do not set provider keys.`);
+  console.log(`Usage: node scripts/e2e-web.mjs [--mode mock|http] [--flow participant|spoken|advisor|offline|task|pulse|facilitator|hybrid|decline|stale|wrapup|kickoff|setup|all] [--base-url URL] [--api-url URL]\nExport the web bundle first with matching EXPO_PUBLIC_DATA_SOURCE and API URLs. HTTP mode requires a running fake dev server. Do not set provider keys.`);
   process.exit(0);
 }
 const mode = read('--mode', process.env.E2E_MODE || 'http');
 const flow = read('--flow', 'all');
 const api = read('--api-url', process.env.E2E_API_URL || 'http://127.0.0.1:4417').replace(/\/$/, '');
-if (!['mock', 'http'].includes(mode) || !['participant', 'spoken', 'advisor', 'offline', 'task', 'pulse', 'facilitator', 'hybrid', 'kickoff', 'setup', 'all'].includes(flow)) throw new Error('Invalid --mode or --flow; use --help.');
+if (!['mock', 'http'].includes(mode) || !['participant', 'spoken', 'advisor', 'offline', 'task', 'pulse', 'facilitator', 'hybrid', 'decline', 'stale', 'wrapup', 'kickoff', 'setup', 'all'].includes(flow)) throw new Error('Invalid --mode or --flow; use --help.');
 // Tests may use only the local fake service; verify the provider modes before opening a browser.
 if (mode === 'http') {
   const url = new URL(api);
@@ -132,7 +132,8 @@ try {
     } else if (requests.length) throw new Error('Mock run unexpectedly called the participant HTTP API; check bundle data source.');
     console.log(`PASS ${flow === 'offline' ? 'offline retry' : flow === 'spoken' ? 'scripted spoken interview' : 'participant typed interview'} (${mode})`);
   }
-  if (flow === 'advisor' || flow === 'facilitator' || flow === 'hybrid' || flow === 'all') {
+  if (flow === 'advisor' || flow === 'facilitator' || flow === 'hybrid' || flow === 'decline' || flow === 'stale' || flow === 'all') {
+    if (flow === 'stale' && mode !== 'http') throw new Error('Source revision E2E requires the HTTP fake server.');
     // A fresh browser context keeps the two kinds of session independent.
     await context.close();
     context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', colorScheme: theme });
@@ -169,10 +170,12 @@ try {
     await expectVisible('Who needs to be here?');
     await page.getByRole('button', { name: /^Priya Shah,/ }).click();
     await click('Decision maker');
-    if (flow === 'hybrid') {
+    if (flow === 'hybrid' || flow === 'decline') {
       await page.getByRole('button', { name: /^Marcus Lee,/ }).click();
+      if (flow === 'hybrid') {
       await page.getByRole('button', { name: '✓ Resource person', exact: true }).last().click();
       await page.getByRole('button', { name: 'Needs to know', exact: true }).last().click();
+      }
     }
     await screenshot('attendees');
     await click('Build the plan');
@@ -199,10 +202,12 @@ try {
     await click('Check everyone’s consent');
     await expectVisible('Ask everyone first');
     await screenshot('consent');
-    await page.getByRole('radio', { name: 'Consent', exact: true }).click();
+    await page.getByRole('radio', { name: 'Consent', exact: true }).first().click();
+    if (flow === 'decline') await page.getByRole('radio', { name: 'Declined', exact: true }).last().click();
     await click('Confirm consent and continue');
     await expectVisible('Live transcript and notes');
     await screenshot('live');
+    if (flow === 'decline' && await page.getByRole('button', { name: /Marcus Lee/ }).count()) throw new Error('Declined attendee can be selected as a note speaker.');
     if (flow === 'facilitator') {
       await click('Read opening');
       await click('Mute AI');
@@ -226,6 +231,32 @@ try {
     await screenshot('results');
     await click('Accept');
     await page.getByText('Accepted', { exact: true }).filter({ visible: true }).waitFor({ state: 'visible' });
+    if (flow === 'stale') {
+      const sourcePost = responses.find(r => /\/sessions\/[^/]+\/transcript$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok());
+      if (!sourcePost) throw new Error('Original source segment was not acknowledged.');
+      const original = sourcePost.request().postDataJSON().segments[0];
+      const authorization = sourcePost.request().headers().authorization;
+      if (!authorization) throw new Error('Missing fake-server session for source revision.');
+      const correction = await fetch(sourcePost.url(), { method: 'POST', headers: { Authorization: authorization, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ segments: [{ ...original, revision: original.revision + 1, text: 'Priya will confirm the revised shipping date.' }] }) });
+      if (!correction.ok) throw new Error(`Fake-server source revision failed (${correction.status}).`);
+      // Refresh through the app so the reviewer sees the stale proposal and must check the new source.
+      await click('Check speaker map');
+      await click('Confirm speaker map');
+      await expectVisible('The transcript changed. Check this again.');
+      if (await button('Accept').isEnabled()) throw new Error('Stale proposal was still acceptable.');
+      await click('Edit');
+      await expectVisible('Priya will confirm the revised shipping date.');
+      if (await button('Save proposed wording').isEnabled()) throw new Error('Stale proposal could be saved before checking sources.');
+      await click('Use the current sources');
+      await click('Save proposed wording');
+      await expectVisible('Priya will confirm the revised shipping date.');
+      await click('Accept');
+      await page.getByText('Accepted', { exact: true }).filter({ visible: true }).waitFor({ state: 'visible' });
+      const decisions = responses.filter(r => /\/proposals\/[^/]+\/decision$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok());
+      const revised = await decisions.at(-1).json();
+      if (!revised.sources?.some(ref => ref.revision === 2 && ref.quote === 'Priya will confirm the revised shipping date.')) throw new Error('Reaccepted proposal did not retain corrected source.');
+      console.log('PASS stale source review and reacceptance (http)');
+    }
     if (mode === 'http') {
       const commands = responses.filter(r => r.request().method() === 'POST' && r.ok());
       if (commands.length < 5) throw new Error('Advisor server commands were not acknowledged; check bundle data source and API URL.');
@@ -233,6 +264,20 @@ try {
       if (!decision || decision.request().postDataJSON().decision !== 'accept') throw new Error('Proposal acceptance was not acknowledged.');
       const accepted = await decision.json();
       if (accepted.state !== 'accepted' || !accepted.sources?.some(s => s.personKey)) throw new Error('Accepted proposal lacks confirmed speaker provenance.');
+      if (flow === 'decline') {
+        const consent = commands.find(r => /\/sessions\/[^/]+\/consent$/.test(new URL(r.url()).pathname));
+        const attendees = consent?.request().postDataJSON().attendees ?? [];
+        const allowed = attendees.find(a => a.state === 'consented');
+        const declined = attendees.find(a => a.state === 'declined');
+        if (attendees.length !== 2 || !allowed || !declined) throw new Error('Expected one consenting and one declining attendee.');
+        const note = commands.find(r => /\/sessions\/[^/]+\/transcript$/.test(new URL(r.url()).pathname));
+        const segment = note?.request().postDataJSON().segments?.[0];
+        if (segment?.personKey !== allowed.personKey || segment?.personKey === declined.personKey) throw new Error('The note was attributed to the wrong attendee.');
+        const finish = commands.find(r => /\/sessions\/[^/]+\/finish$/.test(new URL(r.url()).pathname));
+        const result = finish && await finish.json();
+        if (!result?.proposals?.length || result.proposals.some(p => p.sources.some(source => source.personKey === declined.personKey))) throw new Error('A proposal contains a declined attendee source.');
+        console.log('PASS declined attendee exclusion through sourced acceptance (http)');
+      }
       if (flow === 'facilitator') {
         const turns = commands.filter(r => /\/facilitator\/turn$/.test(new URL(r.url()).pathname));
         if (!turns.some(r => r.request().postDataJSON().trigger === 'opening')) throw new Error('Facilitator opening trigger was not acknowledged.');
@@ -241,8 +286,7 @@ try {
     console.log(`PASS ${flow === 'facilitator' ? 'facilitator' : 'advisor meeting'} through proposal acceptance (${mode})`);
     }
   }
-  if (['task', 'pulse', 'kickoff', 'setup'].includes(flow)) {
-    if (mode !== 'mock' && ['setup'].includes(flow)) throw new Error(`${flow} currently requires the mock fixture.`);
+  if (['task', 'pulse', 'wrapup', 'kickoff', 'setup'].includes(flow)) {
     await context.close();
     context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', colorScheme: theme });
     page = await context.newPage(); page.setDefaultTimeout(15000);
@@ -264,7 +308,16 @@ try {
         }
         await expectVisible('Here is what we heard');
         await screenshot('setup-review');
-        console.log('PASS setup answers reach proposal review (mock)');
+        for (let i = 0; i < setupQuestions.length; i++) await page.getByRole('button', { name: 'Confirm wording', exact: true }).first().click();
+        await click('Confirm these proposals');
+        await expectVisible('Confirmed proposals saved for review.');
+        if (mode === 'http') {
+          const confirmed = extraResponses.find(r => /\/setup\/[^/]+\/confirm$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok());
+          if (!confirmed) throw new Error('Setup confirmation was not acknowledged.');
+          const body = confirmed.request().postDataJSON();
+          if (body.proposals?.length !== setupQuestions.length || body.proposals.some(p => !p.quote || !p.source)) throw new Error('Setup confirmation lacks proposal provenance.');
+        }
+        console.log(`PASS setup proposals reviewed and confirmed (${mode})`);
       } else {
       await page.getByRole('button', { name: /^Executive kickoff,/ }).click();
       await page.getByRole('button', { name: /^Priya Shah,/ }).click();
@@ -294,9 +347,36 @@ try {
     } else {
       await page.goto(`${base}/mobile/enroll?t=${'d'.repeat(64)}`);
       await click('Connect this phone'); await click("Yes, that's me"); await click('Not now');
-      if (flow === 'task') {
+      if (flow === 'wrapup') {
+        if (mode !== 'http') throw new Error('Wrap-up E2E requires the fake HTTP fixture.');
+        await expectVisible('Monday dispatch review');
+        const wrapCard = page.getByText('Monday dispatch review', { exact: true }).first().locator('..');
+        await wrapCard.getByRole('button', { name: 'Review', exact: true }).click();
+        await expectVisible('I will check the dispatch queue before the next handoff.');
+        if (await page.getByText(/private IT credential checklist/i).count()) throw new Error('Another participant’s item was exposed.');
+        const detail = extraResponses.find(r => /\/confirmations\/50000000-0000-4000-8000-000000000002$/.test(new URL(r.url()).pathname) && r.ok());
+        if (!detail) throw new Error('Participant confirmation was not fetched.');
+        const view = await detail.json();
+        if (view.items?.length !== 1 || JSON.stringify(view).includes('private IT credential checklist')) throw new Error('Participant API exposed another person’s item.');
+        await page.getByRole('radio', { name: 'Confirm', exact: true }).click();
+        await click('Send review'); await expectVisible('Sent. Thank you.');
+        const confirmation = extraResponses.find(r => /\/confirmations\/[^/]+\/items\/[^/]+$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok());
+        if (!confirmation) throw new Error('Owner confirmation was not acknowledged.');
+        const body = confirmation.request().postDataJSON();
+        if (body.decision !== 'confirm' || !body.expectedVersion || !body.contentHash) throw new Error('Owner confirmation lacks version/hash.');
+        const pairing = await (await fetch(`${api}/dev/pairing-code`, { method: 'POST' })).json();
+        const paired = await fetch(`${api}/api/mobile/meetings/v1/advisor/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ pairingCode: pairing.pairingCode }) });
+        if (!paired.ok) throw new Error('Could not pair leader to check action status.');
+        const auth = await paired.json();
+        const result = await fetch(`${api}/api/mobile/meetings/v1/sessions/70000000-0000-4000-8000-000000000002/proposals`, { headers: { Authorization: `Bearer ${auth.accessToken}` } });
+        const proposals = await result.json();
+        const own = proposals.proposals?.find(p => p.id === '80000000-0000-4000-8000-000000000001');
+        const other = proposals.proposals?.find(p => p.id === '80000000-0000-4000-8000-000000000002');
+        if (!result.ok || own?.body?.status !== 'assigned' || other?.body?.status !== 'proposed') throw new Error('Owner confirmation did not assign only the participant’s action.');
+        console.log('PASS participant-only wrap-up and owner assignment (http)');
+      } else if (flow === 'task') {
         const count = 3;
-        if (mode === 'http') await click('Review');
+        if (mode === 'http') await page.getByText('Check 3 task cards', { exact: true }).locator('..').getByRole('button', { name: 'Review', exact: true }).click();
         else await page.goto(`${base}/confirmations/req-confirm-friday`);
         await expectVisible(`Task Card 1 of ${count}`); await screenshot('task-card', 'participant');
         await page.getByRole('radio', { name: 'This is right', exact: true }).click();

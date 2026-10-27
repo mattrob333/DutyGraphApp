@@ -16,14 +16,24 @@ const INDEX = "dg.companion.task-review.index";
 const key = (id: string) => `dg.companion.task-review.${id}`;
 export const cardVersions = (cards: TaskCardRecord[]) =>
   Object.fromEntries(cards.map((c) => [c.id, `${c.version}:${c.hash}`]));
-export async function loadTaskReview(id: string, cards: TaskCardRecord[]) {
+export async function loadTaskReview(
+  id: string,
+  cards: TaskCardRecord[],
+): Promise<TaskReviewDraft | null> {
   await writing.catch(() => {});
   const draft = await secureGetJson<TaskReviewDraft>(key(id));
-  if (
-    !draft ||
-    JSON.stringify(draft.versions) !== JSON.stringify(cardVersions(cards))
-  )
-    return null;
+  if (!draft) return null;
+  if (JSON.stringify(draft.versions) !== JSON.stringify(cardVersions(cards))) {
+    // Preserve the participant's note, but require a fresh choice on changed wording.
+    return {
+      choices: Object.fromEntries(
+        cards
+          .filter((c) => draft.choices[c.id]?.note)
+          .map((c) => [c.id, { note: draft.choices[c.id].note }]),
+      ),
+      versions: cardVersions(cards),
+    };
+  }
   return draft;
 }
 export async function loadReviewValue<T>(id: string) {
@@ -49,13 +59,30 @@ export function saveReviewValue(id: string, draft: unknown) {
 }
 export const saveTaskReview = (id: string, draft: TaskReviewDraft) =>
   saveReviewValue(id, draft);
-export async function clearTaskReview(id: string) {
-  await secureDelete(key(id));
+export function clearTaskReview(id: string, expected?: unknown) {
+  const owner = generation;
+  const next = writing
+    .catch(() => {})
+    .then(async () => {
+      if (owner !== generation) return;
+      if (expected !== undefined) {
+        const current = await secureGetJson<unknown>(key(id));
+        if (JSON.stringify(current) !== JSON.stringify(expected)) return;
+      }
+      await secureDelete(key(id));
+    });
+  writing = next;
+  return next;
 }
-export async function clearAllTaskReviews() {
+export function clearAllTaskReviews(): Promise<void> {
   generation++;
-  await writing.catch(() => {});
-  for (const id of (await secureGetJson<string[]>(INDEX)) ?? [])
-    await secureDelete(key(id));
-  await secureDelete(INDEX);
+  const next = writing
+    .catch(() => {})
+    .then(async () => {
+      for (const id of (await secureGetJson<string[]>(INDEX)) ?? [])
+        await secureDelete(key(id));
+      await secureDelete(INDEX);
+    });
+  writing = next;
+  return next;
 }

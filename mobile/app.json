@@ -113,6 +113,13 @@
         {
           "faceIDPermission": "Use Face ID to unlock your company meeting workspace."
         }
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "DutyGraph uses the camera only when you choose to scan a company pairing code.",
+          "microphonePermission": "DutyGraph records only after you choose voice or start a meeting with attendee consent. A visible indicator shows recording. Answers are reviewed before sending."
+        }
       ]
     ],
     "experiments": {

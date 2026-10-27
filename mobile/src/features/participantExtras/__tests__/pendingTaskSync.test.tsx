@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, jest } from "@jest/globals";
 import { act, render } from "@testing-library/react-native";
 import { AppState } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { CompanionApiError } from "@/types/domain";
 import { useSessionStore } from "@/state/session";
 import { usePendingTaskDecisionSync } from "../usePendingTaskDecisionSync";
 const mockRetry = jest.fn<() => Promise<{ acknowledged: boolean }[]>>();
@@ -25,6 +26,7 @@ beforeEach(() => {
   jest.useFakeTimers();
   useSessionStore.setState({ status: "signedOut" });
   mockRetry.mockReset();
+  mockClear.mockClear();
   mockRetry.mockResolvedValue([]);
   jest
     .spyOn(AppState, "addEventListener")
@@ -71,4 +73,34 @@ it("stays inactive without a participant and retries on launch, foreground and s
   });
   expect(mockRetry).toHaveBeenCalledTimes(3);
   await view.unmount();
+});
+
+it("ignores a late authentication failure from an older signed-in effect", async () => {
+  let rejectOld!: (error: unknown) => void;
+  mockRetry.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        rejectOld = reject;
+      }),
+  );
+  useSessionStore.setState({ status: "signedIn" });
+  const qc = new QueryClient({
+    defaultOptions: { queries: { gcTime: Infinity } },
+  });
+  await render(
+    <QueryClientProvider client={qc}>
+      <Sync />
+    </QueryClientProvider>,
+  );
+  await act(async () => {
+    useSessionStore.setState({ status: "signedOut" });
+  });
+  await act(async () => {
+    useSessionStore.setState({ status: "signedIn" });
+  });
+  await act(async () => {
+    rejectOld(new CompanionApiError("SESSION_ENDED", "Ended", 401, false));
+  });
+  expect(mockClear).not.toHaveBeenCalled();
+  expect(useSessionStore.getState().status).toBe("signedIn");
 });

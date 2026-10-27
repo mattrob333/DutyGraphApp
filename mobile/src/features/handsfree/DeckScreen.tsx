@@ -46,6 +46,8 @@ import { simulationFlags } from "@/state/simulation";
 import { useColors } from "@/theme";
 import type { QuestionSet } from "@/types/handsfree";
 import {
+  captureDraftOwner,
+  isDraftOwnerCurrent,
   newDraft,
   saveDraft,
   useDraft,
@@ -200,19 +202,25 @@ function DeckRun({
           ? "permission"
           : null;
 
+  const owner = useRef(captureDraftOwner()).current;
   const base = useRef(draft ?? newDraft(set, startMode));
   const onAnswers = useCallback(
     (answers: HandsFreeDraft["answers"], m: DeckMode) => {
+      if (!isDraftOwnerCurrent(owner)) return;
       const current =
         useDraftStore.getState().drafts[set.requestId] ?? base.current;
-      void saveDraft({ ...current, answers, mode: m });
+      if (
+        current.contentHash !== base.current.contentHash ||
+        current.startedAt !== base.current.startedAt
+      )
+        return;
+      void saveDraft({ ...current, answers, mode: m }, owner);
     },
-    [set.requestId],
+    [set.requestId, owner],
   );
-  const onDone = useCallback(
-    () => router.replace(reviewHref(set.requestId)),
-    [set.requestId],
-  );
+  const onDone = useCallback(() => {
+    if (isDraftOwnerCurrent(owner)) router.replace(reviewHref(set.requestId));
+  }, [set.requestId, owner]);
 
   const deckRepo = useMemo(
     () => ({

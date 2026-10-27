@@ -1,3 +1,4 @@
+import { saveLiveNote } from "./saveLiveNote";
 import React, { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, AppState, Platform, View } from "react-native";
 import { router, useLocalSearchParams, type Href } from "expo-router";
@@ -58,13 +59,15 @@ import type { CardAnswer } from "@/types/handsfree";
 import { useDeviceReadiness } from "./useDeviceReadiness";
 import { useSourcePlayback } from "./useSourcePlayback";
 import { createAdvisorVoiceOut } from "./voice";
+import { useRealtimeMeetingVoice } from "./useRealtimeMeetingVoice";
+import { realtimeCapability } from "@/features/voice/meeting/realtime/native";
+import { config } from "@/api/config";
 import { automaticFacilitatorTurn } from "@/features/voice/meeting/schedule";
 import type { FacilitatorLine } from "@/features/voice/meeting/facilitator";
 import { createLiveSpeech } from "@/features/voice/live";
 import {
   createNativeMeetingRecorder,
   MeetingTurnController,
-  TtsFacilitatorVoice,
 } from "@/features/voice/meeting";
 import { CardDeck } from "@/components/handsfree/CardDeck";
 import { useReducedMotion } from "@/components/voice/useReducedMotion";
@@ -857,6 +860,12 @@ export function PulseScreen() {
 export function StartScreen({ capture = false }: { capture?: boolean }) {
   const requestedMode = useLocalSearchParams<{ mode?: string }>().mode;
   const readiness = useDeviceReadiness();
+  const [voiceKind, setVoiceKind] = useState<"tts_lines" | "realtime">(
+    "tts_lines",
+  );
+  const [realtimeReady] = useState(() =>
+    realtimeCapability(config.facilitatorRealtime),
+  );
   const id = useMeetingId(),
     q = useAdvisorMeeting(id),
     [mode, setMode] = useState<MeetingSession["mode"]>(
@@ -889,6 +898,35 @@ export function StartScreen({ capture = false }: { capture?: boolean }) {
             ? "Get quiet prompts while you lead the meeting."
             : "DutyGraph speaks at set moments. You stay in control."}
       </Notice>
+      {mode === "facilitator" ? (
+        <>
+          <Text variant="metaStrong">Facilitator voice</Text>
+          <SegmentedControl
+            options={[
+              { value: "tts_lines", label: "Spoken lines" },
+              {
+                value: "realtime",
+                label: "Realtime",
+                disabled:
+                  !realtimeReady.available ||
+                  getAdvisorRepository().kind === "mock",
+              },
+            ]}
+            value={voiceKind}
+            onChange={(value) =>
+              setVoiceKind(value as "tts_lines" | "realtime")
+            }
+          />
+          <Notice>
+            {voiceKind === "realtime"
+              ? "Everyone must consent. The connection pauses after 15 minutes or its duration limit."
+              : "Spoken lines are the default. The controller chooses when to speak."}
+          </Notice>
+          {!realtimeReady.available ? (
+            <Notice>{realtimeReady.reason}</Notice>
+          ) : null}
+        </>
+      ) : null}
       <Card>
         <Text variant="bodyStrong">Before you start</Text>
         <Notice>
@@ -897,7 +935,7 @@ export function StartScreen({ capture = false }: { capture?: boolean }) {
         </Notice>
         <Notice
           tone={
-            readiness.battery !== null && readiness.battery < 0.2
+            readiness.battery !== null && readiness.battery < 0.3
               ? "amber"
               : "muted"
           }
@@ -905,11 +943,11 @@ export function StartScreen({ capture = false }: { capture?: boolean }) {
           Battery:{" "}
           {readiness.battery === null
             ? "Not available in this preview"
-            : `${Math.round(readiness.battery * 100)}%${readiness.battery < 0.2 ? " · Connect power before recording" : ""}`}
+            : `${Math.round(readiness.battery * 100)}%${readiness.battery < 0.3 ? " · Connect power before recording" : ""}`}
         </Notice>
         <Notice
           tone={
-            readiness.spaceMB !== null && readiness.spaceMB < 100
+            readiness.spaceMB !== null && readiness.spaceMB < 500
               ? "amber"
               : "muted"
           }
@@ -917,10 +955,12 @@ export function StartScreen({ capture = false }: { capture?: boolean }) {
           Free space:{" "}
           {readiness.spaceMB === null
             ? "Not available in this preview"
-            : `${readiness.spaceMB} MB${readiness.spaceMB < 100 ? " · Free space before recording" : ""}`}
+            : `${readiness.spaceMB} MB${readiness.spaceMB < 500 ? " · Free space before recording" : ""}`}
         </Notice>
         <Text variant="meta">
-          Budget limit: {mode === "facilitator" ? "$15" : "$2"} per meeting.
+          Default budget:{" "}
+          {mode === "facilitator" && voiceKind === "realtime" ? "$15" : "$2"}{" "}
+          per meeting. The server confirms this session’s limit after start.
           Recording continues if voice reaches its limit.
         </Text>
       </Card>
@@ -936,8 +976,8 @@ export function StartScreen({ capture = false }: { capture?: boolean }) {
         kind="primary"
         loading={cmd.busy}
         onPress={async () => {
-          const s = await cmd.run(["start", id, mode], (r, k) =>
-            r.start(id, mode, k),
+          const s = await cmd.run(["start", id, mode, voiceKind], (r, k) =>
+            r.start(id, mode, k, voiceKind),
           );
           if (s) {
             activate(id, s.id);
@@ -1055,27 +1095,68 @@ export function LiveScreen() {
     }),
   ).current;
   const [voice] = useState(createAdvisorVoiceOut);
+  const realtimeSelected = q.data?.voice === "realtime";
+  const realtime = useRealtimeMeetingVoice({
+    session: q.data,
+    meeting: meeting.data,
+    lines: voice,
+    onSpeech: (speaking) => {
+      lastWordsAt.current = Date.now();
+      if (speaking) turns.speechDetected();
+    },
+    onTranscript: (text) => {
+      setNote(text);
+      lastWordsAt.current = Date.now();
+    },
+    onInputStopped: () => setListening(false),
+  });
   const [deferredLine, setDeferredLine] = useState<FacilitatorLine | null>(
     null,
   );
-  const turns = useRef(
-    new MeetingTurnController(new TtsFacilitatorVoice(voice), (v) => {
-      playbackActive.current = false;
-      lastPlaybackEnd.current = null;
-      setLine(v.text);
-      setDeferredLine(v);
-    }),
-  ).current;
+  const [turns] = useState(
+    () =>
+      new MeetingTurnController(realtime.voice, (v) => {
+        playbackActive.current = false;
+        lastPlaybackEnd.current = null;
+        setLine(v.text);
+        setDeferredLine(v);
+      }),
+  );
   const native = useRef<ReturnType<typeof createNativeMeetingRecorder> | null>(
     null,
   );
+  const mediaStarting = useRef(false);
+  const [mediaBusy, setMediaBusy] = useState(false);
+  const allConsented =
+    !!q.data?.consents.length &&
+    q.data.consents.every((person) => person.state === "consented");
+  const recordingAllowed = useRef(allConsented);
+  recordingAllowed.current = allConsented;
+  useEffect(() => {
+    if (allConsented) return;
+    void speech.stop();
+    setListening(false);
+    realtime.realtime.suspend();
+    const recorder = native.current;
+    if (recorder)
+      void recorder
+        .stop()
+        .then(() => {
+          setRecording(false);
+          setPaused(false);
+        })
+        .catch((error) => cmd.setError(error));
+  }, [allConsented]);
   const mock = getAdvisorRepository().kind === "mock";
   const lastWordsAt = useRef(Date.now());
   const lastCoachAt = useRef(0);
   const lastCoachTopic = useRef<string | null>(null);
   const autoTurnKeys = useRef(new Set<string>());
   const roomVoiceAllowed = useRef(false);
-  roomVoiceAllowed.current = listening && !stopped;
+  roomVoiceAllowed.current =
+    listening &&
+    !stopped &&
+    (!realtimeSelected || realtime.realtime.inputActive);
   const lastPlaybackEnd = useRef<number | null>(null);
   const playbackActive = useRef(false);
   const activeLineId = useRef<string | null>(null);
@@ -1083,7 +1164,7 @@ export function LiveScreen() {
   const [coachPaused, setCoachPaused] = useState(false);
   useEffect(
     () =>
-      voice.subscribe((event) => {
+      realtime.subscribe((event) => {
         if (event.type === "start") {
           activeLineId.current = event.lineId;
           playbackActive.current = true;
@@ -1095,15 +1176,42 @@ export function LiveScreen() {
           lastPlaybackEnd.current = event.type === "end" ? Date.now() : null;
         }
       }),
-    [voice],
+    [realtime.subscribe],
   );
   useEffect(() => {
     if (!listening) {
       turns.skip();
+      if (realtime.realtime.inputActive) realtime.realtime.suspend();
       playbackActive.current = false;
       lastPlaybackEnd.current = null;
     }
   }, [listening]);
+  useEffect(() => {
+    if (!sid) return;
+    void loadAdvisorDraft<boolean>(`ai-stopped.${sid}`).then((value) => {
+      if (value) {
+        turns.stop();
+        realtime.realtime.suspend();
+        setStopped(true);
+      }
+    });
+  }, [sid, turns]);
+  useEffect(() => {
+    const log = q.data?.log ?? [];
+    if (log.some((item) => item.kind === "ai_stopped")) {
+      turns.stop();
+      realtime.realtime.suspend();
+      setStopped(true);
+    }
+    const mute = log
+      .filter((item) => item.kind === "ai_muted" || item.kind === "ai_unmuted")
+      .at(-1);
+    if (mute) {
+      const isMuted = mute.kind === "ai_muted";
+      turns.mute(isMuted);
+      setMuted(isMuted);
+    }
+  }, [q.data?.log, turns]);
   useEffect(() => {
     const session = q.data,
       definition = meeting.data;
@@ -1194,7 +1302,7 @@ export function LiveScreen() {
     return () => {
       clearInterval(timer);
       turns.stop();
-      void voice.dispose();
+      void realtime.voice.dispose();
       void speech.stop();
       if (native.current) void native.current.stop();
     };
@@ -1259,6 +1367,7 @@ export function LiveScreen() {
       : 0;
   const finish = async () => {
     turns.stop();
+    realtime.realtime.suspend();
     setStopped(true);
     await speech.stop();
     setListening(false);
@@ -1293,23 +1402,16 @@ export function LiveScreen() {
       cmd.setError(new Error("Choose a consenting speaker first."));
       return;
     }
-    const segment = {
-      id: newId(),
-      revision: 1,
-      sessionId: sid,
-      startMs: elapsed * 1000,
-      endMs: elapsed * 1000 + 1,
-      text: note.trim(),
-      speakerCluster: `S${index + 1}`,
-      source: "live" as const,
-      committed: true,
-    };
-    const saved = await cmd.run(["note", segment], async (r, k) => {
-      await r.transcript(sid, [segment], k);
-      return true;
-    });
+    const submitted = note.trim();
+    const saved = await cmd.run(
+      ["note", sid, submitted, speaker],
+      async (r, k) => {
+        await saveLiveNote(r, sid, submitted, speaker, elapsed * 1000, k);
+        return true;
+      },
+    );
     if (saved) {
-      setNote("");
+      setNote((current) => (current.trim() === submitted ? "" : current));
       speech.reset?.();
       message("Note saved for review.");
     }
@@ -1328,6 +1430,21 @@ export function LiveScreen() {
   return (
     <Screen>
       <Heading>{m.title}</Heading>
+      {realtimeSelected ? (
+        <>
+          <Notice tone={realtime.status === "ready" ? "sage" : "amber"}>
+            Realtime room audio: {realtime.status}. {realtime.message}
+          </Notice>
+          <Notice>
+            Room audio is sent to the voice provider while this input is on.
+            Native recording and realtime input run separately.
+          </Notice>
+          <Text variant="small" color="muted">
+            Session voice budget: ${(s.budgetCents / 100).toFixed(2)} ·
+            Server-reported use: ${(s.spentCents / 100).toFixed(2)}
+          </Text>
+        </>
+      ) : null}
       {recording ? (
         <RecordingIndicator
           state={
@@ -1353,20 +1470,48 @@ export function LiveScreen() {
         · {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, "0")}{" "}
         elapsed
       </Text>
+      {!allConsented ? (
+        <Notice tone="amber">
+          Everyone must consent before room audio is captured. You can keep
+          typed notes from consenting people.
+        </Notice>
+      ) : null}
       {!mock && !recording && Platform.OS !== "web" ? (
         <Button
           label="Start audio recording"
+          disabled={
+            !allConsented ||
+            realtime.realtime.inputActive ||
+            realtime.status === "connecting" ||
+            mediaBusy
+          }
           onPress={async () => {
+            if (
+              !recordingAllowed.current ||
+              mediaStarting.current ||
+              realtime.realtime.inputActive ||
+              realtime.status === "connecting"
+            )
+              return;
+            mediaStarting.current = true;
+            setMediaBusy(true);
             try {
               native.current ??= createNativeMeetingRecorder(sid, (input) =>
                 getAdvisorRepository().uploadSegment(input),
               );
               await native.current.start();
+              if (!recordingAllowed.current) {
+                await native.current.stop();
+                return;
+              }
               setRecording(true);
               message("Recording started.");
             } catch (e) {
               setPaused(native.current?.status !== "recording");
               cmd.setError(e);
+            } finally {
+              mediaStarting.current = false;
+              setMediaBusy(false);
             }
           }}
         />
@@ -1383,14 +1528,37 @@ export function LiveScreen() {
               ? "Resume recording"
               : "Pause recording"
           }
+          disabled={
+            !allConsented ||
+            realtime.realtime.inputActive ||
+            realtime.status === "connecting" ||
+            mediaBusy
+          }
           onPress={async () => {
+            if (
+              !recordingAllowed.current ||
+              mediaStarting.current ||
+              realtime.realtime.inputActive ||
+              realtime.status === "connecting"
+            )
+              return;
+            mediaStarting.current = true;
+            setMediaBusy(true);
             try {
               if (paused || native.current?.status === "paused")
                 await native.current?.resume();
               else await native.current?.pause();
+              if (!recordingAllowed.current) {
+                await native.current?.stop();
+                setRecording(false);
+                return;
+              }
               setPaused(native.current?.status === "paused");
             } catch (e) {
               cmd.setError(e);
+            } finally {
+              mediaStarting.current = false;
+              setMediaBusy(false);
             }
           }}
         />
@@ -1451,6 +1619,9 @@ export function LiveScreen() {
               onPress={() => {
                 turns.mute(!muted);
                 setMuted(!muted);
+                void cmd.run(["ai-mute", sid, !muted], (repository, key) =>
+                  repository.control(sid, muted ? "unmute" : "mute", key),
+                );
               }}
             />
             {deferredLine ? (
@@ -1484,13 +1655,23 @@ export function LiveScreen() {
                 playbackActive.current = false;
                 lastPlaybackEnd.current = null;
                 setDeferredLine(null);
+                void cmd.run(["ai-skip", sid, clock], (repository, key) =>
+                  repository.control(sid, "skip", key),
+                );
               }}
             />
             <Button
               label="Stop AI"
               onPress={() => {
                 turns.stop();
+                realtime.realtime.suspend();
                 setStopped(true);
+                void saveAdvisorDraft(`ai-stopped.${sid}`, true).catch(
+                  cmd.setError,
+                );
+                void cmd.run(["ai-stop", sid], (repository, key) =>
+                  repository.control(sid, "stop", key),
+                );
               }}
             />
             <Button
@@ -1509,6 +1690,7 @@ export function LiveScreen() {
         label="Update recording consent"
         onPress={async () => {
           turns.skip();
+          realtime.realtime.suspend();
           await speech.stop();
           await native.current?.pause();
           go(sessionRoute(id, "consent", sid));
@@ -1558,21 +1740,55 @@ export function LiveScreen() {
         }}
       />
       <Button
-        label={listening ? "Stop listening" : "Use voice for this note"}
-        disabled={!speaker || speech.kind === "unavailable"}
+        label={
+          realtimeSelected
+            ? listening
+              ? "Stop realtime room audio"
+              : "Start realtime room audio"
+            : listening
+              ? "Stop listening"
+              : "Use voice for this note"
+        }
+        disabled={
+          !allConsented ||
+          mediaBusy ||
+          !speaker ||
+          (realtimeSelected
+            ? !realtime.realtime.isAvailable ||
+              (recording && native.current?.status === "recording") ||
+              s.consents.some((c) => c.state !== "consented") ||
+              stopped ||
+              muted
+            : speech.kind === "unavailable")
+        }
         onPress={async () => {
+          if (!recordingAllowed.current) return;
           if (listening) {
+            realtime.realtime.suspend();
             await speech.stop();
             setListening(false);
             return;
           }
+          if (mediaStarting.current) return;
+          mediaStarting.current = true;
+          setMediaBusy(true);
           turns.skip();
           speech.reset?.();
           try {
+            if (realtimeSelected) {
+              await realtime.voice.prepare(sid);
+              if (!recordingAllowed.current) {
+                realtime.realtime.suspend();
+                return;
+              }
+              setListening(true);
+              return;
+            }
             await speech.start(
               { lang: "en-US" },
               {
                 onText: (text) => {
+                  if (!recordingAllowed.current) return;
                   setNote(text);
                   turns.speechDetected();
                   lastWordsAt.current = Date.now();
@@ -1585,15 +1801,38 @@ export function LiveScreen() {
                 },
               },
             );
+            if (!recordingAllowed.current) {
+              await speech.stop();
+              return;
+            }
             setListening(true);
-          } catch {
+          } catch (error) {
             cmd.setError(
-              new Error("Voice is unavailable. Type your note instead."),
+              error instanceof Error
+                ? error
+                : new Error("Voice is unavailable. Type your note instead."),
             );
+          } finally {
+            mediaStarting.current = false;
+            setMediaBusy(false);
           }
         }}
       />
-      {speech.kind === "unavailable" ? (
+      {realtimeSelected &&
+      recording &&
+      native.current?.status === "recording" ? (
+        <Notice tone="amber">
+          Pause native recording before starting realtime room audio. Resume
+          recording after you stop realtime input.
+        </Notice>
+      ) : null}
+      {realtimeSelected && s.consents.some((c) => c.state !== "consented") ? (
+        <Notice tone="amber">
+          Realtime room audio requires every attendee’s consent. Keep typed
+          notes for consenting speakers instead.
+        </Notice>
+      ) : null}
+      {speech.kind === "unavailable" && !realtimeSelected ? (
         <Notice>
           Device live transcription is unavailable here. Type instead.
         </Notice>
@@ -1972,7 +2211,12 @@ export function ResultsScreen() {
             )}
             onSource={(segmentId) => {
               const segment = q.data.transcript.find((t) => t.id === segmentId);
-              if (segment) void playback.play(sid, segment.startMs);
+              if (segment)
+                void playback.play(
+                  sid,
+                  segment.startMs,
+                  segment.source === "batch",
+                );
             }}
             onDecide={(decision) =>
               cmd.run(["decision", p.id, p.version, decision], (r, k) =>

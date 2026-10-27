@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { invalidateParticipantRequests } from "@/api/http/client";
+import { tokenStore } from "@/storage/tokens";
 import { AppState } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -20,18 +22,30 @@ export function usePendingTaskDecisionSync() {
     const run = async () => {
       if (!alive || busy || useSessionStore.getState().status !== "signedIn")
         return;
+      const session = useSessionStore.getState();
       busy = true;
       try {
         const results = await repo.retryPendingTaskDecisions();
-        if (alive && results.some((r) => r.acknowledged)) {
+        if (
+          alive &&
+          useSessionStore.getState() === session &&
+          results.some((r) => r.acknowledged)
+        ) {
           void qc.invalidateQueries({ queryKey: qk.today });
           void qc.invalidateQueries({ queryKey: ["task-check"] });
         }
       } catch (e) {
-        if (e instanceof CompanionApiError && e.status === 401) {
-          await clearPendingTaskDecisions();
-          await useSessionStore.getState().signOut();
-          qc.clear();
+        if (
+          alive &&
+          useSessionStore.getState() === session &&
+          e instanceof CompanionApiError &&
+          e.status === 401
+        ) {
+          useSessionStore.setState({ status: "signedOut" });
+          const ended = useSessionStore.getState();
+          invalidateParticipantRequests();
+          await Promise.all([clearPendingTaskDecisions(), tokenStore.clear()]);
+          if (useSessionStore.getState() === ended) qc.clear();
         }
       } finally {
         busy = false;

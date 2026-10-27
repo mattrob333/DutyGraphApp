@@ -1,0 +1,7 @@
+{
+  "name": "dutygraph-pcm-mic",
+  "version": "0.1.0",
+  "description": "Foreground-only raw microphone PCM frames for DutyGraph live transcription",
+  "license": "UNLICENSED",
+  "private": true
+}

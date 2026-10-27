@@ -9,13 +9,26 @@
  * written to secure storage (it holds the person's own words). A draft whose questions changed on
  * the server (other content hash or keys) is dropped rather than applied to different questions.
  */
-import { useEffect, useState } from 'react';
-import { create } from 'zustand';
-import type { DeckMode } from '@shared/hands-free/deck';
-import { secureDelete, secureGetJson, secureSetJson } from '@/storage/secure';
-import type { CardAnswer, QuestionKey, QuestionSet, UnderstoodAnswer } from '@/types/handsfree';
+import { useEffect, useState } from "react";
+import { create } from "zustand";
+import type { DeckMode } from "@shared/hands-free/deck";
+import { secureDelete, secureGetJson, secureSetJson } from "@/storage/secure";
+import type {
+  CardAnswer,
+  QuestionKey,
+  QuestionSet,
+  UnderstoodAnswer,
+} from "@/types/handsfree";
+
+const OWNER = Symbol("hands-free draft owner");
+let generation = 0;
+let writes: Promise<void> = Promise.resolve();
+export type DraftOwner = number;
+export const captureDraftOwner = (): DraftOwner => generation;
+export const isDraftOwnerCurrent = (owner: DraftOwner) => owner === generation;
 
 export type HandsFreeDraft = {
+  [OWNER]?: DraftOwner;
   v: 1;
   requestId: string;
   contentHash: string;
@@ -35,7 +48,7 @@ export type HandsFreeDraft = {
 
 const storageKey = (requestId: string) => `dg.companion.handsfree.${requestId}`;
 /** Request ids with a draft in storage, so logout can find them. */
-const INDEX = 'dg.companion.handsfree.index';
+const INDEX = "dg.companion.handsfree.index";
 /** Ids known to be in the index in this run (saves are frequent; the index is read once per id). */
 const indexed = new Set<string>();
 
@@ -61,13 +74,19 @@ type DraftState = {
 export const useDraftStore = create<DraftState>()((set) => ({
   drafts: {},
   put: (d) => set((s) => ({ drafts: { ...s.drafts, [d.requestId]: d } })),
-  drop: (requestId) => set((s) => ({ drafts: { ...s.drafts, [requestId]: undefined } })),
+  drop: (requestId) =>
+    set((s) => ({ drafts: { ...s.drafts, [requestId]: undefined } })),
   reset: () => set({ drafts: {} }),
 }));
 
 /** A new draft for a question set: nothing answered yet. */
-export function newDraft(set: QuestionSet, mode: DeckMode, now = new Date()): HandsFreeDraft {
+export function newDraft(
+  set: QuestionSet,
+  mode: DeckMode,
+  now = new Date(),
+): HandsFreeDraft {
   return {
+    [OWNER]: generation,
     v: 1,
     requestId: set.requestId,
     contentHash: set.contentHash,
@@ -80,7 +99,10 @@ export function newDraft(set: QuestionSet, mode: DeckMode, now = new Date()): Ha
 }
 
 /** True when a saved draft still fits these questions. */
-export function draftFits(d: HandsFreeDraft | null | undefined, set: QuestionSet): d is HandsFreeDraft {
+export function draftFits(
+  d: HandsFreeDraft | null | undefined,
+  set: QuestionSet,
+): d is HandsFreeDraft {
   return (
     !!d &&
     d.v === 1 &&
@@ -93,7 +115,12 @@ export function draftFits(d: HandsFreeDraft | null | undefined, set: QuestionSet
 }
 
 /** Reads the draft from memory, else from secure storage. Null when there is none or it no longer fits. */
-export async function loadDraft(set: QuestionSet): Promise<HandsFreeDraft | null> {
+export async function loadDraft(
+  set: QuestionSet,
+): Promise<HandsFreeDraft | null> {
+  const owner = generation;
+  await writes.catch(() => {});
+  if (!isDraftOwnerCurrent(owner)) return null;
   const mem = useDraftStore.getState().drafts[set.requestId];
   if (mem) return draftFits(mem, set) ? mem : null;
   let stored: HandsFreeDraft | null = null;
@@ -102,43 +129,103 @@ export async function loadDraft(set: QuestionSet): Promise<HandsFreeDraft | null
   } catch {
     stored = null;
   }
-  if (!draftFits(stored, set)) return null;
+  if (!isDraftOwnerCurrent(owner) || !draftFits(stored, set)) return null;
+  stored = { ...stored, [OWNER]: owner };
   useDraftStore.getState().put(stored);
   return stored;
 }
 
-/** Saves the whole draft (memory now, storage in the background). */
-export function saveDraft(d: HandsFreeDraft): Promise<void> {
-  useDraftStore.getState().put(d);
-  return secureSetJson(storageKey(d.requestId), d)
-    .then(() => addToIndex(d.requestId))
+/** Saves only within the session that created this draft or callback. Symbols never enter JSON storage. */
+export function saveDraft(
+  d: HandsFreeDraft,
+  owner: DraftOwner = d[OWNER] ?? generation,
+): Promise<void> {
+  if (
+    !isDraftOwnerCurrent(owner) ||
+    (d[OWNER] !== undefined && d[OWNER] !== owner)
+  )
+    return Promise.resolve();
+  const next = { ...d, [OWNER]: owner };
+  useDraftStore.getState().put(next);
+  const saving = writes
+    .catch(() => {})
+    .then(async () => {
+      if (!isDraftOwnerCurrent(owner)) return;
+      await secureSetJson(storageKey(next.requestId), next);
+      if (!isDraftOwnerCurrent(owner)) return;
+      await addToIndex(next.requestId);
+    })
     .catch(() => {});
+  writes = saving;
+  return saving;
 }
 
-/** Changes part of the draft already in memory. Does nothing when there is none. */
-export function updateDraft(requestId: string, patch: Partial<HandsFreeDraft>): Promise<void> {
+/** A delayed understanding, edit or callback must never patch a replacement session's draft. */
+export function updateDraft(
+  requestId: string,
+  patch: Partial<HandsFreeDraft>,
+  owner: DraftOwner = generation,
+  expectedContentHash?: string,
+): Promise<void> {
+  if (!isDraftOwnerCurrent(owner)) return Promise.resolve();
   const d = useDraftStore.getState().drafts[requestId];
-  if (!d) return Promise.resolve();
-  return saveDraft({ ...d, ...patch });
+  if (
+    !d ||
+    (expectedContentHash !== undefined && d.contentHash !== expectedContentHash)
+  )
+    return Promise.resolve();
+  return saveDraft({ ...d, ...patch }, owner);
 }
 
-/** After the server acknowledged the send. */
-export function clearDraft(requestId: string): Promise<void> {
+/** After acknowledgement; a prior session's late acknowledgement cannot erase a new draft. */
+export function clearDraft(
+  requestId: string,
+  owner: DraftOwner = generation,
+  expectedContentHash?: string,
+): Promise<void> {
+  if (!isDraftOwnerCurrent(owner)) return Promise.resolve();
+  const current = useDraftStore.getState().drafts[requestId];
+  if (
+    expectedContentHash !== undefined &&
+    current &&
+    current.contentHash !== expectedContentHash
+  )
+    return Promise.resolve();
+  const clearing = writes
+    .catch(() => {})
+    .then(async () => {
+      if (isDraftOwnerCurrent(owner)) await secureDelete(storageKey(requestId));
+    })
+    .catch(() => {});
+  writes = clearing;
   useDraftStore.getState().drop(requestId);
-  return secureDelete(storageKey(requestId)).catch(() => {});
+  return clearing;
 }
 
-/** Logout: every draft holds the person's own words, so they leave the phone with the session. */
-export async function clearAllDrafts(): Promise<void> {
-  const ids = new Set([...(await readIndex()), ...indexed, ...Object.keys(useDraftStore.getState().drafts)]);
+/** Invalidate callbacks immediately, then serialize deletion before any replacement session writes. */
+export function clearAllDrafts(): Promise<void> {
+  generation++;
+  const priorIds = new Set([
+    ...indexed,
+    ...Object.keys(useDraftStore.getState().drafts),
+  ]);
+  const clearing = writes
+    .catch(() => {})
+    .then(async () => {
+      const ids = new Set([...(await readIndex()), ...priorIds]);
+      for (const id of ids) await secureDelete(storageKey(id)).catch(() => {});
+      await secureDelete(INDEX).catch(() => {});
+    });
+  writes = clearing;
   useDraftStore.getState().reset();
   indexed.clear();
-  for (const id of ids) await secureDelete(storageKey(id)).catch(() => {});
-  await secureDelete(INDEX).catch(() => {});
+  return clearing;
 }
 
 /** The draft for a question set once loaded: `undefined` while loading, `null` when there is none. */
-export function useDraft(set: QuestionSet | undefined): HandsFreeDraft | null | undefined {
+export function useDraft(
+  set: QuestionSet | undefined,
+): HandsFreeDraft | null | undefined {
   const mem = useDraftStore((s) => (set ? s.drafts[set.requestId] : undefined));
   const [loaded, setLoaded] = useState<string | null>(null);
   useEffect(() => {

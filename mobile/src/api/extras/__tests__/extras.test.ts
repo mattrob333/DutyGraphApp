@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 import { HttpParticipantExtrasRepository, pulseQuestionSet } from "../http";
-import { clearPendingTaskDecisions, pendingTaskDecisions } from "../pending";
+import {
+  clearPendingTaskDecisions,
+  pendingTaskDecisions,
+  saveTaskDecision,
+} from "../pending";
 import type { ApiClient } from "@/api/http/client";
 import { CompanionApiError } from "@/types/domain";
 import type { TaskDecisionInput } from "../types";
@@ -165,4 +169,50 @@ it("rejects cross-origin audio URLs before bearer headers can be used", async ()
   await expect(
     repo.getVoiceLines({ lines: [{ id: "q1", text: "A question" }] }),
   ).rejects.toMatchObject({ code: "BAD_RESPONSE" });
+});
+
+it("stops a retry snapshot at logout and preserves the replacement queue", async () => {
+  await saveTaskDecision(input);
+  await saveTaskDecision({
+    ...input,
+    taskCardId: "old-second",
+    idempotencyKey: "old-second-key",
+  });
+  let finish!: () => void;
+  const post = jest.fn(
+    () =>
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const repo = new HttpParticipantExtrasRepository(
+    { post } as unknown as ApiClient,
+    "https://dev.test",
+  );
+  const running = repo.retryPendingTaskDecisions();
+  for (let i = 0; i < 20 && !post.mock.calls.length; i++)
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  await clearPendingTaskDecisions();
+  const replacement = {
+    ...input,
+    taskCardId: "new-person-card",
+    idempotencyKey: "new-person-key",
+  };
+  await saveTaskDecision(replacement);
+  finish();
+  await running;
+  expect(post).toHaveBeenCalledTimes(1);
+  expect(await pendingTaskDecisions()).toEqual([replacement]);
+});
+it("does not persist or send a decision suspended before logout", async () => {
+  const post = jest.fn();
+  const repo = new HttpParticipantExtrasRepository(
+    { post } as unknown as ApiClient,
+    "https://dev.test",
+  );
+  const outcome = repo.decideTaskCard(input).catch((e) => e);
+  await clearPendingTaskDecisions();
+  expect(await outcome).toMatchObject({ code: "SESSION_CHANGED" });
+  expect(post).not.toHaveBeenCalled();
+  expect(await pendingTaskDecisions()).toEqual([]);
 });

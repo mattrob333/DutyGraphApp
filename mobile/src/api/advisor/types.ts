@@ -23,6 +23,8 @@ export type {
   SetupProposal,
   ClosingItem,
 };
+/** Explicit attribution is an input instruction, never inferred from a speaker cluster. */
+export type TranscriptInput = TranscriptSegment & { personKey?: string };
 export type Person = {
   id: string;
   name: string;
@@ -95,7 +97,13 @@ export interface AdvisorRepository {
     id: string,
     mode: MeetingSession["mode"],
     key: string,
+    voice?: "tts_lines" | "realtime",
   ): Promise<MeetingSession>;
+  realtime(
+    id: string,
+    input: { sdp: string; summary?: string },
+    key: string,
+  ): Promise<import("@/features/voice/meeting/realtime/types").RealtimeGrant>;
   session(id: string): Promise<SessionDetail>;
   consent(
     id: string,
@@ -104,7 +112,7 @@ export interface AdvisorRepository {
   ): Promise<MeetingSession>;
   transcript(
     id: string,
-    segments: TranscriptSegment[],
+    segments: TranscriptInput[],
     key: string,
   ): Promise<void>;
   coach(id: string, key: string): Promise<Coach>;
@@ -115,6 +123,11 @@ export interface AdvisorRepository {
     key: string,
   ): Promise<{ text: string; action: string; promptVersion: string }>;
   state(id: string, to: string, key: string): Promise<void>;
+  control(
+    id: string,
+    control: "mute" | "unmute" | "stop" | "skip",
+    key: string,
+  ): Promise<void>;
   topic(id: string, topicId: string | null, key: string): Promise<void>;
   uploadSegment(input: {
     sessionId: string;

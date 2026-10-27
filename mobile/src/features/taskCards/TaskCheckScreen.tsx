@@ -44,7 +44,16 @@ export function TaskCheckScreen({ requestId }: { requestId: string }) {
   if (q.isPending) return <LoadingState label="Opening your Task Cards…" />;
   if (q.isError || !q.data)
     return <ErrorState error={q.error} onRetry={() => q.refetch()} />;
-  return <TaskCheckRun requestId={requestId} cards={q.data} />;
+  const revision = JSON.stringify(
+    q.data.map((c) => [c.id, c.version, c.hash, c.needsAttestation]),
+  );
+  return (
+    <TaskCheckRun
+      key={`${requestId}:${revision}`}
+      requestId={requestId}
+      cards={q.data}
+    />
+  );
 }
 
 function TaskCheckRun({
@@ -193,18 +202,19 @@ function TaskCheckRun({
       if (!outgoing.length)
         throw new Error("Choose a response before you send.");
       inputs.current = outgoing;
-      await saveTaskReview(requestId, {
+      const savedReview = {
         choices,
         inputs: outgoing,
         versions: cardVersions(cards),
-      });
+      };
+      await saveTaskReview(requestId, savedReview);
       const results = [];
       for (const input of outgoing)
         results.push(await repo.decideTaskCard(input));
       if (results.some((r) => r.pending)) setPending(true);
       else {
         setSent(true);
-        await clearTaskReview(requestId);
+        await clearTaskReview(requestId, savedReview);
         void qc.invalidateQueries({ queryKey: qk.today });
       }
     } catch (e) {
@@ -255,7 +265,7 @@ function TaskCheckRun({
       <Screen>
         <Heading>
           {cards.length
-            ? "Your Task Cards are already confirmed"
+            ? "Your Task Cards are already reviewed"
             : "No Task Cards to review"}
         </Heading>
         <Button
@@ -354,7 +364,7 @@ function TaskCheckRun({
               {TASK_CHOICES.find((x) => x.value === choices[c.id]?.decision)
                 ?.label ??
                 (!c.needsAttestation
-                  ? "Already confirmed"
+                  ? "Already reviewed"
                   : "Choose a response")}
             </Text>
             {choices[c.id]?.note && choices[c.id]?.decision !== "correct" ? (

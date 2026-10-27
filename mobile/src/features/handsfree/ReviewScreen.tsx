@@ -35,6 +35,8 @@ import { CompanionApiError } from "@/types/domain";
 import type { QuestionKey, QuestionSet } from "@/types/handsfree";
 import { newIdempotencyKey } from "@/utils/id";
 import {
+  captureDraftOwner,
+  isDraftOwnerCurrent,
   clearDraft,
   updateDraft,
   useDraft,
@@ -78,6 +80,8 @@ function ReviewRun({
 }) {
   const repo = useRepository();
   const backups = useReviewBackups(set);
+  const owner = useRef(captureDraftOwner()).current;
+  const askingKey = `${owner}:${set.requestId}:${set.contentHash}:${draft.startedAt}`;
   const qc = useQueryClient();
   const offline = useUiStore((s) => s.offline);
   const [sending, setSending] = useState(false);
@@ -104,7 +108,7 @@ function ReviewRun({
 
   // Ask once for the polished words; when that is unavailable the person's own words stand.
   useEffect(() => {
-    if (draft.understood !== undefined || asking.has(set.requestId)) return;
+    if (draft.understood !== undefined || asking.has(askingKey)) return;
     const answers = set.questions
       .map((q, i) => ({ q, a: draft.answers[i] }))
       .filter(
@@ -112,20 +116,36 @@ function ReviewRun({
       )
       .map(({ q, a }) => ({ key: q.key, question: q.text, text: a!.raw }));
     if (!answers.length) {
-      void updateDraft(set.requestId, { understood: null });
+      void updateDraft(
+        set.requestId,
+        { understood: null },
+        owner,
+        set.contentHash,
+      );
       return;
     }
-    asking.add(set.requestId);
+    asking.add(askingKey);
     repo
       .understandAnswers({ requestId: set.requestId, answers })
       .then((r) =>
-        updateDraft(set.requestId, {
-          understood: r.available ? r.items : null,
-        }),
+        updateDraft(
+          set.requestId,
+          {
+            understood: r.available ? r.items : null,
+          },
+          owner,
+          set.contentHash,
+        ),
       )
-      .catch(() => updateDraft(set.requestId, { understood: null }))
-      .finally(() => asking.delete(set.requestId));
-
+      .catch(() =>
+        updateDraft(
+          set.requestId,
+          { understood: null },
+          owner,
+          set.contentHash,
+        ),
+      )
+      .finally(() => asking.delete(askingKey));
   }, [draft.understood === undefined]);
 
   if (draft.understood === undefined)
@@ -177,9 +197,14 @@ function ReviewRun({
               answerSource(a!)?.edited === true
             }
             onChange={(text) =>
-              void updateDraft(set.requestId, {
-                edits: { ...draft.edits, [q.key as QuestionKey]: text },
-              })
+              void updateDraft(
+                set.requestId,
+                {
+                  edits: { ...draft.edits, [q.key as QuestionKey]: text },
+                },
+                owner,
+                set.contentHash,
+              )
             }
           />
         ),
@@ -188,7 +213,7 @@ function ReviewRun({
   });
 
   const send = async () => {
-    if (sending || sent) return;
+    if (sending || sent || !isDraftOwnerCurrent(owner)) return;
     if (backups.loading || backups.clips.length || backups.failed) {
       setFailed(
         "A recording still needs your review. Retry transcription or remove the recording before you send.",
@@ -208,7 +233,12 @@ function ReviewRun({
     setNothing(false);
     const idempotencyKey = draft.idempotencyKey ?? newIdempotencyKey();
     if (!draft.idempotencyKey)
-      await updateDraft(set.requestId, { idempotencyKey });
+      await updateDraft(
+        set.requestId,
+        { idempotencyKey },
+        owner,
+        set.contentHash,
+      );
     setFailed(null);
     setSending(true);
     try {
@@ -236,6 +266,7 @@ function ReviewRun({
     }
     // Only now, with the server's answer, does the screen say it is done. The draft goes once
     // "You're done" is on screen (a retry before that replays the same key).
+    if (!isDraftOwnerCurrent(owner)) return;
     const took = tookLabel(Date.now() - new Date(draft.startedAt).getTime());
     void qc.invalidateQueries({ queryKey: qk.today });
     const sentPulseId = pulseIdFromRequest(set.requestId);
@@ -243,6 +274,7 @@ function ReviewRun({
       await qc.invalidateQueries({ queryKey: qk.pulse(sentPulseId) });
     if (alive.current) setSent(true);
     setTimeout(() => {
+      if (!isDraftOwnerCurrent(owner)) return;
       const pulseId = pulseIdFromRequest(set.requestId);
       router.replace(
         pulseId
@@ -259,7 +291,7 @@ function ReviewRun({
               },
             },
       );
-      void clearDraft(set.requestId);
+      void clearDraft(set.requestId, owner, set.contentHash);
     }, 350);
   };
 
@@ -357,7 +389,7 @@ function ReviewRun({
             label="Start the questions again"
             kind="link"
             onPress={() =>
-              void clearDraft(set.requestId).then(() =>
+              void clearDraft(set.requestId, owner, set.contentHash).then(() =>
                 router.replace(deckHref(set.requestId, draft.mode)),
               )
             }

@@ -85,7 +85,7 @@ async function open() {
     </QueryClientProvider>,
   );
   await screen.findByText("Does this describe your work?");
-  return view;
+  return Object.assign(view, { qc });
 }
 beforeEach(() => {
   mockStore.clear();
@@ -191,7 +191,29 @@ describe("Task Card review", () => {
       screen.getByRole("radio", { name: "Needs a change" }),
     ).not.toBeChecked();
     expect(
+      screen.getByDisplayValue("We use the carrier portal now."),
+    ).toBeTruthy();
+    expect(
       screen.getByRole("button", { name: "Review choices" }),
     ).toBeDisabled();
   });
+});
+
+it("discards choices immediately when live data changes and resets an out-of-range card index", async () => {
+  mockCards = [card, { ...card, id: "task-2", title: "Keep records" }];
+  const view = await open();
+  await fireEvent.press(screen.getByRole("radio", { name: "This is right" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Next Task Card" }));
+  expect(screen.getByText("Keep records")).toBeTruthy();
+  await act(async () => {
+    view.qc.setQueryData(
+      ["task-check", "request-1"],
+      [{ ...card, version: 4, hash: "c".repeat(64) }],
+    );
+  });
+  expect(await screen.findByText("Book carrier pickups")).toBeTruthy();
+  expect(
+    screen.getByRole("radio", { name: "This is right" }),
+  ).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "Review choices" })).toBeDisabled();
 });

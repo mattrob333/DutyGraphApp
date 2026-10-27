@@ -20,6 +20,7 @@ import {
   DECK_TIMING,
   createDeck,
   deckMic,
+  deckText,
   deckReducer,
   deckServerCheck,
   deckTimer,
@@ -29,6 +30,7 @@ import {
 } from "@shared/hands-free/deck";
 import { coverLocally, mergeCoverage } from "@shared/hands-free/coverage";
 import type { CompanionRepository } from "@/api/repository";
+import { backupReplacement } from "@/features/voice/backup";
 import type { CardBackup } from "@/features/voice/cardBackup";
 import type { VoiceOut } from "@/features/voice/out";
 import type { LiveSpeech, LiveSpeechError } from "@/features/voice/live";
@@ -98,7 +100,6 @@ export function useHandsFreeDeck(o: HandsFreeDeckOptions) {
     const id = timer.id;
     const h = clock.set(() => dispatch({ type: "timer", id }), timer.ms);
     return () => clock.clear(h);
-
   }, [timer?.id]);
 
   // A physical microphone stays open across cards; callbacks read the current session.
@@ -110,7 +111,6 @@ export function useHandsFreeDeck(o: HandsFreeDeckOptions) {
   const currentMic = useRef(mic);
   currentMic.current = mic;
   const queue = useRef<Promise<void>>(Promise.resolve());
-  const started = useRef(false);
   const backupFailed = useRef(false);
   const loudSince = useRef<number | null>(null);
   const previousWords = useRef(0);
@@ -118,48 +118,74 @@ export function useHandsFreeDeck(o: HandsFreeDeckOptions) {
     const speech = latest.current.speech;
     const backup = latest.current.backup;
     const on = micOn;
+    const session = mic.session;
+    // Callbacks belong to the session that opened the recognizer, never to a later card.
+    const current = () =>
+      alive.current &&
+      currentMic.current.on &&
+      currentMic.current.session === session;
     queue.current = queue.current
       .catch(() => {})
       .then(async () => {
+        await speech.finishBackup?.(backupFailed.current).catch(() => {});
         await backup?.finish(backupFailed.current).catch(() => {});
         backupFailed.current = false;
         if (!on || !alive.current) {
-          started.current = false;
           await speech.stop().catch(() => {});
           return;
         }
+        if (!current()) return;
         const options = {
           lang: latest.current.lang ?? "en-US",
           script: currentMic.current.script ?? undefined,
         };
         const questionKey =
           currentState.current.questions[currentState.current.idx]?.key;
-        if (questionKey)
-          await backup
-            ?.start({ questionKey, session: currentMic.current.session })
-            .catch(() => {});
+        const startBackup = async () => {
+          if (
+            !questionKey ||
+            !backup ||
+            currentState.current.phase === "speaking"
+          )
+            return;
+          const input = { questionKey, session: currentMic.current.session };
+          if (Platform.OS !== "web" && speech.kind === "openai") {
+            const getText = () => {
+              const current = currentState.current;
+              const index = current.questions.findIndex(
+                (question) => question.key === questionKey,
+              );
+              return index === current.idx
+                ? deckText(current)
+                : (current.answers[index]?.raw ?? "");
+            };
+            await backup.startPcm?.(
+              { ...input, before: getText(), getText },
+              speech,
+            );
+          } else await backup.start(input);
+        };
         previousWords.current = 0;
         loudSince.current = null;
-        // Simulated speech needs a new script; native reset only clears the text accumulator.
-        if (started.current && speech.reset && speech.kind !== "simulated") {
-          await speech.reset(options);
-          return;
-        }
+        // A new session must own a new callback set. Clearing a recognizer's text
+        // accumulator alone cannot identify late results from the prior card.
         await speech.stop().catch(() => {});
+        if (!current()) return;
         const onError = (e: LiveSpeechError) => {
+          if (!current()) return;
           backupFailed.current = true;
           if (e.code === "permission_denied") setMicBlock("permission");
           if (e.code === "not_available") setMicBlock("unavailable");
           dispatch({
             type: "speechError",
             code: e.code,
-            session: currentMic.current.session,
+            session,
           });
         };
         try {
           await speech.start(options, {
             onText: (text) => {
-              if (!currentMic.current.on) return;
+              if (!current()) return;
               const words = text.trim().split(/\s+/).filter(Boolean).length;
               if (currentState.current.phase === "speaking") {
                 if (
@@ -172,12 +198,13 @@ export function useHandsFreeDeck(o: HandsFreeDeckOptions) {
               }
               dispatch({
                 type: "speech",
-                session: currentMic.current.session,
+                session,
                 text,
                 via: speech.source ?? "voice_device",
               });
             },
             onLevel: (level) => {
+              if (!current()) return;
               if (currentState.current.phase !== "speaking" || level < 0.03) {
                 loudSince.current = null;
                 return;
@@ -189,20 +216,25 @@ export function useHandsFreeDeck(o: HandsFreeDeckOptions) {
               }
             },
             onPause: () => {
+              if (!current()) return;
               speech.commit?.();
               dispatch({
                 type: "speechEnd",
-                session: currentMic.current.session,
+                session,
               });
             },
             onError,
           });
-          started.current = true;
+          if (!current()) {
+            await speech.stop().catch(() => {});
+            return;
+          }
+          await startBackup().catch(() => {});
         } catch {
           onError({ code: "other" });
         }
       });
-  }, [micOn, mic.session]);
+  }, [micOn, mic.session, state.phase === "speaking"]);
 
   const voice = deckVoice(state);
   useEffect(() => {
@@ -233,6 +265,8 @@ export function useHandsFreeDeck(o: HandsFreeDeckOptions) {
           return;
         }
         await output.prepare([{ id: voice.lineId, text: voice.text }]);
+        // Close the answer-only backup window before any app speech can reach the microphone.
+        await queue.current.catch(() => {});
         if (active) await output.play(voice.lineId);
       })().catch(() => {
         if (active) dispatch({ type: "speechOutError", lineId: voice.lineId });
@@ -313,21 +347,26 @@ export function useHandsFreeDeck(o: HandsFreeDeckOptions) {
       settled = true;
       clock.clear(h);
     };
-
   }, [check?.checkId]);
 
   useEffect(() => {
     if (offline || !o.backup) return;
     void o.backup
       .flush(
-        (clip, text) => {
+        async (clip, text, isCurrent) => {
           const idx = currentState.current.questions.findIndex(
             (question) => question.key === clip.questionKey,
           );
+          const range = await backupReplacement(
+            clip,
+            currentState.current.answers[idx]?.raw ?? "",
+          );
+          if (!alive.current || isCurrent?.() === false) return;
           dispatch({
             type: "recorded",
             idx,
-            replace: currentState.current.answers[idx]?.raw ?? "",
+            replace: range.replace,
+            before: range.before,
             text,
             via: latest.current.speech.source ?? "voice_device",
           });
@@ -360,7 +399,6 @@ export function useHandsFreeDeck(o: HandsFreeDeckOptions) {
   const done = state.phase === "done";
   useEffect(() => {
     if (done) latest.current.onDone?.(state.answers);
-
   }, [done]);
 
   return {

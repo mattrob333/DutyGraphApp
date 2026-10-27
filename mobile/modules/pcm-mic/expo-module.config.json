@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["DutyGraphPcmMicModule"] },
+  "android": { "modules": ["com.dutygraph.pcmmic.DutyGraphPcmMicModule"] }
+}

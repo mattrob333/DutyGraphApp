@@ -13,6 +13,8 @@ import type {
 } from "@/types/handsfree";
 import { newIdempotencyKey } from "@/utils/id";
 import {
+  taskDecisionGeneration,
+  assertTaskDecisionGeneration,
   pendingTaskDecisions,
   removeTaskDecision,
   saveTaskDecision,
@@ -335,6 +337,7 @@ export class HttpParticipantExtrasRepository implements ParticipantExtrasReposit
     );
   }
   async decideTaskCard(input: TaskDecisionInput): Promise<TaskDecisionResult> {
+    const owner = taskDecisionGeneration();
     const prior = (await pendingTaskDecisions()).find(
       (p) => p.taskCardId === input.taskCardId,
     );
@@ -345,7 +348,9 @@ export class HttpParticipantExtrasRepository implements ParticipantExtrasReposit
       prior.recordVersion === input.recordVersion &&
       prior.contentHash === input.contentHash;
     const saved = same ? prior : input;
-    await saveTaskDecision(saved);
+    assertTaskDecisionGeneration(owner);
+    await saveTaskDecision(saved, owner);
+    assertTaskDecisionGeneration(owner);
     try {
       const body = {
         recordVersion: saved.recordVersion,
@@ -369,7 +374,8 @@ export class HttpParticipantExtrasRepository implements ParticipantExtrasReposit
           body,
           { ...this.options(), idempotencyKey: saved.idempotencyKey },
         );
-      await removeTaskDecision(saved.idempotencyKey);
+      assertTaskDecisionGeneration(owner);
+      await removeTaskDecision(saved.idempotencyKey, owner);
       return {
         acknowledged: true,
         pending: false,
@@ -392,7 +398,9 @@ export class HttpParticipantExtrasRepository implements ParticipantExtrasReposit
   getPendingTaskDecisions = pendingTaskDecisions;
   async retryPendingTaskDecisions() {
     const results: TaskDecisionResult[] = [];
+    const owner = taskDecisionGeneration();
     for (const input of await pendingTaskDecisions()) {
+      if (owner !== taskDecisionGeneration()) break;
       try {
         results.push(await this.decideTaskCard(input));
       } catch (e) {
