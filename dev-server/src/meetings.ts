@@ -1608,9 +1608,20 @@ export function meetingRoutes(
             "CONSENT_REVIEW_REQUIRED",
             "Remove inseparable speech from declined attendees before processing audio.",
           );
-        // Charge paid provider work to the meeting budget before calling out, so failed or
-        // repeated finishes still count. Bytes floor the client-reported duration (~1 MB per
-        // minute of phone AAC), at about 0.6 cents per transcribed minute plus 2 for extraction.
+        // Each paid provider call is charged to the meeting budget just before it runs, so
+        // failed or repeated finishes still count. Bytes floor the client-reported duration:
+        // the phone records AAC at 32 kbit/s (240 KB a minute); 200 KB a minute errs high.
+        const charge = (cents: number) => {
+          if (!cents) return;
+          if (s.spentCents + cents > s.budgetCents)
+            fail(
+              409,
+              "BUDGET_REACHED",
+              "Processing this meeting would pass its budget. Raise the budget to continue.",
+            );
+          s.spentCents += cents;
+          Object.assign(s, saveSession(s, p));
+        };
         const audioMinutes = chunks.reduce(
           (sum, chunk) =>
             sum +
@@ -1619,24 +1630,12 @@ export function meetingRoutes(
               Object.values(chunk.chunks).reduce(
                 (bytes, c) => bytes + statSync(c.file).size,
                 0,
-              ) / 1_000_000,
+              ) / 200_000,
             ),
           0,
         );
-        const costCents =
-          (providers.metadata.transcription === "openai"
-            ? Math.ceil(audioMinutes * 0.6)
-            : 0) + (providers.metadata.conversation === "openai" ? 2 : 0);
-        if (costCents) {
-          if (s.spentCents + costCents > s.budgetCents)
-            fail(
-              409,
-              "BUDGET_REACHED",
-              "Processing this meeting would pass its budget. Raise the budget to continue.",
-            );
-          s.spentCents += costCents;
-          Object.assign(s, saveSession(s, p));
-        }
+        if (chunks.length && providers.metadata.transcription === "openai")
+          charge(Math.ceil(audioMinutes * 0.6));
         const batch: TranscriptSegment[] = [];
         let offset = 0;
         const durations = new Map<number, number>();
@@ -1743,6 +1742,7 @@ export function meetingRoutes(
             ),
           )
           .map((task) => ({ id: task.id, title: task.title }));
+        if (providers.metadata.conversation === "openai") charge(2);
         const result = parseExtractionOutput(
           await providers.conversation.extract({
             transcript: evidence,
