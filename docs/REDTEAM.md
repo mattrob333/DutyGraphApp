@@ -50,4 +50,16 @@ A second code inspection confirmed the corrections: `mobile/src/app/advisor/me.t
 - Provider cost counters are conservative guardrails, not billing measurements. No provider quality, latency or cost was measured.
 - Speaker mapping is per-meeting and human-confirmed. No voiceprints are created. A single-phone recording cannot reliably isolate a declined person; processing is refused when separation cannot be established.
 - Consent text is marked for legal review. Background recording, actual microphone permission behavior, biometric lock, OS backup behavior, headphone routing, phone-call interruptions and screen-reader behavior still require device QA.
-- Model judgment and transcription adapters have request-shape tests with fake transports. Extraction currently proposes bounded exact-source items deterministically and does not claim full organizational understanding.
+- Model judgment and transcription adapters have request-shape tests with fake transports. The configured text-model adapter now performs structured extraction with exact-source validation, bounded output and no inferred owners; real-model quality and full organizational understanding remain unverified.
+
+
+## Continued review after the first build
+
+- Lost note acknowledgments now reuse the exact segment ID, timestamp, body and key. Explicit speaker selection is committed atomically with consent checks, preventing the pre-finish mapping deadlock when another attendee declines.
+- Recording playback now follows actual manifest durations and does not falsely associate typed/live notes with batch audio.
+- Extraction rejects ungrounded model output without partial publication, rechecks consent/evidence after provider awaits, and prevents concurrent finish from duplicating proposals. Separate recording containers retain correct time offsets and independent speaker clusters.
+- Consent withdrawal also clears derived parked/follow-up text and cached JSON responses containing escaped quotes/newlines. Late facilitator responses cannot undo Stop AI.
+- Participant session generations prevent old refreshes or requests from using a new enrollment. Queue deletion is serialized; an old acknowledgment cannot delete a newer review draft. Review forms reset choices when version/hash changes and retain notes for renewed review.
+- Optional realtime playback is gated by explicit controller triggers, current consent and response identity. Permission races, stale callbacks, interruption, connection lifetime, and microphone release are tested with fake transports. Native code/device execution remains a separate requirement.
+
+- Raw audio segment ingestion now rejects any declined attendee before parsing or storing bytes. Native room recording/dictation is disabled at the same boundary; consent changes stop capture while attributed typed notes remain available.

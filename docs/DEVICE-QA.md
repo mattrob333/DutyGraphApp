@@ -58,8 +58,21 @@ These are local Chromium runs against mock data or the in-memory fake server. Th
 | D | HTTP: three choices (right, change with note, not my work); version/hash and all three acknowledgments checked | Device screen and accessibility |
 | E | HTTP: Hybrid gate, released-person message, Pulse creation and two selected recipients | Voice entry and device use |
 | F | HTTP: typed three-question Pulse, review, send, completion-only status and leader's second NO_MEETING gate | Spoken Pulse and native capture |
-| G | HTTP: plan, one consent, typed note, closing, confirmed speaker and accepted sourced proposal | Declined attendee exclusion end-to-end on device; server tests cover exclusion logic |
+| G | HTTP: plan, one consent and one decline, typed note, closing and accepted sourced proposal; declined speaker is not selectable and no proposal source belongs to them | Native recording exclusion and consent changes on device |
 | H | HTTP: Facilitator opening trigger, mute, stop, note and sourced acceptance with fake providers | Actual spoken output, time-box/closing audio and uninterrupted native recording |
 | I | HTTP: three attributed topics and acknowledged notes; mock also exercised topic navigation | Kill/relaunch persistence and proposal quote review on device; web storage is intentionally memory-only |
 
 To repeat individual web flows, export the appropriate bundle as above and run `node scripts/e2e-web.mjs --mode mock --flow spoken`, or `--mode http --flow offline`, `task`, `hybrid`, `pulse`, `advisor`, `facilitator`, or `kickoff`. For HTTP Pulse, export with `EXPO_PUBLIC_COMPANION_SCOPE=full`; restart the fake server before any participant flow so the one-use invitation and fixtures are fresh. The fake-server check blocks real providers. Maestro is not installed in this environment; the device flows have not been executed.
+
+Additional HTTP web checks: all eight setup answers were individually reviewed and confirmed with source quotes; a corrected transcript made an accepted proposal stale and blocked acceptance until the reviewer checked the current source, then the proposal was reaccepted with revision 2. The participant wrap-up showed only the participant's own item; confirming it sent version and hash and assigned that action while another person's item stayed proposed. Run these independently with `--flow setup`, `--flow stale`, `--flow decline`, and `--flow wrapup`; restart the fake server before the participant wrap-up to restore the one-use invitation. These use fictional data and do not establish device storage, audio, or native permission behavior.
+
+
+## Native completion follow-up
+
+The local PCM module and optional realtime facilitator are now implemented. Native autolinking and isolated prebuild pass for Android and Apple; neither native compilation nor physical-device execution was run here. Run `.github/workflows/native-build.yml` manually for compile evidence, then test the resulting development builds against the checklist.
+
+Additional device checks: same-engine WAV backup across microphone interruption and process restart; five-minute rollover and header repair; OS backup exclusion/file protection; no question/nudge audio in recovered answers; permission cancellation during card transitions; realtime connection expiry, Mute/Stop/consent/role changes; and the explicit recording/realtime microphone ownership switch. The default `tts_lines` mode is unchanged. Realtime is opt-in through `EXPO_PUBLIC_FACILITATOR_REALTIME=true`.
+
+Raw room audio and live room input now require every attendee’s consent. With a declined attendee, keep explicitly attributed typed notes; those notes can finish and produce sourced proposals. Realtime input and native recording currently run separately.
+
+For the complete local HTTP regression suite, export full-scope HTTP with both origins set to `http://127.0.0.1:4417`, then run `npm run test:e2e:http` in `mobile/`. The runner owns a fresh fake server per flow and removes provider credentials from its environment. Do not start another server on that port. The twelve paths cover participant, offline, Task Cards, Hybrid, Pulse, advisor, Facilitator, declined consent, stale-source review, wrap-up, kickoff and setup.

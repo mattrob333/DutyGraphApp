@@ -148,7 +148,7 @@ The configured defaults are `gpt-4o-mini-tts` with voice `marin`, `gpt-live-tran
 
 The realtime adapter supports either SDP exchange or a client-secret grant and sets `create_response: false`. Controller triggers, consent, mode, mute/stop and budget policy remain authoritative. Model output cannot execute a company change. The facilitator prompt pack records its version and hash; untrusted words and company records stay in escaped DATA blocks. Typed outputs are schema-validated, with conservative judgment fallbacks.
 
-Current batch extraction is deterministic and creates proposals from exact transcript quotes. It is not a validated semantic extraction model. Unknown owners remain null. Coach output is a deterministic checklist/timer projection. Provider spending counters are approximate control guards, **not billing or measured cost accounting**; replace them with actual usage metering before treating budgets as financial limits. Recording must continue when live AI is paused for budget or network reasons.
+Batch extraction now supports a structured OpenAI text-model adapter for all seven proposal kinds when a text model is configured. The fake adapter remains deterministic. Inputs are bounded and escaped; outputs must retain exact current source quotes, allowed people/task references, and unknown owners stay null. Extraction publishes no partial proposals when model output fails validation, and rechecks consent and evidence after provider awaits. Real-model quality remains unverified. Coach output is a deterministic checklist/timer projection. Provider spending counters are approximate control guards, **not billing or measured cost accounting**; replace them with actual usage metering before treating budgets as financial limits. Recording must continue when live AI is paused for budget or network reasons.
 
 Live transcription has bounded per-request/per-company development quotas and a five-second grant timeout. AI follow-ups are optional, capped in length and restricted to an uncovered hint; sensitive/unknown/declined answers do not trigger a probe. Provider errors fall back safely and do not include raw upstream response bodies in user-facing errors.
 
@@ -176,3 +176,12 @@ Before enabling the port, run the root shared checks, mobile verification/export
 ## Local phone testing
 
 The executable binds loopback by default. For an explicitly chosen local-network device rehearsal, set `HOST` to the computer's LAN interface (or all interfaces) and use that LAN address in the app API origins. Pairing-code creation remains loopback-only; create the code on the computer and enter it on the phone. Native and real-provider behavior have not been run on a device.
+
+
+## Follow-up integrity changes
+
+Explicitly attributed live notes may include `personKey` in each transcript input. The server checks consent before committing the batch and creates a human-confirmed `N_<segment-id>` mapping atomically. Clients must persist the exact segment ID, timestamp and body across retries.
+
+The recording manifest now returns each segment’s effective `durationMs`. Extraction processes separate recording containers independently, shifts timestamps by actual duration and namespaces provider speaker clusters by recording. Playback must use cumulative manifest durations instead of assuming every file lasts five minutes. Unprocessed live notes have no reliable recording offset.
+
+Realtime minting accepts an optional bounded `summary` as untrusted data, rejects any declined attendee, and rechecks session state and consent after minting. Client expiry, consent and budget guards supplement server enforcement; they are not financial metering. Participant wrap-up excludes rejected items and invalidates prior owner confirmations when a proposal changes.
