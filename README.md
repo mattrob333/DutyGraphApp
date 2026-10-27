@@ -2,6 +2,24 @@
 
 Expo SDK 57 app and a standalone development API for participant information gathering and advisor Meeting OS. Includes spoken/typed question decks, Task Card review, Pulse, POWER/Gate planning, consent, capture, Facilitator controls, source-linked proposals, speaker mapping, kickoff and setup. [PROGRESS.md](PROGRESS.md) records verification and remaining device/provider checks.
 
+## Build status
+
+The standalone app implements participant and advisor workflows with mock data and the local development API. The latest local verification passes **626 tests** (488 mobile, 78 shared, 60 API), **12 HTTP end-to-end flows**, typechecks, lint and web export. Native prebuild and module autolinking pass; native compilation, physical-device QA and real-provider testing remain outstanding. This repository has not been deployed to the production DutyGraph backend or released to app stores.
+
+## Repository map
+
+| Path | Contents |
+| --- | --- |
+| [mobile/](mobile/) | Expo app, participant and advisor screens, native voice module and browser test scripts |
+| [dev-server/](dev-server/) | Local API, deterministic fake providers, optional provider adapters and contract tests |
+| [shared/](shared/) | Pure question-deck logic, meeting rules and shared contracts |
+| [server/companion/](server/companion/) | Facilitator prompt pack |
+| [tests/](tests/) | Shared logic and policy regression tests |
+| [docs/](docs/) | Product requirements, build plan, API/integration guidance, QA and screenshots |
+| [.github/workflows/](.github/workflows/) | Automated verification and manually triggered native builds |
+
+For the implementation handoff, read [PROGRESS.md](PROGRESS.md), [DEVLOG.md](DEVLOG.md), [DECISIONS-LOG.md](DECISIONS-LOG.md), [device QA](docs/DEVICE-QA.md) and [production porting guidance](docs/PORTING-TO-DUTYGRAPH.md).
+
 ## Run the fictional demo
 
 Requires Node 24 and npm. From the repository root:
