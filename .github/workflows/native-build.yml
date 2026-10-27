@@ -36,7 +36,7 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      # ubuntu-latest ships the Android SDK (ANDROID_HOME); setup-android@v3's sdkmanager call now fails.
       - run: npm ci
       - run: npm ci
         working-directory: mobile
