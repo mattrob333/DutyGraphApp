@@ -8,5 +8,7 @@ coverage/
 *.log
 dev-server/data/
 dev-server/audio/
+dev-server/.data/
+.data/
 test-results/
 playwright-report/
