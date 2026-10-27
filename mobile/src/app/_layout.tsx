@@ -14,6 +14,7 @@ import { useSessionStore } from '@/state/session';
 import { showToast } from '@/state/ui';
 import { useNotificationRouting } from '@/features/notifications/useNotificationRouting';
 import { usePendingSubmissionSync } from '@/features/conversation/usePendingSubmissionSync';
+import { usePendingTaskDecisionSync } from '@/features/participantExtras/usePendingTaskDecisionSync';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -41,6 +42,7 @@ function AppStack() {
   const { scheme, colors } = useTheme();
   useNotificationRouting();
   usePendingSubmissionSync();
+  usePendingTaskDecisionSync();
 
   // Mock data source: surface the "meeting avoided" moment as the prototype does.
   useEffect(() => {
@@ -74,6 +76,7 @@ function AppStack() {
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="mobile/enroll" options={{ headerShown: false }} />
+        <Stack.Screen name="advisor" options={{ headerShown: false }} />
         {/* Completion screens: no Back into a submitted flow. */}
         <Stack.Screen name="pulse/[pulseId]/complete" options={{ gestureEnabled: false, header: () => <TopBar /> }} />
         <Stack.Screen name="session/[sessionId]/done" options={{ gestureEnabled: false, header: () => <TopBar /> }} />

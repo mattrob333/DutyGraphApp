@@ -10,6 +10,12 @@ import type { AppearancePreference } from '@/types/domain';
 
 interface PreferencesState {
   appearance: AppearancePreference;
+  autoAdvance: boolean;
+  followUps: 'table' | 'ai';
+  setAutoAdvance: (enabled: boolean) => void;
+  setFollowUps: (mode: 'table' | 'ai') => void;
+  voiceSpeed: 0.9 | 1 | 1.1;
+  setVoiceSpeed: (speed: 0.9 | 1 | 1.1) => void;
   /** Participant has read the microphone disclosure and chosen to use voice. */
   micConsented: boolean;
   /** Participant has seen the notifications permission screen (granted or not). */
@@ -23,12 +29,15 @@ interface PreferencesState {
   reset: () => void;
 }
 
-const initial = { appearance: 'system' as AppearancePreference, micConsented: false, notificationsAsked: false, reduceMotion: false };
+const initial = { autoAdvance: false, followUps: 'table' as 'table' | 'ai', voiceSpeed: 1 as 0.9 | 1 | 1.1, appearance: 'system' as AppearancePreference, micConsented: false, notificationsAsked: false, reduceMotion: false };
 
 export const usePreferencesStore = create<PreferencesState>()(
   persist(
     (set) => ({
       ...initial,
+      setAutoAdvance: (autoAdvance) => set({ autoAdvance }),
+      setFollowUps: (followUps) => set({ followUps }),
+      setVoiceSpeed: (voiceSpeed) => set({ voiceSpeed }),
       setAppearance: (appearance) => set({ appearance }),
       setMicConsented: (micConsented) => set({ micConsented }),
       setNotificationsAsked: (notificationsAsked) => set({ notificationsAsked }),

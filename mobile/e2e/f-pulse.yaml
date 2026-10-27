@@ -1,0 +1,12 @@
+# Requires an advisor-created Pulse and its participant invitation on the fake server.
+appId: com.dutygraph.companion
+---
+- assertVisible: 'Due now'
+- tapOn: '.*Pulse.*'
+- tapOn: 'Start with voice'
+- assertVisible: 'Listening.*'
+- assertVisible: "Here's what we heard"
+- tapOn: 'Send.*'
+- assertVisible: '.*Pulse.*'
+- tapOn: 'See team status'
+# Inspect team status: completion only, with no other participant answer text.

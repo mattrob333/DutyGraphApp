@@ -23,6 +23,9 @@ import type { CardAnswer, CardInput, HandsFreeQuestion, HandsFreeVoiceVia, SkipR
 export const DECK_TIMING = {
   /** Card shown → microphone listening. */
   cardToListen: 1300,
+  /** Extra time after the estimated spoken line duration. */
+  speakFallback: 1500,
+  autoAdvance: 3000,
   /** Words stop → check starts. */
   pauseToCheck: 900,
   /** No new words at all → check anyway. */
@@ -64,11 +67,13 @@ export const SKIP_LABELS: Record<SkipReason, string> = {
   someone: "Someone else should answer",
 };
 
-export type DeckPhase = "ready" | "listening" | "checking" | "more" | "got" | "saved" | "skipped" | "done";
+export type DeckPhase = "speaking" | "ready" | "listening" | "checking" | "more" | "got" | "saved" | "skipped" | "done";
 export type DeckMode = "voice" | "text";
-export type DeckTimerKind = "listen" | "silence" | "pause" | "check" | "serverWait" | "advance";
+export type DeckTimerKind = "listen" | "silence" | "pause" | "check" | "serverWait" | "advance" | "speakFallback" | "autoAdvance" | "nudge";
 export type DeckTimer = { id: number; kind: DeckTimerKind; ms: number };
 export type SpeechErrorCode = "permission_denied" | "not_available" | "network" | "other";
+
+export type DeckVoiceLine = { lineId: string; text: string; kind: "question" | "nudge" | "line" };
 
 export type DeckState = {
   /** The advisor's questions, then the "Anything else?" card (`isElse`), as buildQuestions makes them. */
@@ -115,6 +120,13 @@ export type DeckState = {
   check: { id: number; minDone: boolean; waiting: boolean } | null;
   /** Ask the server too (company has an approved AI connection). */
   serverCheck: boolean;
+  speak: boolean;
+  autoAdvance: boolean;
+  followUps: "table" | "ai";
+  voiceLine: DeckVoiceLine | null;
+  autoPending: boolean;
+  followUp: { text: string; hintId: string } | null;
+  pendingNudge: string | null;
   /** Words on cards left for Add more on an earlier one (one per card); given back when the deck returns to it. */
   parked: DeckPark[];
   announce: string;
@@ -133,7 +145,11 @@ export type DeckEvent =
   /** Optional: the recognizer itself detected the end of an utterance. */
   | { type: "speechEnd"; session: number }
   | { type: "speechError"; code: SpeechErrorCode; session?: number }
-  | { type: "serverCoverage"; checkId: number; covered: string[] | null }
+  | { type: "serverCoverage"; checkId: number; covered: string[] | null; followUp?: { text: string; hintId: string } | null }
+  | { type: "speechOutStart" | "speechOutEnd" | "speechOutError"; lineId: string }
+  | { type: "bargeIn" }
+  /** Explicit tap on the current question to hear it again. */
+  | { type: "replayQuestion" }
   | { type: "pause" }
   | { type: "resume" }
   | { type: "keepTalking" }
@@ -169,6 +185,9 @@ export type DeckOptions = {
   /** Microphone blocked or no recognizer: starts in typing with the note. */
   micBlocked?: boolean;
   serverCheck?: boolean;
+  speak?: boolean;
+  autoAdvance?: boolean;
+  followUps?: "table" | "ai";
   offline?: boolean;
   /** A saved draft (same order as `questions`): the deck starts at the first unanswered card. */
   answers?: (CardAnswer | null)[];
@@ -220,7 +239,7 @@ function micOn(s: DeckState) {
     s.view == null &&
     !s.sheet &&
     !s.speechError &&
-    (s.phase === "listening" || s.phase === "checking" || s.phase === "more")
+    (s.phase === "listening" || s.phase === "checking" || s.phase === "more" || s.phase === "speaking")
   );
 }
 
@@ -235,6 +254,24 @@ function heardAnnounce(s: DeckState, before: string[]): DeckState {
 }
 
 /* ----------------------------------------------------------- transitions */
+
+function speakLine(s: DeckState, text: string, kind: DeckVoiceLine["kind"]): DeckState {
+  const seq = s.seq + 1;
+  const line = { lineId: `line-${seq}`, text, kind };
+  const duration = text.trim().split(/\s+/).filter(Boolean).length * 400 + DECK_TIMING.speakFallback;
+  return setTimer({ ...s, seq, voiceLine: line, phase: s.phase === "done" ? "done" : "speaking" }, "speakFallback", duration);
+}
+
+function finishSpeaking(s: DeckState): DeckState {
+  const line = s.voiceLine;
+  if (!line) return s;
+  const next = { ...clearTimer(s), voiceLine: null };
+  if (s.phase === "done") return next;
+  if (line.kind === "line" && next.autoPending) {
+    return setTimer({ ...next, phase: "listening", heard: spoken(next), session: next.session + 1, live: "" }, "autoAdvance", DECK_TIMING.autoAdvance);
+  }
+  return listen(next, line.kind === "nudge" && next.attempt != null ? next.attempt + 1 : next.attempt);
+}
 
 function startCard(s: DeckState, i: number): DeckState {
   const park = s.parked.find((p) => p.idx === i) ?? null;
@@ -258,8 +295,13 @@ function startCard(s: DeckState, i: number): DeckState {
     check: null,
     parked: park ? s.parked.filter((p) => p !== park) : s.parked,
     timer: null,
+    voiceLine: null,
+    autoPending: false,
+    followUp: null,
+    pendingNudge: null,
   };
   next = say(next, cardAnnounce(next, i));
+  if (next.speak && next.mode === "voice" && !next.micBlocked && !park) return speakLine(next, next.questions[i].isElse ? `One last thing. ${next.questions[i].text}` : next.questions[i].text, "question");
   return next.mode === "voice" && !next.micBlocked ? setTimer(next, "listen", DECK_TIMING.cardToListen) : next;
 }
 
@@ -304,15 +346,21 @@ function startCheck(s: DeckState): DeckState {
  * After a pause on a spoken card: a nudge for a missing chip (at most MAX_NUDGES), otherwise back to
  * listening. It never ends the card (October 18): only a whole-answer skip phrase does; Next ends it.
  */
-function afterPause(s: DeckState): DeckState {
+function afterPause(s: DeckState, allowAuto = true): DeckState {
   const q = current(s);
   const skip = wholeSkip(cardText(s));
   if (skip) return skipCard(s, skip);
   const missing = q.isElse ? undefined : q.hints.find((h) => !s.covered.includes(h.id));
   if (missing && s.nudges < MAX_NUDGES) {
     let next: DeckState = { ...s, phase: "more", check: null, nudges: s.nudges + 1, nudgeHint: missing.id, timer: null };
-    next = say(next, missing.nudge);
+    const candidate = s.followUps === "ai" && s.followUp?.hintId === missing.id ? s.followUp.text : missing.nudge;
+    next = say(next, candidate);
+    if (next.speak && !next.micBlocked) return setTimer({ ...next, pendingNudge: candidate }, "nudge", DECK_TIMING.pauseToCheck);
     return next.micBlocked ? next : setTimer(next, "listen", DECK_TIMING.moreToListen);
+  }
+  if (allowAuto && s.autoAdvance && !q.isElse && q.hints.length > 0 && q.hints.every((h) => s.covered.includes(h.id))) {
+    const next = { ...s, check: null, autoPending: true };
+    return s.speak ? speakLine(next, "Got it. Next question.", "line") : setTimer({ ...next, phase: "listening" }, "autoAdvance", DECK_TIMING.autoAdvance);
   }
   return keepListening(s);
 }
@@ -351,8 +399,12 @@ function endCard(s: DeckState, status: "got" | "saved"): DeckState {
   const q = current(s);
   const answers = [...s.answers];
   answers[s.idx] = { status, raw: cardText(s), covered: [...s.covered], ...withInput(s) };
-  let next: DeckState = { ...s, phase: status, answers, check: null, sheet: false };
+  let next: DeckState = { ...s, phase: status, answers, check: null, sheet: false, autoPending: false, voiceLine: null };
   next = say(next, q.isElse ? "Got it." : `Question ${s.idx + 1} of ${s.total}, ${status === "saved" ? "saved" : "got it"}.`);
+  if (s.speak && s.mode === "voice" && !s.autoPending) {
+    const seq = next.seq + 1;
+    next = { ...next, seq, voiceLine: { lineId: `line-${seq}`, text: status === "saved" ? "Saved." : "Got it.", kind: "line" } };
+  }
   return setTimer(next, "advance", status === "saved" ? DECK_TIMING.savedHold : DECK_TIMING.gotHold);
 }
 
@@ -366,7 +418,7 @@ function skipCard(s: DeckState, reason: SkipReason): DeckState {
   const answers = [...s.answers];
   const raw = cardText(s);
   answers[s.idx] = { status: "skipped", raw, covered: [], reason, ...(raw ? withInput(s) : {}) };
-  let next: DeckState = { ...s, phase: "skipped", answers, sheet: false, paused: false, check: null, view: null };
+  let next: DeckState = { ...s, phase: "skipped", answers, sheet: false, paused: false, check: null, view: null, voiceLine: null, autoPending: false };
   const label = SKIP_LABELS[reason];
   next = say(next, q.isElse ? `${label}.` : `Question ${s.idx + 1} of ${s.total}, ${label.toLowerCase()}.`);
   return setTimer(next, "advance", DECK_TIMING.skippedHold);
@@ -380,7 +432,8 @@ function advance(s: DeckState): DeckState {
 }
 
 function toDone(s: DeckState): DeckState {
-  return say({ ...s, phase: "done", timer: null, view: null, sheet: false, paused: false, check: null }, ANNOUNCE.done);
+  const next = say({ ...s, phase: "done", timer: null, view: null, sheet: false, paused: false, check: null, voiceLine: null, autoPending: false }, ANNOUNCE.done);
+  return next.speak && next.mode === "voice" ? speakLine(next, ANNOUNCE.done, "line") : next;
 }
 
 /** The prototype's hfResume: pick up the one timer for the current phase. */
@@ -390,6 +443,8 @@ function resume(s: DeckState): DeckState {
   if (isHold(next.phase)) return setTimer(next, "advance", DECK_TIMING.resumeHold);
   if (next.mode !== "voice" || next.micBlocked || next.speechError) return next;
   switch (next.phase) {
+    case "speaking":
+      return next.voiceLine ? speakLine({ ...next, voiceLine: null }, current(next).isElse ? `One last thing. ${current(next).text}` : current(next).text, "question") : listen(next, next.attempt);
     case "ready":
       return setTimer(next, "listen", DECK_TIMING.resumeToListen);
     case "listening":
@@ -398,7 +453,7 @@ function resume(s: DeckState): DeckState {
       // Do not wait for a server answer again after a pause: the local result stands.
       return setTimer({ ...next, check: next.check ? { ...next.check, waiting: false } : null }, "check", DECK_TIMING.resumeCheck);
     case "more":
-      return setTimer(next, "listen", DECK_TIMING.resumeMore);
+      return next.pendingNudge && next.speak ? setTimer(next, "nudge", DECK_TIMING.pauseToCheck) : setTimer(next, "listen", DECK_TIMING.resumeMore);
   }
   return next;
 }
@@ -410,7 +465,8 @@ function pastCardAnnounce(s: DeckState, v: number) {
 
 function backToCurrent(s: DeckState): DeckState {
   const label = current(s).isElse ? "Back to the last card" : `Back to question ${s.idx + 1}`;
-  return resume(say({ ...s, view: null }, label));
+  const next = say({ ...s, view: null }, label);
+  return next.phase === "speaking" ? listen({ ...next, voiceLine: null, autoPending: false }, next.attempt) : resume(next);
 }
 
 /* --------------------------------------------------------------- public */
@@ -444,6 +500,13 @@ export function createDeck(questions: HandsFreeQuestion[], opts: DeckOptions = {
     session: 0,
     check: null,
     serverCheck: !!opts.serverCheck,
+    speak: !!opts.speak,
+    autoAdvance: !!opts.autoAdvance,
+    followUps: opts.followUps ?? "table",
+    voiceLine: null,
+    autoPending: false,
+    followUp: null,
+    pendingNudge: null,
     parked: [],
     announce: "",
     announceId: 0,
@@ -454,13 +517,16 @@ export function createDeck(questions: HandsFreeQuestion[], opts: DeckOptions = {
 }
 
 function step(s: DeckState, e: DeckEvent): DeckState {
-  if (s.phase === "done" && e.type !== "online" && e.type !== "recorded") return s;
+  if (s.phase === "done" && e.type !== "online" && e.type !== "recorded" && e.type !== "timer" && e.type !== "speechOutEnd" && e.type !== "speechOutError" && e.type !== "speechOutStart") return s;
   const q = current(s);
   switch (e.type) {
     case "timer": {
       if (!s.timer || s.timer.id !== e.id) return s;
       const kind = s.timer.kind;
       const t = clearTimer(s);
+      if (kind === "speakFallback" && t.voiceLine) return finishSpeaking(t);
+      if (kind === "nudge" && t.phase === "more" && t.pendingNudge) return speakLine({ ...t, pendingNudge: null }, t.pendingNudge, "nudge");
+      if (kind === "autoAdvance" && t.autoPending && t.phase === "listening" && !t.paused && !t.sheet && t.view == null && !q.isElse && q.hints.length > 0 && q.hints.every((h) => t.covered.includes(h.id))) return endCard(t, "got");
       if (kind === "listen" && (t.phase === "ready" || t.phase === "more")) {
         const attempt = t.phase === "ready" ? t.attempt : t.attempt == null ? null : t.attempt + 1;
         return listen(t, attempt);
@@ -483,8 +549,8 @@ function step(s: DeckState, e: DeckEvent): DeckState {
     }
 
     case "speech": {
-      if (e.session !== s.session || !micOn(s) || e.text === s.live) return s;
-      let next: DeckState = { ...s, live: e.text };
+      if (e.session !== s.session || !micOn(s) || s.phase === "speaking" || e.text === s.live) return s;
+      let next: DeckState = { ...s, live: e.text, autoPending: e.text.trim() ? false : s.autoPending, pendingNudge: null };
       if (e.text.trim()) next = { ...next, input: { ...s.input, voice: e.via ?? s.input.voice ?? "voice_browser" } };
       const before = s.covered;
       next = { ...next, covered: coverLocally(spoken(next), q.hints, before).covered };
@@ -496,7 +562,9 @@ function step(s: DeckState, e: DeckEvent): DeckState {
 
     case "speechEnd": {
       if (e.session !== s.session || !micOn(s) || s.phase !== "listening" || !spoken(s)) return s;
-      return startCheck(clearTimer(s));
+      // A recognizer end callback can arrive before the person has finished their thought.
+      // Spoken prompts and auto-advance still require a full quiet interval.
+      return s.speak || s.autoAdvance ? setTimer(s, "pause", DECK_TIMING.pauseToCheck) : startCheck(clearTimer(s));
     }
 
     case "speechError": {
@@ -524,20 +592,35 @@ function step(s: DeckState, e: DeckEvent): DeckState {
     case "serverCoverage": {
       if (!s.check || s.check.id !== e.checkId || s.phase !== "checking") return s;
       const before = s.covered;
+      const candidate = e.followUp;
+      const validFollowUp = candidate && candidate.text.trim() && candidate.text.trim().split(/\s+/).length <= 20 && (candidate.text.match(/\?/g) || []).length <= 1 && q.hints.some((h) => h.id === candidate.hintId && !before.includes(h.id) && !(e.covered || []).includes(h.id));
       const ids = new Set([...before, ...(e.covered || [])]);
-      let next: DeckState = { ...s, covered: q.hints.filter((h) => ids.has(h.id)).map((h) => h.id), check: { ...s.check, waiting: false } };
+      let next: DeckState = { ...s, covered: q.hints.filter((h) => ids.has(h.id)).map((h) => h.id), check: { ...s.check, waiting: false }, followUp: validFollowUp ? { text: candidate!.text.trim(), hintId: candidate!.hintId } : null };
       next = heardAnnounce(next, before);
       // Paused, a past card or the skip sheet: keep the result; resume() checks again from it.
       if (s.paused || s.view != null || s.sheet) return next;
       if (!next.check!.minDone) return next;
       // A late answer follows the same rules as the timer: a spoken card never ends by itself
       // (October 21: answers cut off when the server answered between 0.75 s and 2.5 s).
-      return next.mode === "voice" ? afterPause(clearTimer(next)) : evaluate(clearTimer(next));
+      return next.mode === "voice" ? afterPause(clearTimer(next), false) : evaluate(clearTimer(next));
     }
+
+    case "speechOutStart":
+      return s;
+    case "speechOutEnd":
+    case "speechOutError":
+      if (s.voiceLine?.lineId !== e.lineId || s.paused || s.view != null || s.sheet) return s;
+      return isHold(s.phase) ? { ...s, voiceLine: null } : finishSpeaking(s);
+    case "bargeIn":
+      if (s.phase !== "speaking" || !micOn(s)) return s;
+      return listen({ ...clearTimer(s), voiceLine: null, autoPending: false }, s.attempt);
+    case "replayQuestion":
+      if (!s.speak || s.mode !== "voice" || s.micBlocked || s.paused || s.sheet || s.view != null || s.speechError || isHold(s.phase)) return s;
+      return speakLine({ ...s, check: null, autoPending: false }, q.isElse ? `One last thing. ${q.text}` : q.text, "question");
 
     case "pause": {
       if (s.paused) return s;
-      return say({ ...s, paused: true, timer: null }, ANNOUNCE.paused);
+      return say({ ...s, paused: true, timer: null, autoPending: false }, ANNOUNCE.paused);
     }
 
     case "resume": {
@@ -660,7 +743,7 @@ function step(s: DeckState, e: DeckEvent): DeckState {
 
     case "next": {
       if (isHold(s.phase) || s.view != null || s.sheet) return s;
-      return s.mode === "voice" ? nextSpoken(clearTimer(s)) : evaluate(clearTimer(s));
+      return s.mode === "voice" ? nextSpoken({ ...clearTimer(s), voiceLine: null, autoPending: false }) : evaluate(clearTimer(s));
     }
 
     case "retry": {
@@ -693,8 +776,9 @@ function step(s: DeckState, e: DeckEvent): DeckState {
  * kept with the card and the session number moves on, so the next time it opens it is a new one.
  */
 export function deckReducer(s: DeckState, e: DeckEvent): DeckState {
-  const next = step(s, e);
+  let next = step(s, e);
   if (next === s) return s;
+  if (next.voiceLine && next.phase !== "speaking" && next.phase !== "done" && !isHold(next.phase)) next = { ...next, voiceLine: null };
   if (micOn(s) && !micOn(next) && next.session === s.session) {
     return { ...next, heard: join(next.heard, next.live), live: "", session: next.session + 1 };
   }
@@ -722,8 +806,12 @@ export function deckServerCheck(s: DeckState): { checkId: number; questionKey: H
   return { checkId: s.check.id, questionKey: current(s).key, text: cardText(s) };
 }
 
+export function deckVoice(s: DeckState): DeckVoiceLine | null {
+  return s.speak && (s.phase === "speaking" || s.phase === "done" || isHold(s.phase)) && !s.paused && s.view == null && !s.sheet && s.mode === "voice" && !s.speechError ? s.voiceLine : null;
+}
+
 export function deckEffects(s: DeckState) {
-  return { timer: deckTimer(s), mic: deckMic(s), serverCheck: deckServerCheck(s) };
+  return { timer: deckTimer(s), mic: deckMic(s), serverCheck: deckServerCheck(s), voice: deckVoice(s) };
 }
 
 /* ---------------------------------------------------------------- views */

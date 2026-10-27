@@ -13,7 +13,7 @@ export default function NotificationsScreen() {
     if (marked.current) return;
     marked.current = true;
     markRead.mutate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, []);
 
   if (q.isLoading) return <LoadingState />;

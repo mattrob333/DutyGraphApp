@@ -1,0 +1,10 @@
+# Mock advisor pairing fixture; HTTP mode requires a fresh one-time code instead of DEMO.
+appId: com.dutygraph.companion
+---
+- launchApp:
+    clearState: true
+- tapOn: 'I run meetings for a company'
+- tapOn: 'Pairing code'
+- inputText: 'DEMO'
+- tapOn: 'Pair this phone'
+- assertVisible: 'Meetings'

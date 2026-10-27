@@ -1,0 +1,13 @@
+# Start from a completed, unsent interview review; toggle network on a test device.
+appId: com.dutygraph.companion
+---
+- assertVisible: "Here's what we heard"
+- setAirplaneMode: enabled
+- tapOn: 'Send to Alex'
+- assertVisible: '.*offline.*'
+- setAirplaneMode: disabled
+- tapOn:
+    text: 'Try again'
+    optional: true
+- assertVisible: "You're done. Thank you.*"
+# Inspect fake-server state: one acknowledged submission with a reused idempotency key.

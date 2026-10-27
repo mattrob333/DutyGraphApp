@@ -11,9 +11,12 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.dutygraph.companion",
-      "associatedDomains": ["applinks:respond.dutygraph.com", "applinks:dutygraph.com"],
+      "associatedDomains": [
+        "applinks:respond.dutygraph.com",
+        "applinks:dutygraph.com"
+      ],
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "DutyGraph uses the microphone only while you are answering, after you tap to start. Your words are processed securely so DutyGraph can turn them into text and follow along. Nothing goes to your advisor until you review it and tap Send.",
+        "NSMicrophoneUsageDescription": "DutyGraph records only after you choose voice or start a meeting with attendee consent. A visible indicator shows recording. Answers are reviewed before sending.",
         "NSSpeechRecognitionUsageDescription": "DutyGraph turns what you say into text while you answer, so you can see your words and each question card can move on. Your iPhone does this on the device when it can; otherwise Apple's speech service processes the audio. Nothing goes to your advisor until you review it and tap Send."
       }
     },
@@ -25,18 +28,33 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "permissions": ["android.permission.RECORD_AUDIO"],
-      "blockedPermissions": ["android.permission.SYSTEM_ALERT_WINDOW"],
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ],
       "predictiveBackGestureEnabled": false,
       "intentFilters": [
         {
           "action": "VIEW",
           "autoVerify": true,
           "data": [
-            { "scheme": "https", "host": "respond.dutygraph.com", "pathPrefix": "/mobile/enroll" },
-            { "scheme": "https", "host": "dutygraph.com", "pathPrefix": "/mobile/enroll" }
+            {
+              "scheme": "https",
+              "host": "respond.dutygraph.com",
+              "pathPrefix": "/mobile/enroll"
+            },
+            {
+              "scheme": "https",
+              "host": "dutygraph.com",
+              "pathPrefix": "/mobile/enroll"
+            }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -52,15 +70,21 @@
       [
         "expo-audio",
         {
-          "microphonePermission": "DutyGraph uses the microphone only while you are answering, after you tap to start. Your words are processed securely so DutyGraph can turn them into text and follow along. Nothing goes to your advisor until you review it and tap Send."
+          "microphonePermission": "DutyGraph records only after you choose voice or start a meeting with attendee consent. A visible indicator shows recording. Answers are reviewed before sending.",
+          "enableBackgroundRecording": true,
+          "enableBackgroundPlayback": false
         }
       ],
       [
         "expo-speech-recognition",
         {
-          "microphonePermission": "DutyGraph uses the microphone only while you are answering, after you tap to start. Your words are processed securely so DutyGraph can turn them into text and follow along. Nothing goes to your advisor until you review it and tap Send.",
+          "microphonePermission": "DutyGraph records only after you choose voice or start a meeting with attendee consent. A visible indicator shows recording. Answers are reviewed before sending.",
           "speechRecognitionPermission": "DutyGraph turns what you say into text while you answer, so you can see your words and each question card can move on. Your iPhone does this on the device when it can; otherwise Apple's speech service processes the audio. Nothing goes to your advisor until you review it and tap Send.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox", "com.google.android.tts", "com.google.android.as"]
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts",
+            "com.google.android.as"
+          ]
         }
       ],
       [
@@ -75,6 +99,19 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 120,
           "backgroundColor": "#151515"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "DutyGraph uses the camera only when you choose to scan a company pairing code.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Use Face ID to unlock your company meeting workspace."
         }
       ]
     ],

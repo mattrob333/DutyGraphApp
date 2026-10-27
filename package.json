@@ -9,14 +9,20 @@
   "scripts": {
     "test:shared": "tsx --test tests/*.test.ts",
     "typecheck:shared": "tsc --noEmit -p tsconfig.json",
-    "lint": "eslint mobile/src shared dev-server/src"
+    "lint": "eslint mobile/src shared dev-server/src",
+    "test:coverage:shared": "c8 --include 'shared/**/*.ts' --exclude 'shared/hands-free/types.ts' --exclude 'shared/meetings/types.ts' --all --check-coverage --lines 90 --reporter=text --reporter=json-summary npm run test:shared",
+    "verify": "npm run test:shared && npm run typecheck:shared && npm run lint",
+    "dev:server": "npm --prefix dev-server run dev",
+    "dev:mobile": "npm --prefix mobile run web"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.0.0",
+    "c8": "^12.0.0",
     "eslint": "^10.13.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "playwright": "^1.64.1",
+    "prettier": "^3.9.10",
     "tsx": "^4.20.0",
     "typescript": "~6.0.3",
     "typescript-eslint": "^8.72.1",

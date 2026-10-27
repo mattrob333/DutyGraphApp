@@ -18,11 +18,19 @@ import { execSync } from 'node:child_process';
 const args = process.argv.slice(2);
 let out = 'shots';
 let scheme = 'dark';
+let all = false;
 const routes = [];
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--out') out = args[++i];
   else if (args[i] === '--light') scheme = 'light';
+  else if (args[i] === '--all') all = true;
   else routes.push(args[i]);
+}
+if (all) {
+  if (out === 'shots') out = '../docs/screens';
+  routes.push('/invite', '/identity', '/permissions/microphone', '/today', '/me', '/me/voice', '/me/privacy', '/me/appearance', '/notifications',
+    '/questions/req-hf-cobalt', '/questions/req-hf-cobalt/deck?mode=text', '/questions/req-hf-cobalt/deck?mode=voice',
+    '/work', '/meetings', '/advisor/pair', '/dev/gallery', '/dev/tour');
 }
 if (!routes.length) routes.push('/today');
 
@@ -45,30 +53,36 @@ const types = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/htm
 const server = http.createServer((req, res) => {
   const p = decodeURIComponent(req.url.split('?')[0]);
   let f = path.join(root, p);
-  if (!f.startsWith(root) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(root, 'index.html');
+  if (!(f === root || f.startsWith(root + path.sep)) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) f = path.join(root, 'index.html');
   res.writeHead(200, { 'content-type': types[path.extname(f)] ?? 'application/octet-stream' });
   fs.createReadStream(f).pipe(res);
 });
-await new Promise((r) => server.listen(0, r));
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
 
 const { chromium } = loadPlaywright();
-const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: scheme });
+const executablePath = process.env.CHROMIUM_PATH ?? (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
+const browser = await chromium.launch({ executablePath, args: ['--no-sandbox'] });
 const errors = [];
-page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 fs.mkdirSync(out, { recursive: true });
-for (const r of routes) {
-  await page.goto(`http://localhost:${port}${r}`);
-  await page.waitForTimeout(2500);
-  const name = (r.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'root') + (scheme === 'light' ? '-light' : '');
-  await page.screenshot({ path: path.join(out, `${name}.png`) });
-  console.log(`${r} -> ${path.join(out, name)}.png`);
+for (const theme of all ? ['dark', 'light'] : [scheme]) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1, colorScheme: theme, reducedMotion: 'reduce' });
+  page.on('pageerror', (e) => errors.push(e.message));
+  for (const r of [...new Set(routes)]) {
+    await page.goto(`http://localhost:${port}${r}`);
+    await page.waitForFunction(() => document.body.innerText.trim().length > 8);
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(600);
+    const name = (r.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'root') + `-${theme}`;
+    await page.screenshot({ path: path.join(out, `${name}.png`) });
+    console.log(`${r} -> ${path.join(out, name)}.png`);
+  }
+  await page.close();
 }
 await browser.close();
 server.close();
 if (errors.length) {
   console.log('\nBrowser errors:');
   for (const e of [...new Set(errors)]) console.log(' -', e.slice(0, 300));
+  process.exitCode = 1;
 }

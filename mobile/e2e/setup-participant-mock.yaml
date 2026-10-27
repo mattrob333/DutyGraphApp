@@ -1,0 +1,9 @@
+# Mock build: its voice recognizer produces fictional scripted answers.
+appId: com.dutygraph.companion
+---
+- launchApp:
+    clearState: true
+- tapOn: 'Continue with demo data'
+- tapOn: "Yes, that's me"
+- tapOn: 'Not now'
+- assertVisible: 'Due now'

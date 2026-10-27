@@ -1,9 +1,15 @@
-import { Redirect, useLocalSearchParams } from 'expo-router';
-import { ConversationScreen } from '@/features/conversation/ConversationScreen';
-
+import { useLocalSearchParams } from "expo-router";
+import { DeckScreen } from "@/features/handsfree/DeckScreen";
+import { pulseRequestId } from "@/api/extras";
 export default function PulseConversationRoute() {
-  const { pulseId, sessionId, input } = useLocalSearchParams<{ pulseId: string; sessionId?: string; input?: string }>();
-  // Opened without a session (e.g. a stale link): start from the intro.
-  if (!sessionId) return <Redirect href={{ pathname: '/pulse/[pulseId]', params: { pulseId } }} />;
-  return <ConversationScreen sessionId={sessionId} initialInput={input === 'voice' ? 'voice' : 'text'} />;
+  const { pulseId, mode } = useLocalSearchParams<{
+    pulseId: string;
+    mode?: string;
+  }>();
+  return (
+    <DeckScreen
+      requestId={pulseRequestId(pulseId)}
+      mode={mode === "voice" ? "voice" : "text"}
+    />
+  );
 }

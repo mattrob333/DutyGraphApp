@@ -27,6 +27,7 @@ export interface QuestionCardProps {
   typing?: boolean;
   onKeepTalking?: () => void;
   onAddMore?: () => void;
+  onReplay?: () => void;
 }
 
 /**
@@ -34,7 +35,7 @@ export interface QuestionCardProps {
  * when DutyGraph has what it needs; the check scales in. Skipped cards go grey, "Anything else?"
  * is violet. While Checking the edge glows violet (a steady violet border with reduced motion).
  */
-export function QuestionCard({ question: q, status, current, viewing, paused, answer, covered, nudgeHint, pulseKey, reduce, typing, onKeepTalking, onAddMore }: QuestionCardProps) {
+export function QuestionCard({ question: q, status, current, viewing, paused, answer, covered, nudgeHint, pulseKey, reduce, typing, onKeepTalking, onAddMore, onReplay }: QuestionCardProps) {
   const c = useColors();
   const sage = status === 'got' || status === 'saved';
   const skipped = status === 'skipped';
@@ -44,7 +45,7 @@ export function QuestionCard({ question: q, status, current, viewing, paused, an
   const bg = useAnimatedColor(sage ? c.sageBg : skipped ? c.soft : baseBg, 450, reduce);
   const border = useAnimatedColor(sage ? c.sage : checking && reduce ? c.violet : c.line, 450, reduce);
   const hint = current && nudgeHint && !sage && !skipped ? q.hints.find((h) => h.id === nudgeHint) : undefined;
-  const statusLabel = sage ? (status === 'saved' ? 'Saved' : 'Got it') : skipped ? SKIP_LABELS[answer?.reason ?? 'skip'] : showPaused ? 'Paused' : '';
+  const statusLabel = sage ? (status === 'saved' ? 'Saved' : 'Got it') : skipped ? SKIP_LABELS[answer?.reason ?? 'skip'] : showPaused ? 'Paused' : status === 'speaking' ? 'Speaking…' : '';
   const eyebrow = q.isElse ? 'One last thing' : `Question ${q.index + 1}`;
 
   return (
@@ -111,9 +112,12 @@ export function QuestionCard({ question: q, status, current, viewing, paused, an
         ) : null}
       </View>
 
+      <Pressable accessibilityRole="button" accessibilityLabel={`Replay question: ${q.text}`} disabled={!onReplay} onPress={onReplay}>
       <Text accessibilityRole="header" style={{ fontFamily: fontFamily.semibold, fontSize: 26, lineHeight: 32.5, letterSpacing: -0.6, marginTop: 10, color: c.ink }}>
         {q.text}
       </Text>
+      </Pressable>
+      {current && status === 'speaking' && !paused ? <Text variant="meta" color="violet">Speaking…</Text> : null}
 
       {hint ? <Nudge key={`${hint.id}-${pulseKey}`} text={hint.nudge} reduce={reduce} /> : null}
 

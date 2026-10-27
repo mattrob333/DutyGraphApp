@@ -1,0 +1,19 @@
+# Start on the meeting start screen with one fictional attendee selected; uses mock notes.
+appId: com.dutygraph.companion
+---
+- tapOn: 'Copilot'
+- tapOn: 'Check everyone’s consent'
+- assertVisible: 'Ask everyone first'
+- tapOn: 'Consent'
+- tapOn: 'Confirm consent and continue'
+- assertVisible: '.*Copilot.*'
+- tapOn: 'Add fictional sample'
+- tapOn: 'Save note'
+- assertVisible: '.*delay the launch.*'
+- tapOn: 'Review closing'
+- tapOn: 'Finish and review sources'
+- assertVisible: 'Who said what?'
+- tapOn: 'Priya Shah.*'
+- tapOn: 'Confirm speaker map'
+- assertVisible: 'Meeting results'
+# A separate two-attendee run must decline one and verify exclusion and proposal sources.

@@ -47,6 +47,6 @@ export function useOnChange(key: unknown, run: () => void | (() => void)) {
       return;
     }
     return run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [key]);
 }

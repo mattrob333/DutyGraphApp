@@ -1,0 +1,10 @@
+# Fresh fake-server fixture; restart the in-memory server before each run.
+appId: com.dutygraph.companion
+---
+- launchApp:
+    clearState: true
+- openLink: 'dutygraph-companion://mobile/enroll?t=dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
+- tapOn: 'Connect this phone'
+- tapOn: "Yes, that's me"
+- tapOn: 'Not now'
+- assertVisible: 'Due now'

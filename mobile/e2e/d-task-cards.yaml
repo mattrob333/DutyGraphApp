@@ -1,0 +1,20 @@
+# Fresh HTTP fake server provides three Task Cards and a confirmation request.
+appId: com.dutygraph.companion
+---
+- runFlow: setup-participant.yaml
+- tapOn: 'Review'
+- assertVisible: 'Task Card 1 of 3'
+- tapOn: 'This is right'
+- tapOn: 'Next Task Card'
+- assertVisible: 'Task Card 2 of 3'
+- tapOn: 'Needs a change'
+- tapOn: 'Add a note (optional)'
+- inputText: 'The timing needs an update.'
+- tapOn: 'Next Task Card'
+- assertVisible: 'Task Card 3 of 3'
+- tapOn: 'Not my work'
+- tapOn: 'Review choices'
+- assertVisible: 'Your Task Card review'
+- tapOn: 'Send review'
+- assertVisible: 'Sent. Thank you.'
+# Verify fake-server attestation and decisions include version and hash.

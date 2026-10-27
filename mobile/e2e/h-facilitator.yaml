@@ -1,0 +1,18 @@
+# Start on the meeting start screen with one fictional attendee selected; mock mode records no audio.
+appId: com.dutygraph.companion
+---
+- tapOn: 'Facilitator'
+- tapOn: 'Check everyone’s consent'
+- tapOn: 'Consent'
+- tapOn: 'Confirm consent and continue'
+- assertVisible: 'Facilitator'
+- tapOn: 'Read opening'
+- tapOn: 'Mute AI'
+- tapOn: 'Stop AI'
+- assertVisible: 'AI stopped. Recording and notes continue.'
+- tapOn: 'Add fictional sample'
+- tapOn: 'Save note'
+- tapOn: 'Review closing'
+- tapOn: 'Finish and review sources'
+- assertVisible: 'Who said what?'
+# Real device run must independently verify audio, interruption and uninterrupted recording.

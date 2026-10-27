@@ -1,0 +1,50 @@
+# Mock advisor; this route explicitly chooses a Pulse. Hybrid needs a separate server fixture.
+appId: com.dutygraph.companion
+---
+- runFlow: setup-advisor.yaml
+- tapOn: 'New meeting'
+- tapOn: 'Meeting title'
+- inputText: 'Weekly shipping decisions'
+- tapOn: 'Length in minutes'
+- eraseText
+- inputText: '30'
+- tapOn: 'Plan the outcome'
+- assertVisible: 'Why does this meeting exist?'
+- tapOn: 'Your answer'
+- inputText: 'Decide when to ship.'
+- tapOn: 'Next'
+- assertVisible: 'What must be true when it ends?'
+- tapOn: 'Your answer'
+- inputText: |
+    Status update
+    Decide shipping date
+- tapOn: 'Next'
+- assertVisible: 'Who must decide, contribute or carry out the work?'
+- tapOn: 'Your answer'
+- inputText: 'Priya contributes.'
+- tapOn: 'Next'
+- assertVisible: 'What happens next, and by when?'
+- tapOn: 'Your answer'
+- inputText: 'Set a date and notify the team.'
+- tapOn: 'Next'
+- assertVisible: 'Who owns the result?'
+- tapOn: 'Your answer'
+- inputText: 'Priya owns the result.'
+- tapOn: 'Choose attendees'
+- tapOn: 'Priya Shah.*'
+- tapOn: 'Decision maker'
+- tapOn: 'Marcus Lee.*'
+- tapOn:
+    text: '✓ Resource person'
+    index: 1
+- tapOn:
+    text: 'Needs to know'
+    index: 1
+- tapOn: 'Build the plan'
+- assertVisible: 'Pulse first, then a shorter meeting'
+- assertVisible: '.*people can receive the result instead.*'
+- tapOn: 'Send a Pulse instead'
+- assertVisible: 'Pulse before the meeting'
+- tapOn: 'Create the Pulse'
+- assertVisible: '.*of.*complete'
+# Verify recipients and released people against the fake-server state.

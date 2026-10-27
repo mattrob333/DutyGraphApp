@@ -1,8 +1,7 @@
-import { Redirect, useLocalSearchParams } from 'expo-router';
-import { ReviewScreen } from '@/features/conversation/ReviewScreen';
-
+import { useLocalSearchParams } from "expo-router";
+import { ReviewScreen } from "@/features/handsfree/ReviewScreen";
+import { pulseRequestId } from "@/api/extras";
 export default function PulseReviewRoute() {
-  const { pulseId, sessionId } = useLocalSearchParams<{ pulseId: string; sessionId?: string }>();
-  if (!sessionId) return <Redirect href={{ pathname: '/pulse/[pulseId]', params: { pulseId } }} />;
-  return <ReviewScreen sessionId={sessionId} />;
+  const { pulseId } = useLocalSearchParams<{ pulseId: string }>();
+  return <ReviewScreen requestId={pulseRequestId(pulseId)} />;
 }

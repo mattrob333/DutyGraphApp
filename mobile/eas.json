@@ -8,13 +8,15 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_DATA_SOURCE": "mock"
+        "EXPO_PUBLIC_DATA_SOURCE": "mock",
+        "EXPO_PUBLIC_COMPANION_SCOPE": "full"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_DATA_SOURCE": "mock"
+        "EXPO_PUBLIC_DATA_SOURCE": "mock",
+        "EXPO_PUBLIC_COMPANION_SCOPE": "full"
       }
     },
     "production": {
@@ -28,8 +30,9 @@
       "distribution": "internal",
       "env": {
         "EXPO_PUBLIC_DATA_SOURCE": "http",
-        "EXPO_PUBLIC_API_BASE_URL": "SET_ME_https_origin_reachable_from_phones"
-      }
+        "EXPO_PUBLIC_COMPANION_SCOPE": "full"
+      },
+      "environment": "preview"
     }
   },
   "submit": {

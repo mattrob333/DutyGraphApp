@@ -5,9 +5,9 @@ import { Text } from '@/components/common';
 import { captionTail } from '@/features/handsfree/format';
 import { nativeDriver } from './anim';
 
-export type CaptionState = 'listening' | 'checking' | 'paused';
+export type CaptionState = 'listening' | 'checking' | 'paused' | 'speaking';
 
-const LABEL: Record<CaptionState, string> = { listening: 'Listening…', checking: 'Checking', paused: 'Paused · mic off' };
+const LABEL: Record<CaptionState, string> = { speaking: 'Speaking…', listening: 'Listening…', checking: 'Checking', paused: 'Paused · mic off' };
 
 /** The prototype's seven bars (dgwave): duration and delay in ms. */
 const BARS = [

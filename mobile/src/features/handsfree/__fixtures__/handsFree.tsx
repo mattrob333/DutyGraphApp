@@ -3,6 +3,7 @@
  * fake repository, a fake recognizer the test speaks through, and a manual clock. Fictional data.
  */
 import React from 'react';
+import { afterEach } from '@jest/globals';
 import { act, render } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { buildQuestions } from '@shared/hands-free/hints';
@@ -13,6 +14,9 @@ import { ThemeProvider } from '@/theme';
 import type { QuestionSet, ServerCoverage, SubmitAnswersInput, SubmitAnswersResult, UnderstandInput, UnderstandResult } from '@/types/handsfree';
 import type { DeckClock } from '../useHandsFreeDeck';
 import { hfKeys } from '../queries';
+
+const clients: QueryClient[] = [];
+afterEach(() => { clients.splice(0).forEach((client) => client.clear()); });
 
 export const REQUEST_ID = 'req-test-cobalt';
 
@@ -128,7 +132,8 @@ export async function flush() {
 }
 
 export async function renderWithProviders(ui: React.ReactElement, repo: FakeRepo) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity }, mutations: { retry: false } } });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity }, mutations: { retry: false, gcTime: Infinity } } });
+  clients.push(qc);
   qc.setQueryData(hfKeys.questionSet(repo.set.requestId), repo.set);
   const view = await render(
     <QueryClientProvider client={qc}>

@@ -2,9 +2,12 @@ import React from 'react';
 import { Linking, Platform } from 'react-native';
 import { Button, Card, ErrorState, Heading, LoadingState, Screen, Text } from '@/components/common';
 import { SettingsGroup, SwitchRow } from '@/components/me';
+import { usePreferencesStore } from '@/state/preferences';
 import { usePreferenceToggles } from '@/features/profile/usePreferenceToggles';
 
 export default function VoiceSettings() {
+  const speed = usePreferencesStore((s) => s.voiceSpeed);
+  const setSpeed = usePreferencesStore((s) => s.setVoiceSpeed);
   const { me, voice, setVoice } = usePreferenceToggles();
   if (me.isLoading) return <LoadingState />;
   if (me.isError || !voice) return <ErrorState error={me.error} onRetry={() => me.refetch()} />;
@@ -19,6 +22,10 @@ export default function VoiceSettings() {
         <SwitchRow label="Start with voice" sub="Typing is always one tap away" value={voice.voiceFirst} onChange={(v) => setVoice('voiceFirst', v)} />
         <SwitchRow label="Show live transcript" sub="See your words as you speak" value={voice.showTranscript} onChange={(v) => setVoice('showTranscript', v)} />
         <SwitchRow label="Read questions aloud" sub="Hear each question before you answer" value={voice.speakQuestions} onChange={(v) => setVoice('speakQuestions', v)} />
+      </SettingsGroup>
+
+      <SettingsGroup title="Voice speed">
+        {([0.9, 1, 1.1] as const).map((rate) => <Button key={rate} label={`${rate.toFixed(1)}×${speed === rate ? " · Selected" : ""}`} onPress={() => setSpeed(rate)} />)}
       </SettingsGroup>
 
       <Card level="surface" style={{ marginTop: 24 }}>

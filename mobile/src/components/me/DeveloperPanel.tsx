@@ -1,26 +1,59 @@
-import React from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { router } from 'expo-router';
-import { asMock, useRepository } from '@/api';
-import { Button } from '@/components/common';
-import { usePreferencesStore } from '@/state/preferences';
-import { useSimulationStore, type SimulationFlags } from '@/state/simulation';
-import { useUiStore } from '@/state/ui';
-import { SettingsGroup, SwitchRow } from './SettingsGroup';
+import React from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { router } from "expo-router";
+import {
+  clearPendingTaskDecisions,
+  resetParticipantExtrasRepository,
+} from "@/api/extras";
+import { asMock, useRepository } from "@/api";
+import { Button } from "@/components/common";
+import { usePreferencesStore } from "@/state/preferences";
+import { useSimulationStore, type SimulationFlags } from "@/state/simulation";
+import { useUiStore } from "@/state/ui";
+import { SettingsGroup, SwitchRow } from "./SettingsGroup";
 
 const FLAGS: { key: keyof SimulationFlags; label: string; sub: string }[] = [
-  { key: 'offline', label: 'Offline', sub: 'Show the offline banner and fail requests' },
-  { key: 'micDenied', label: 'Microphone blocked', sub: 'Simulate a denied permission' },
-  { key: 'holdSend', label: 'Hold on "Sending…"', sub: 'Keep submissions in flight' },
-  { key: 'failSend', label: 'Sending fails', sub: 'Submission returns an error' },
-  { key: 'pulseOverdue', label: 'Pulse overdue', sub: 'Move the Pulse past its due time' },
-  { key: 'teamIncomplete', label: 'Team incomplete', sub: 'Some teammates have not finished' },
-  { key: 'providerError', label: 'Provider error', sub: 'The understanding service is unavailable' },
+  {
+    key: "offline",
+    label: "Offline",
+    sub: "Show the offline banner and fail requests",
+  },
+  {
+    key: "micDenied",
+    label: "Microphone blocked",
+    sub: "Simulate a denied permission",
+  },
+  {
+    key: "holdSend",
+    label: 'Hold on "Sending…"',
+    sub: "Keep submissions in flight",
+  },
+  {
+    key: "failSend",
+    label: "Sending fails",
+    sub: "Submission returns an error",
+  },
+  {
+    key: "pulseOverdue",
+    label: "Pulse overdue",
+    sub: "Move the Pulse past its due time",
+  },
+  {
+    key: "teamIncomplete",
+    label: "Team incomplete",
+    sub: "Some teammates have not finished",
+  },
+  {
+    key: "providerError",
+    label: "Provider error",
+    sub: "The understanding service is unavailable",
+  },
 ];
 
 /** Demo controls. Rendered only when the data source is the mock (see Me tab). */
 export function DeveloperPanel() {
   const repo = useRepository();
+  const prefs = usePreferencesStore();
   const qc = useQueryClient();
   const sim = useSimulationStore();
   const setOffline = useUiStore((s) => s.setOffline);
@@ -28,11 +61,13 @@ export function DeveloperPanel() {
   const flip = (key: keyof SimulationFlags) => {
     const next = !sim[key];
     sim.set({ [key]: next });
-    if (key === 'offline') setOffline(next);
+    if (key === "offline") setOffline(next);
   };
 
-  const resetDemo = () => {
+  const resetDemo = async () => {
     asMock(repo)?.reset();
+    resetParticipantExtrasRepository(repo);
+    await clearPendingTaskDecisions();
     qc.clear();
     usePreferencesStore.getState().reset();
     useSimulationStore.getState().reset();
@@ -43,11 +78,51 @@ export function DeveloperPanel() {
     <>
       <SettingsGroup title="Developer (demo data)">
         {FLAGS.map((f) => (
-          <SwitchRow key={f.key} label={f.label} sub={f.sub} value={sim[f.key]} onChange={() => flip(f.key)} />
+          <SwitchRow
+            key={f.key}
+            label={f.label}
+            sub={f.sub}
+            value={sim[f.key]}
+            onChange={() => flip(f.key)}
+          />
         ))}
       </SettingsGroup>
-      <Button label="Replay onboarding" onPress={() => router.push('/invite')} full style={{ marginTop: 12 }} />
-      <Button label="Reset demo" onPress={resetDemo} full style={{ marginTop: 10 }} />
+      {repo.kind === "mock" ? (
+        <SettingsGroup title="Voice experiments">
+          <SwitchRow
+            label="Auto-advance"
+            sub="Move on after every chip is heard and a pause"
+            value={prefs.autoAdvance}
+            onChange={prefs.setAutoAdvance}
+          />
+          <SwitchRow
+            label="AI follow-ups"
+            sub="Use short follow-ups from the server when available"
+            value={prefs.followUps === "ai"}
+            onChange={(enabled) => prefs.setFollowUps(enabled ? "ai" : "table")}
+          />
+        </SettingsGroup>
+      ) : null}
+      {repo.kind === "mock" ? (
+        <Button
+          label="Demo tour"
+          onPress={() => router.push("/dev/tour")}
+          full
+          style={{ marginTop: 12 }}
+        />
+      ) : null}
+      <Button
+        label="Replay onboarding"
+        onPress={() => router.push("/invite")}
+        full
+        style={{ marginTop: 12 }}
+      />
+      <Button
+        label="Reset demo"
+        onPress={resetDemo}
+        full
+        style={{ marginTop: 10 }}
+      />
     </>
   );
 }

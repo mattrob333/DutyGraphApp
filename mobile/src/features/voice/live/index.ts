@@ -2,6 +2,10 @@
  * Live speech for the hands-free cards (docs/specs/COMPANION-HANDS-FREE.md §5). The deck hook
  * calls `createLiveSpeech()` once per deck and drives it with `deckMic`.
  */
+import { Platform } from 'react-native';
+import { OpenAiLiveSpeech, unavailablePcmCapture, type PcmCapture, type TranscriptionGrant } from './openai';
+import { createBrowserPcmCapture } from './browserPcm';
+import { ResilientLiveSpeech } from './resilient';
 import { config, type DataSource } from '@/api/config';
 import { scriptedSentences } from '@/api/mock/handsFree';
 import { simulationFlags } from '@/state/simulation';
@@ -23,6 +27,8 @@ export interface CreateLiveSpeechOptions {
   /** Force one implementation (tests, the Developer panel). */
   kind?: LiveSpeechKind;
   /** Tests pass a fake module; the app loads expo-speech-recognition lazily. */
+  grant?: () => Promise<TranscriptionGrant>;
+  capture?: PcmCapture;
   loadNative?: () => SpeechModuleLike | null;
 }
 
@@ -39,6 +45,11 @@ export function createLiveSpeech(opts: CreateLiveSpeechOptions = {}): LiveSpeech
       isDenied: () => simulationFlags().micDenied,
     });
   }
+  if (opts.grant && (kind === 'openai' || kind === 'native')) {
+    const fallback = createLiveSpeech({ ...opts, grant: undefined, kind: 'native' });
+    const capture = opts.capture ?? (Platform.OS === 'web' ? createBrowserPcmCapture() : unavailablePcmCapture);
+    return capture.available ? new ResilientLiveSpeech(new OpenAiLiveSpeech({ grant: opts.grant, capture }), fallback) : fallback;
+  }
   if (kind === 'unavailable') return new UnavailableLiveSpeech('chosen');
   const mod = (opts.loadNative ?? loadSpeechModule)();
   if (!mod) return new UnavailableLiveSpeech('no_module');
@@ -50,3 +61,6 @@ export function createLiveSpeech(opts: CreateLiveSpeechOptions = {}): LiveSpeech
   }
   return available ? new NativeLiveSpeech(mod) : new UnavailableLiveSpeech('not_available');
 }
+
+export * from './openai';
+export * from './resilient';

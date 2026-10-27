@@ -296,3 +296,13 @@ describe('native live speech (fake module)', () => {
     expect(mod.start).not.toHaveBeenCalled();
   });
 });
+
+it('native PCM unavailable selects device speech without minting a provider secret', async () => {
+  const grant = jest.fn<() => Promise<{available: false}>>(async () => ({ available: false }));
+  const source = createLiveSpeech({ dataSource: 'http', kind: 'openai', grant, capture: { available: false, start: async () => { throw Error('no PCM'); }, stop: async () => {} }, loadNative: () => fakeModule() });
+  expect(source.kind).toBe('native'); expect(source.source).toBe('voice_device');
+  expect(grant).not.toHaveBeenCalled();
+  const unavailable = createLiveSpeech({ dataSource: 'http', kind: 'openai', grant, capture: { available: false, start: async () => {}, stop: async () => {} }, loadNative: () => null });
+  expect(unavailable.kind).toBe('unavailable');
+  const result = recorder(); await unavailable.start({lang:'en-US'},result.handlers); expect(result.errors).toEqual([{code:'not_available'}]); expect(grant).not.toHaveBeenCalled();
+});

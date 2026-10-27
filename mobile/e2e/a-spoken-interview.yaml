@@ -1,0 +1,25 @@
+# Mock development build uses scripted fictional speech; this does not test microphone hardware.
+appId: com.dutygraph.companion
+---
+- runFlow: setup-participant-mock.yaml
+- assertVisible: 'Questions about your work'
+- tapOn: 'Start'
+- tapOn: 'Start with voice'
+- tapOn: 'Allow microphone and start'
+- assertVisible: '.*customer portal.*'
+- tapOn: 'Next.*'
+- assertVisible: '.*order system.*'
+- tapOn: 'Next.*'
+- assertVisible: '.*credit check.*'
+- tapOn: 'Next.*'
+- assertVisible: '.*delivery address.*'
+- tapOn: 'Next.*'
+- assertVisible: '.*don.t know.*'
+- tapOn: 'Next.*'
+- assertVisible: '.*portal orders.*'
+- tapOn: 'Next.*'
+- assertVisible: 'One last thing'
+- tapOn: "No, that's all"
+- assertVisible: "Here's what we heard"
+- tapOn: 'Send to Alex'
+- assertVisible: "You're done. Thank you.*"

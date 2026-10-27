@@ -5,6 +5,8 @@ import { useRepository } from '@/api';
 import { useSessionStore } from '@/state/session';
 import { clearStoredPushToken } from '@/features/notifications/pushToken';
 import { confirmAsync } from './confirm';
+import { clearPendingTaskDecisions } from '@/api/extras';
+import { clearVoiceAudioCache } from '@/features/voice/out';
 
 /** Ends this phone's participant session and clears cached participant data. */
 export function useSignOut() {
@@ -21,6 +23,8 @@ export function useSignOut() {
       }
       await useSessionStore.getState().signOut();
       await clearStoredPushToken();
+      await clearPendingTaskDecisions();
+      await clearVoiceAudioCache();
       qc.clear();
       if (redirect) router.replace('/invite');
     },

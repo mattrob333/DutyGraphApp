@@ -99,6 +99,13 @@ export default function Invite() {
           ) : null}
         </Card>
       ) : null}
+      {!token ? (
+        <Button
+          label="I run meetings for a company"
+          onPress={() => router.push('/advisor/pair')}
+          style={{ marginTop: 20 }}
+        />
+      ) : null}
     </AuthShell>
   );
 }

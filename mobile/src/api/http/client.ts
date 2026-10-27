@@ -1,18 +1,27 @@
-import { config } from '../config';
-import { tokenStore as defaultTokenStore, type StoredSession } from '@/storage/tokens';
-import { newIdempotencyKey } from '@/utils/id';
-import type { components } from '../generated/companion-mobile-v1';
-import { errorFromResponse, networkOffline, requestTimeout, sessionEnded } from './errors';
-import { CompanionApiError } from '@/types/domain';
+import { config } from "../config";
+import {
+  tokenStore as defaultTokenStore,
+  type StoredSession,
+} from "@/storage/tokens";
+import { newIdempotencyKey } from "@/utils/id";
+import type { components } from "../generated/companion-mobile-v1";
+import {
+  errorFromResponse,
+  networkOffline,
+  requestTimeout,
+  sessionEnded,
+} from "./errors";
+import { CompanionApiError } from "@/types/domain";
 
-type ParticipantMobileSession = components['schemas']['ParticipantMobileSession'];
+type ParticipantMobileSession =
+  components["schemas"]["ParticipantMobileSession"];
 
 type FetchLike = (input: string, init?: any) => Promise<Response>;
 
 export interface ApiClientOptions {
   baseUrl?: string;
   fetch?: FetchLike;
-  tokenStore?: Pick<typeof defaultTokenStore, 'get' | 'set' | 'clear'>;
+  tokenStore?: Pick<typeof defaultTokenStore, "get" | "set" | "clear">;
   now?: () => number;
   newKey?: () => string;
   /** Default request timeout. */
@@ -22,6 +31,8 @@ export interface ApiClientOptions {
 }
 
 export interface RequestOptions {
+  /** Explicit trusted origin for proposed APIs; authentication refresh stays on v1. */
+  apiBaseUrl?: string;
   body?: unknown;
   formData?: FormData;
   idempotencyKey?: string;
@@ -54,7 +65,7 @@ export function toStoredSession(s: ParticipantMobileSession): StoredSession {
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly doFetch: FetchLike;
-  private readonly tokens: NonNullable<ApiClientOptions['tokenStore']>;
+  private readonly tokens: NonNullable<ApiClientOptions["tokenStore"]>;
   private readonly now: () => number;
   private readonly newKey: () => string;
   private readonly timeoutMs: number;
@@ -64,7 +75,8 @@ export class ApiClient {
   private refreshKey: { token: string; key: string } | null = null;
 
   constructor(opts: ApiClientOptions = {}) {
-    this.baseUrl = opts.baseUrl ?? `${config.apiBaseUrl}${config.mobileApiPath}`;
+    this.baseUrl =
+      opts.baseUrl ?? `${config.apiBaseUrl}${config.mobileApiPath}`;
     this.doFetch = opts.fetch ?? ((input, init) => fetch(input, init));
     this.tokens = opts.tokenStore ?? defaultTokenStore;
     this.now = opts.now ?? Date.now;
@@ -73,7 +85,11 @@ export class ApiClient {
     this.skewMs = opts.refreshSkewMs ?? 60_000;
   }
 
-  async request<T>(method: string, path: string, opts: RequestOptions = {}): Promise<T> {
+  async request<T>(
+    method: string,
+    path: string,
+    opts: RequestOptions = {},
+  ): Promise<T> {
     const auth = opts.auth !== false;
     let token: string | undefined;
     if (auth) {
@@ -86,18 +102,21 @@ export class ApiClient {
     if (res.status === 401 && auth && opts.retryOn401 !== false) {
       const current = await this.tokens.get();
       // Another request may already have rotated the token while ours was in flight.
-      const fresh = current && current.accessToken !== token ? current : await this.refresh();
+      const fresh =
+        current && current.accessToken !== token
+          ? current
+          : await this.refresh();
       res = await this.send(method, path, opts, fresh.accessToken);
     }
     return this.parse<T>(res);
   }
 
   get<T>(path: string, opts: RequestOptions = {}) {
-    return this.request<T>('GET', path, opts);
+    return this.request<T>("GET", path, opts);
   }
 
   post<T>(path: string, body?: unknown, opts: RequestOptions = {}) {
-    return this.request<T>('POST', path, { ...opts, body });
+    return this.request<T>("POST", path, { ...opts, body });
   }
 
   clearSession() {
@@ -132,12 +151,21 @@ export class ApiClient {
       this.refreshKey = { token: session.refreshToken, key: this.newKey() };
     }
     const res = await this.send(
-      'POST',
-      '/session/refresh',
-      { body: { refreshToken: session.refreshToken }, idempotencyKey: this.refreshKey.key, auth: false },
+      "POST",
+      "/session/refresh",
+      {
+        body: { refreshToken: session.refreshToken },
+        idempotencyKey: this.refreshKey.key,
+        auth: false,
+      },
       undefined,
     );
-    if (res.status === 401 || res.status === 403 || res.status === 409 || res.status === 422) {
+    if (
+      res.status === 401 ||
+      res.status === 403 ||
+      res.status === 409 ||
+      res.status === 422
+    ) {
       // REFRESH_REPLAY, SESSION_EXPIRED, revoked device: the session is over.
       await this.tokens.clear();
       this.refreshKey = null;
@@ -150,21 +178,37 @@ export class ApiClient {
     return stored;
   }
 
-  private async send(method: string, path: string, opts: RequestOptions, token: string | undefined): Promise<Response> {
-    const headers: Record<string, string> = { Accept: 'application/json', ...(opts.headers ?? {}) };
+  private async send(
+    method: string,
+    path: string,
+    opts: RequestOptions,
+    token: string | undefined,
+  ): Promise<Response> {
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      ...(opts.headers ?? {}),
+    };
     if (token) headers.Authorization = `Bearer ${token}`;
-    if (opts.idempotencyKey) headers['Idempotency-Key'] = opts.idempotencyKey;
+    if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
     let body: any;
     if (opts.formData) {
       body = opts.formData; // fetch sets the multipart boundary itself
     } else if (opts.body !== undefined) {
-      headers['Content-Type'] = 'application/json';
+      headers["Content-Type"] = "application/json";
       body = JSON.stringify(opts.body);
     }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? this.timeoutMs);
+    const timer = setTimeout(
+      () => controller.abort(),
+      opts.timeoutMs ?? this.timeoutMs,
+    );
     try {
-      return await this.doFetch(`${this.baseUrl}${path}`, { method, headers, body, signal: controller.signal });
+      return await this.doFetch(`${opts.apiBaseUrl ?? this.baseUrl}${path}`, {
+        method,
+        headers,
+        body,
+        signal: controller.signal,
+      });
     } catch (e) {
       if (controller.signal.aborted) throw requestTimeout();
       if (e instanceof CompanionApiError) throw e;
@@ -177,12 +221,22 @@ export class ApiClient {
   private async parse<T>(res: Response): Promise<T> {
     if (res.status === 204) return undefined as T;
     const text = await res.text();
-    if (!res.ok) throw errorFromResponse(res.status, text, res.headers?.get?.('x-request-id'));
+    if (!res.ok)
+      throw errorFromResponse(
+        res.status,
+        text,
+        res.headers?.get?.("x-request-id"),
+      );
     if (!text) return undefined as T;
     try {
       return JSON.parse(text) as T;
     } catch {
-      throw new CompanionApiError('BAD_RESPONSE', 'DutyGraph sent an unexpected reply. Please try again.', res.status, true);
+      throw new CompanionApiError(
+        "BAD_RESPONSE",
+        "DutyGraph sent an unexpected reply. Please try again.",
+        res.status,
+        true,
+      );
     }
   }
 }

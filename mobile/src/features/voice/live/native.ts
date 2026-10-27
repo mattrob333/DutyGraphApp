@@ -11,7 +11,7 @@ export interface SpeechModuleLike {
   start(options: Record<string, unknown>): void;
   stop(): void;
   abort(): void;
-  addListener(event: 'start' | 'end' | 'speechend' | 'result' | 'error', listener: (event: any) => void): Subscription;
+  addListener(event: 'start' | 'end' | 'speechend' | 'result' | 'error' | 'volumechange', listener: (event: any) => void): Subscription;
   requestPermissionsAsync(): Promise<{ granted: boolean }>;
   isRecognitionAvailable(): boolean;
   supportsOnDeviceRecognition(): boolean;
@@ -47,6 +47,8 @@ const join = (a: string, b: string) => [a.trim(), b.trim()].filter(Boolean).join
  */
 export class NativeLiveSpeech implements LiveSpeech {
   readonly kind = 'native' as const;
+  readonly source = 'voice_device' as const;
+  reset() { this.committed = ''; this.interim = ''; this.watchdogRestarts = 0; this.soundSince = null; this.lastWordAt = this.now(); }
   private run = 0;
   private active = false;
   private subs: Subscription[] = [];
@@ -58,6 +60,11 @@ export class NativeLiveSpeech implements LiveSpeech {
   /** Final segments so far (Android sends each phrase as its own final result). */
   private committed = '';
   private interim = '';
+  private soundSince: number | null = null;
+  private lastWordAt = 0;
+  private watchdogRestarts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectDelay = 2000;
   private restarts: number[] = [];
   private opened: (() => void) | null = null;
   private openTimer: ReturnType<typeof setTimeout> | null = null;
@@ -93,6 +100,17 @@ export class NativeLiveSpeech implements LiveSpeech {
       this.mod.addListener('result', (e) => this.onResult(run, e)),
       this.mod.addListener('error', (e) => this.onError(run, e)),
       this.mod.addListener('end', () => this.onEnd(run)),
+      this.mod.addListener('volumechange', (event) => {
+        if (run !== this.run || !this.active) return;
+        const level = Math.max(0, event.value ?? 0) / 10;
+        this.handlers?.onLevel?.(level);
+        if (level < 0.03) { this.soundSince = null; return; }
+        const now = this.now(); this.soundSince ??= now;
+        if (now - Math.max(this.soundSince, this.lastWordAt) < 6000) return;
+        this.soundSince = now;
+        if (this.watchdogRestarts++ >= 3) return this.fail(run, { code: 'not_available' });
+        this.safe(() => this.mod.stop(), undefined);
+      }),
       this.mod.addListener('speechend', () => run === this.run && this.active && this.handlers?.onPause?.()),
     ];
     this.appState = AppState.addEventListener('change', (s) => {
@@ -115,12 +133,14 @@ export class NativeLiveSpeech implements LiveSpeech {
     try {
       this.mod.start({
         lang: this.lang,
+        volumeChangeEventOptions: { enabled: true, intervalMillis: 100 },
         interimResults: true,
         continuous: true,
         maxAlternatives: 1,
         requiresOnDeviceRecognition: this.onDevice,
         addsPunctuation: true,
         iosTaskHint: 'dictation',
+        iosVoiceProcessingEnabled: true,
       });
     } catch (e) {
       this.fail(run, { code: 'other', message: e instanceof Error ? e.message : undefined });
@@ -129,6 +149,7 @@ export class NativeLiveSpeech implements LiveSpeech {
 
   private onResult(run: number, e: { isFinal?: boolean; results?: { transcript?: string }[] }) {
     if (run !== this.run || !this.active) return;
+    this.lastWordAt = this.now(); this.soundSince = null; this.reconnectDelay = 2000;
     const text = e?.results?.[0]?.transcript ?? '';
     if (e?.isFinal) {
       this.committed = join(this.committed, text);
@@ -159,6 +180,10 @@ export class NativeLiveSpeech implements LiveSpeech {
         }
         return this.fail(run, { code: 'not_available' });
       case 'network':
+        if (this.committed || this.interim) {
+          if (!this.reconnectTimer) { this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; if (run === this.run && this.active) this.begin(run); }, this.reconnectDelay); this.reconnectDelay = Math.min(15000, this.reconnectDelay * 2); }
+          return;
+        }
         return this.fail(run, { code: 'network' });
       default:
         return this.fail(run, { code: 'other', message: e?.message });
@@ -166,7 +191,7 @@ export class NativeLiveSpeech implements LiveSpeech {
   }
 
   private onEnd(run: number) {
-    if (run !== this.run || !this.active) return;
+    if (run !== this.run || !this.active || this.reconnectTimer) return;
     // Still listening as far as the deck knows: keep the words so far and start again.
     if (this.interim) this.committed = join(this.committed, this.interim);
     this.interim = '';
@@ -192,6 +217,8 @@ export class NativeLiveSpeech implements LiveSpeech {
   }
 
   private release(abort: boolean) {
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     const wasActive = this.active;
     this.active = false;
     this.subs.forEach((s) => s.remove());

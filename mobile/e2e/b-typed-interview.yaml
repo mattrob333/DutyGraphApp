@@ -1,0 +1,19 @@
+# Fictional fake-server fixture; each short answer deliberately misses a chip.
+appId: com.dutygraph.companion
+---
+- runFlow: setup-participant.yaml
+- assertVisible: 'Your work at Larkspur Supply.*'
+- tapOn: 'Start'
+- tapOn: 'Type instead'
+- repeat:
+    times: 6
+    commands:
+      - tapOn: 'Your answer'
+      - inputText: 'I work here.'
+      - tapOn: 'Next'
+      - tapOn: 'Next'
+- assertVisible: 'One last thing'
+- tapOn: "No, that's all"
+- assertVisible: "Here's what we heard"
+- tapOn: 'Send to Alex'
+- assertVisible: "You're done. Thank you.*"

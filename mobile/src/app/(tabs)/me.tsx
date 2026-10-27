@@ -87,6 +87,7 @@ export default function MeTab() {
       </View>
 
       <SectionLabel>Account</SectionLabel>
+      <NavRow label="Run meetings for a company" onPress={() => router.push('/advisor/pair')} />
       <Button label="Sign out" onPress={confirmAndSignOut} full />
       <Text variant="small" color="faint" style={{ marginTop: 8 }}>
         To reconnect after signing out, you will need a new invitation link from your advisor.

@@ -1,0 +1,22 @@
+# Native development build and mock advisor; verify secure-storage restoration after restart.
+appId: com.dutygraph.companion
+---
+- runFlow: setup-advisor.yaml
+- tapOn: 'Executive kickoff.*'
+- tapOn: 'Priya Shah.*'
+- tapOn: 'Start kickoff guide'
+- repeat:
+    times: 3
+    commands:
+      - tapOn: 'Priya Shah'
+      - tapOn: 'Attributed note'
+      - inputText: 'Fictional attributed note.'
+      - tapOn: 'Keep this note'
+      - assertVisible: 'Notes saved on this phone.'
+      - tapOn: 'Next topic'
+- stopApp
+- launchApp
+- assertVisible: 'Executive kickoff'
+- tapOn: 'Previous topic'
+- assertVisible: 'Fictional attributed note.'
+# Confirm each of three topics and their speaker; verify quote/source in proposals.

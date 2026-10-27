@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, expect, it, jest } from '@jest/globals';
+import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -22,9 +22,13 @@ import { RepositoryProvider } from '@/api';
 import { MockCompanionRepository } from '@/api/mock/MockCompanionRepository';
 import { ThemeProvider } from '@/theme';
 
+const clients: QueryClient[] = [];
+afterEach(() => { clients.splice(0).forEach((client) => client.clear()); });
+
 async function setup(ui: React.ReactElement, repo = new MockCompanionRepository()) {
   repo.latency = 0;
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity }, mutations: { gcTime: Infinity } } });
+  clients.push(qc);
   const utils = await render(
     <SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}>
       <QueryClientProvider client={qc}>

@@ -1,5 +1,7 @@
 # DutyGraph Companion (mobile app)
 
+For the current participant **and advisor Meeting OS** implementation, development server, Demo tour and verified status, start with the [repository README](../README.md) and [PROGRESS](../PROGRESS.md). This document retains the participant seed integration details.
+
 The participant app for DutyGraph: the phone version of the emailed "answer the questions" link, grown into the Companion described in the PRD. It lets a participant see what DutyGraph needs today, run a short voice or text Pulse instead of a status meeting, check "Here's what we understood" before anything counts, see meeting outcomes (avoided, shortened, required) with a pre-meeting brief, track commitments, and report when something changed.
 
 - Product and architecture: [../docs/companion-app.md](../docs/companion-app.md)
