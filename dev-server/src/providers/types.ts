@@ -1,3 +1,4 @@
+import type { MeetingProposal, SourceRef, TranscriptSegment, SpeakerMap } from "../../../shared/meetings/types.ts";
 import type {
   JudgmentByKind,
   JudgmentKind,
@@ -95,7 +96,17 @@ export interface FacilitatorTurn {
   action: (typeof FACILITATOR_ACTIONS)[number];
   addressedToPersonId?: string;
 }
+export interface ExtractionInput {
+  transcript: TranscriptSegment[];
+  speakerMap: SpeakerMap;
+  attendees: { personKey: string; name: string }[];
+  taskCards: { id: string; title: string }[];
+}
+export interface ExtractionOutput {
+  proposals: { body: MeetingProposal["body"]; sources: SourceRef[]; evidence: MeetingProposal["evidence"] }[];
+}
 export interface ConversationModelProvider extends SharedConversation {
+  extract(input: ExtractionInput): Promise<ExtractionOutput>;
   turn(input: {
     trigger: FacilitatorTrigger;
     prompt: string;

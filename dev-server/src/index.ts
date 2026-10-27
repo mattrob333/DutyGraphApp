@@ -1,5 +1,5 @@
 import express from "express";
-import { seedDemoPulse } from "./fixtures.ts";
+import { seedDemoPulse, seedDemoWrapUp } from "./fixtures.ts";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { randomBytes } from "node:crypto";
@@ -116,6 +116,7 @@ export function createApp(options: AppOptions = {}) {
   });
   app.use("/api/mobile/meetings/v1", meetingRoutes(store, providers, config));
   seedDemoPulse(store);
+  seedDemoWrapUp(store);
   app.use(
     "/api/mobile/v1x",
     (req, res, next) => {

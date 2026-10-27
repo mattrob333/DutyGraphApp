@@ -7,7 +7,8 @@ export const TTS_STYLE =
 export class ProviderError extends Error {
   constructor(
     readonly code:
-      "PROVIDER_UNAVAILABLE" | "PROVIDER_INVALID_RESPONSE" | "PROVIDER_TIMEOUT",
+      "PROVIDER_UNAVAILABLE" | "PROVIDER_INVALID_RESPONSE" | "PROVIDER_TIMEOUT"
+      | "PROVIDER_CONTEXT_TOO_LARGE",
   ) {
     super(code);
     this.name = "ProviderError";

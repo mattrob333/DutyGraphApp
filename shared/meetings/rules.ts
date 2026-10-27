@@ -253,6 +253,15 @@ export function canAccept(
       !s.committed ||
       s.excluded ||
       s.revision !== ref.revision ||
+      !ref.quote.trim() ||
+      s.speakerCluster !== ref.speakerCluster ||
+      (ref.personKey !== null &&
+        !map.entries.some(
+          (e) =>
+            e.cluster === s.speakerCluster &&
+            e.confirmedBy &&
+            e.personKey === ref.personKey,
+        )) ||
       !s.text.includes(ref.quote)
     )
       return { ok: false, reason: "A current committed source is required." };

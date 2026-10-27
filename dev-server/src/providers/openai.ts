@@ -1,3 +1,4 @@
+import { extractionInput, extractionOutputSchema, extractionJsonSchema, parseExtractionOutput, EXTRACTION_INSTRUCTIONS } from "./extraction.ts";
 import { z } from "zod";
 import {
   FAILSAFE_JUDGMENTS,
@@ -49,7 +50,7 @@ const completionResponse = z.object({
   choices: z
     .array(
       z.object({
-        message: z.object({ content: z.string().max(20000) }),
+        message: z.object({ content: z.string().max(100000) }),
         finish_reason: z.string().optional(),
       }),
     )
@@ -77,6 +78,7 @@ async function complete(
   schema: z.ZodType,
   system: string,
   input: unknown,
+  options: { maxOutputTokens?: number; jsonSchema?: object; maxResponseChars?: number; timeoutMs?: number } = {},
 ): Promise<unknown> {
   const response = await providerFetch(fetcher, config, "/chat/completions", {
     method: "POST",
@@ -84,7 +86,7 @@ async function complete(
     body: JSON.stringify({
       model: config.textModel,
       store: false,
-      max_completion_tokens: 1000,
+      max_completion_tokens: options.maxOutputTokens ?? 1000,
       messages: [
         {
           role: "system",
@@ -96,12 +98,12 @@ async function complete(
       ],
       response_format: {
         type: "json_schema",
-        json_schema: { name, strict: true, schema: strictJsonSchema(schema) },
+        json_schema: { name, strict: true, schema: options.jsonSchema ?? strictJsonSchema(schema) },
       },
     }),
-  });
+  }, options.timeoutMs ?? 15000);
   const parsed = completionResponse.safeParse(await responseJson(response));
-  if (!parsed.success || parsed.data.choices[0]!.finish_reason === "length")
+  if (!parsed.success || parsed.data.choices[0]!.finish_reason === "length" || parsed.data.choices[0]!.message.content.length > (options.maxResponseChars ?? 20000))
     throw new ProviderError("PROVIDER_INVALID_RESPONSE");
   try {
     return JSON.parse(parsed.data.choices[0]!.message.content);
@@ -356,6 +358,12 @@ export function createOpenAIProviders(
     providers.metadata.conversation = "openai";
     providers.metadata.judgment = "openai";
     providers.conversation = {
+      async extract(input) {
+        const safe = extractionInput(input);
+        if (!safe.transcript.length) return { proposals: [] };
+        const raw = await complete(config, fetcher, 'meeting_extraction', extractionOutputSchema, EXTRACTION_INSTRUCTIONS, safe, { maxOutputTokens: 8000, maxResponseChars: 100000, jsonSchema: extractionJsonSchema(), timeoutMs: 60000 });
+        return parseExtractionOutput(raw);
+      },
       async turn({ trigger, prompt, addressedToPersonId }) {
         if (!FACILITATOR_TRIGGERS.includes(trigger))
           throw new ProviderError("PROVIDER_INVALID_RESPONSE");

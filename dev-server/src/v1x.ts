@@ -571,6 +571,7 @@ export function v1xRoutes(store: Store, providers: Providers, config: Config) {
       .list<MeetingSession>("sessions", p)
       .filter((session) => session.meetingId === meeting.id);
     return store.list<MeetingProposal>("proposals", p).filter((proposal) => {
+      if (proposal.state === "rejected") return false;
       const session = sessions.find(
         (session) => session.id === proposal.sessionId,
       );
@@ -590,15 +591,13 @@ export function v1xRoutes(store: Store, providers: Providers, config: Config) {
         return proposal.body.askPersonKey === p.personId;
       const map = store.records.speakers?.[session.id]?.value as
         SpeakerMap | undefined;
-      return proposal.sources.some(
-        (source) =>
-          source.personKey === p.personId ||
-          map?.entries.some(
-            (entry) =>
-              entry.cluster === source.speakerCluster &&
-              entry.confirmedBy &&
-              entry.personKey === p.personId,
-          ),
+      return proposal.sources.some((source) =>
+        map?.entries.some(
+          (entry) =>
+            entry.cluster === source.speakerCluster &&
+            entry.confirmedBy &&
+            entry.personKey === p.personId,
+        ),
       );
     });
   }
@@ -748,7 +747,10 @@ export function v1xRoutes(store: Store, providers: Providers, config: Config) {
           text: textBody(proposal),
           version: proposal.version,
           hash: proposal.hash,
-          confirmation: item?.confirmation ?? "pending",
+          confirmation:
+            proposal.state === "stale"
+              ? "pending"
+              : (item?.confirmation ?? "pending"),
           ...(item?.note ? { note: item.note } : {}),
         };
       }),

@@ -9,6 +9,7 @@ import {
 import { dirname } from "node:path";
 import type { Request, Response, NextFunction } from "express";
 import { ZodError } from "zod";
+import { ProviderError } from "./providers/common.ts";
 export const uuid = randomUUID;
 export const digest = (v: string | Uint8Array) =>
   createHash("sha256").update(v).digest("hex");
@@ -57,14 +58,29 @@ export function errors(
   const x =
     err instanceof ApiError
       ? err
-      : err instanceof ZodError || err instanceof SyntaxError
-        ? new ApiError(400, "VALIDATION_ERROR", "Check the request fields.")
-        : new ApiError(
-            500,
-            "INTERNAL_ERROR",
-            "The request could not be completed.",
-            true,
-          );
+      : err instanceof ProviderError
+        ? new ApiError(
+            err.code === "PROVIDER_CONTEXT_TOO_LARGE"
+              ? 413
+              : err.code === "PROVIDER_TIMEOUT"
+                ? 504
+                : err.code === "PROVIDER_UNAVAILABLE"
+                  ? 503
+                  : 502,
+            err.code,
+            err.code === "PROVIDER_CONTEXT_TOO_LARGE"
+              ? "The meeting context is too large to process in one request."
+              : "The provider could not complete this request. Try again.",
+            err.code !== "PROVIDER_CONTEXT_TOO_LARGE",
+          )
+        : err instanceof ZodError || err instanceof SyntaxError
+          ? new ApiError(400, "VALIDATION_ERROR", "Check the request fields.")
+          : new ApiError(
+              500,
+              "INTERNAL_ERROR",
+              "The request could not be completed.",
+              true,
+            );
   res.status(x.status).json({
     code: x.code,
     message: x.message,
@@ -154,8 +170,17 @@ export class Store {
     companyId: string,
     personId?: string,
   ): T {
-    (this.records[kind] ??= {})[id] = { companyId, personId, value };
-    this.save();
+    const collection = (this.records[kind] ??= {});
+    const previous = collection[id];
+    collection[id] = { companyId, personId, value: structuredClone(value) };
+    try {
+      this.save();
+    } catch (error) {
+      // A failed durable write must not appear committed to subsequent requests.
+      if (previous) collection[id] = previous;
+      else delete collection[id];
+      throw error;
+    }
     return value;
   }
   get<T>(kind: string, id: string, p: Principal, person = false): T {

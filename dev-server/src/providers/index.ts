@@ -17,3 +17,5 @@ export function createProviders(
 ): Providers {
   return createOpenAIProviders(config, fetchImpl);
 }
+
+export { extractionInput, extractionOutputSchema, parseExtractionOutput, EXTRACTION_MAX_INPUT_BYTES, EXTRACTION_MAX_PROPOSALS } from "./extraction.ts";

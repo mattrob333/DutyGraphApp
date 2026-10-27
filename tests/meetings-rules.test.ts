@@ -179,6 +179,19 @@ test("proposal sources must be current, committed, included and mapped", () => {
     false,
   );
   assert.equal(canAccept({ ...p, sources: [] }, [segment], map).ok, false);
+  for (const forged of [
+    { quote: "" },
+    { speakerCluster: "S2" },
+    { personKey: "someone-else" },
+  ])
+    assert.equal(
+      canAccept(
+        { ...p, sources: [{ ...p.sources[0]!, ...forged }] },
+        [segment],
+        map,
+      ).ok,
+      false,
+    );
 });
 test("Pulse status discloses completion only and due time completes collection", () => {
   const p: Pulse = {

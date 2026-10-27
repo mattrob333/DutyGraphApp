@@ -1,3 +1,5 @@
+import { extractionInput, parseExtractionOutput } from "./extraction.ts";
+import type { MeetingProposal } from "../../../shared/meetings/types.ts";
 import { readFileSync } from "node:fs";
 import {
   FAILSAFE_JUDGMENTS,
@@ -91,6 +93,22 @@ export function createFakeProviders(config: ProviderConfig = {}): Providers {
       },
     },
     conversation: {
+      async extract(input) {
+        const safe = extractionInput(input);
+        return parseExtractionOutput({ proposals: safe.transcript.slice(0, 30).map(segment => {
+          const mapped = safe.speakerMap.entries.find(entry => entry.cluster === segment.speakerCluster && entry.confirmedBy);
+          const personKey = mapped?.personKey && safe.attendees.some(person => person.personKey === mapped.personKey) ? mapped.personKey : null;
+          const source = { segmentId: segment.id, revision: segment.revision, quote: segment.text, speakerCluster: segment.speakerCluster, personKey };
+          const body: MeetingProposal['body'] = /\?\s*$/.test(segment.text)
+            ? { kind: 'open_question', question: segment.text, askPersonKey: null }
+            : /\b(will|need to|action|owner)\b/i.test(segment.text)
+              ? { kind: 'action', what: segment.text, ownerPersonKey: null, due: null, dependsOn: [], doneWhen: 'Not stated', status: 'proposed' }
+              : /\b(decid|delay|approved|agreed)\w*/i.test(segment.text)
+                ? { kind: 'decision', decision: segment.text, decidedByPersonKey: null, rationale: 'Not stated', alternatives: [], deferred: false }
+                : { kind: 'claim', fieldPath: 'meeting.notes', value: segment.text };
+          return { body, sources: [source], evidence: 'observed' };
+        }) });
+      },
       async turn({ trigger, addressedToPersonId }) {
         if (!FACILITATOR_TRIGGERS.includes(trigger))
           throw new Error("INVALID_TRIGGER");

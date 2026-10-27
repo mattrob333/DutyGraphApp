@@ -49,7 +49,11 @@ export function commands(store: Store) {
           store.put(
             "idempotency",
             scope,
-            { hash: bodyHash, result },
+            {
+              hash: bodyHash,
+              result,
+              resources: Object.values(req.params).flat(),
+            },
             p.companyId,
           );
         } finally {
