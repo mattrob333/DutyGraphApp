@@ -922,7 +922,7 @@ export function meetingRoutes(
         "Finish uploading this recording segment first.",
       );
     res
-      .type("audio/aac")
+      .type("audio/mp4")
       .send(
         Buffer.concat(
           Array.from({ length: segment.chunkCount }, (_, i) =>
@@ -1619,7 +1619,8 @@ export function meetingRoutes(
           );
           const result = await providers.transcription.transcribe({
             audio,
-            mimeType: "audio/aac",
+            // Phone recorders write AAC in an MPEG-4 (.m4a) container; raw .aac is rejected by the transcriber.
+            mimeType: "audio/mp4",
           });
           assertCurrent();
           // Each recorder segment is a separate container; offsets preserve source playback timestamps.

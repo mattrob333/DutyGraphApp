@@ -1405,7 +1405,7 @@
           "200": {
             "description": "Acknowledged by the server.",
             "content": {
-              "audio/aac": {
+              "audio/mp4": {
                 "schema": {
                   "type": "string",
                   "format": "binary"

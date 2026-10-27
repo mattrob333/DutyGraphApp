@@ -1,13 +1,31 @@
-name: Native development build checks
+name: Native builds
 on:
+  # Adding the build-android label to a pull request builds the mock-data demo APK from it.
+  pull_request:
+    types: [labeled, synchronize]
   workflow_dispatch:
+    inputs:
+      data_source:
+        description: "mock (fictional demo data, no server) or http"
+        default: mock
+        type: choice
+        options: [mock, http]
+      api_base_url:
+        description: "DutyGraph origin for employee questions (http only)"
+        default: https://dutygraph.com
+      meetings_api_base_url:
+        description: "Meetings/voice server origin (http only; blank turns advisor tools off)"
+        default: ""
 jobs:
   android:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'build-android')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      EXPO_PUBLIC_DATA_SOURCE: mock
+      EXPO_PUBLIC_DATA_SOURCE: ${{ inputs.data_source || 'mock' }}
       EXPO_PUBLIC_COMPANION_SCOPE: full
+      EXPO_PUBLIC_API_BASE_URL: ${{ inputs.api_base_url }}
+      EXPO_PUBLIC_MEETINGS_API_BASE_URL: ${{ inputs.meetings_api_base_url }}
       EXPO_PUBLIC_FACILITATOR_REALTIME: 'true'
     steps:
       - uses: actions/checkout@v4
@@ -18,19 +36,22 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
-      - uses: android-actions/setup-android@v3
+      # ubuntu-latest ships the Android SDK (ANDROID_HOME); setup-android@v3's sdkmanager call now fails.
       - run: npm ci
       - run: npm ci
         working-directory: mobile
       - run: npx expo prebuild --platform android --no-install
         working-directory: mobile
-      - run: ./gradlew :app:assembleDebug --no-daemon
+      # Release bundles the JavaScript into the APK so it runs without a development server.
+      # Expo's template signs release with the debug key: fine to sideload, not for the Play Store.
+      - run: ./gradlew :app:assembleRelease --no-daemon
         working-directory: mobile/android
       - uses: actions/upload-artifact@v4
         with:
-          name: android-debug
-          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          name: dutygraph-android-apk
+          path: mobile/android/app/build/outputs/apk/release/*.apk
   ios:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 60
     env:

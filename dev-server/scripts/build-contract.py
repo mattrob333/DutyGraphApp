@@ -77,7 +77,7 @@ chunk_result=o({'segmentIndex':i(),'uploadedChunks':a(i()),'complete':b,'duratio
 route(B,'/sessions/{id}/segments','post',chunk_result,chunk)
 route(B,'/sessions/{id}/segments','get',o({'segments':a(chunk_result)}))
 route(B,'/sessions/{id}/audio/{segmentIndex}','get',s(format='binary'),binary=True)
-paths[B+'/sessions/{id}/audio/{segmentIndex}']['get']['responses']['200']['content']['audio/aac']=paths[B+'/sessions/{id}/audio/{segmentIndex}']['get']['responses']['200']['content'].pop('audio/mpeg')
+paths[B+'/sessions/{id}/audio/{segmentIndex}']['get']['responses']['200']['content']['audio/mp4']=paths[B+'/sessions/{id}/audio/{segmentIndex}']['get']['responses']['200']['content'].pop('audio/mpeg')
 transcript_input=o({k:v for k,v in S['Transcript']['properties'].items() if k!='sessionId'},['id','revision','startMs','endMs','text'])
 transcript_input['properties']['speaker']=nullable(s())
 transcript_input['properties']['personKey']=s(minLength=1,maxLength=200)

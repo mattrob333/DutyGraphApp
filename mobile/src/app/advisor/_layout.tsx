@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { AppState, Platform, View } from "react-native";
+import { AppState, Platform, Pressable, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Redirect, Slot, router, usePathname, type Href } from "expo-router";
 import * as LocalAuthentication from "expo-local-authentication";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,7 +13,7 @@ import {
   TopBar,
 } from "@/components/common";
 import { useAdvisorStore } from "@/state/advisor";
-import { useColors } from "@/theme";
+import { radius, useColors } from "@/theme";
 
 /** Company-scoped advisor routes are inaccessible before pairing and native device unlock. */
 export default function AdvisorLayout() {
@@ -120,36 +121,7 @@ export default function AdvisorLayout() {
         (mounted && authenticatedCompany === identityKey) ? (
           <Slot />
         ) : null}
-        {identity && !pairing ? (
-          <View
-            accessibilityRole="tablist"
-            style={{
-              flexDirection: "row",
-              gap: 8,
-              borderTopWidth: 1,
-              borderTopColor: c.line,
-              backgroundColor: c.nav,
-              paddingHorizontal: 16,
-              paddingVertical: 10,
-            }}
-          >
-            <Button
-              label="Meetings"
-              style={{ flex: 1 }}
-              onPress={() => router.replace("/advisor/meetings" as Href)}
-            />
-            <Button
-              label="Capture"
-              style={{ flex: 1 }}
-              onPress={() => router.replace("/advisor/capture" as Href)}
-            />
-            <Button
-              label="Me"
-              style={{ flex: 1 }}
-              onPress={() => router.replace("/advisor/me" as Href)}
-            />
-          </View>
-        ) : null}
+        {identity && !pairing ? <AdvisorTabs path={path} /> : null}
       </View>
       {locked ? (
         <View
@@ -182,6 +154,66 @@ export default function AdvisorLayout() {
           </Screen>
         </View>
       ) : null}
+    </View>
+  );
+}
+
+const ADVISOR_TABS = [
+  { label: "Meetings", href: "/advisor/meetings" },
+  { label: "Capture", href: "/advisor/capture" },
+  { label: "Me", href: "/advisor/me" },
+] as const;
+
+/** Same text tabs and accent pill as the participant BottomNav, for the advisor routes. */
+function AdvisorTabs({ path }: { path: string }) {
+  const c = useColors();
+  const insets = useSafeAreaInsets();
+  return (
+    <View
+      accessibilityRole="tablist"
+      style={{
+        flexDirection: "row",
+        gap: 4,
+        borderTopWidth: 1,
+        borderTopColor: c.line,
+        backgroundColor: c.nav,
+        paddingHorizontal: 20,
+        paddingTop: 12,
+        paddingBottom: Math.max(insets.bottom, 12),
+      }}
+    >
+      {ADVISOR_TABS.map((tab) => {
+        const section = path.startsWith("/advisor/capture")
+          ? "/advisor/capture"
+          : path === "/advisor/me" || path.startsWith("/advisor/me/")
+            ? "/advisor/me"
+            : "/advisor/meetings";
+        const focused = tab.href === section;
+        return (
+          <Pressable
+            key={tab.href}
+            accessibilityRole="tab"
+            accessibilityLabel={tab.label}
+            accessibilityState={{ selected: focused }}
+            onPress={() => router.replace(tab.href as Href)}
+            style={{
+              flex: 1,
+              minHeight: 48,
+              borderRadius: radius.button + 1,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: focused ? c.accentBg : "transparent",
+            }}
+          >
+            <Text
+              variant="buttonSecondary"
+              style={{ color: focused ? c.ink : c.muted }}
+            >
+              {tab.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
