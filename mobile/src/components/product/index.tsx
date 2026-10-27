@@ -208,13 +208,14 @@ export function TimerRing({
       accessibilityLabel={label}
       style={{
         alignSelf: "flex-start",
-        minHeight: 56,
-        minWidth: 56,
-        padding: 12,
+        minHeight: 36,
+        paddingHorizontal: 14,
+        paddingVertical: 6,
+        marginVertical: 8,
         justifyContent: "center",
         alignItems: "center",
         borderRadius: radius.pill,
-        borderWidth: 3,
+        borderWidth: 1.5,
         borderColor: over ? c.red : urgent ? c.amber : c.sage,
       }}
     >
@@ -722,19 +723,33 @@ export function CoachPanel({
       <Text variant="label" color="faint">
         {paused ? "Coach paused · offline" : "Silent coach"}
       </Text>
-      <Text variant="cardTitle">{title}</Text>
+      <Text variant="metaStrong" color="muted" style={{ marginTop: 6 }}>
+        {title}
+      </Text>
       {person ? <Text variant="metaStrong">Ask {person}</Text> : null}
-      {question ? <Text>{question}</Text> : null}
-      {children}
+      {question ? (
+        <Text variant="cardTitle" style={{ marginTop: 6 }}>
+          {question}
+        </Text>
+      ) : null}
       {stillNeeded.length ? (
-        <Text color="muted">Still needed: {stillNeeded.join(" · ")}</Text>
+        <Text color="muted" style={{ marginTop: 8 }}>
+          Still needed: {stillNeeded.join(" · ")}
+        </Text>
       ) : null}
       {flags.map((f, i) => (
         <Text key={i} color="amber">
           {f}
         </Text>
       ))}
-      {onPark ? <Button label="Park it" onPress={onPark} /> : null}
+      {children || onPark ? (
+        <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          {children}
+          {onPark ? (
+            <Button label="Park it" style={{ flex: 1 }} full onPress={onPark} />
+          ) : null}
+        </View>
+      ) : null}
     </Card>
   );
 }

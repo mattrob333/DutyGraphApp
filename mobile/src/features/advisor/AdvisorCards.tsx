@@ -82,7 +82,7 @@ export function AdvisorCards({
       <CardDeck
         count={s.questions.length}
         shown={shown}
-        height={340}
+        height={280}
         reduce={reduced}
         onSwipeBack={() => deck.send({ type: "prev" })}
         renderCard={(i) => (
@@ -127,57 +127,80 @@ export function AdvisorCards({
             </Text>
           </>
         )}
-        <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-          <Button
-            label={s.paused ? "Resume" : "Pause"}
-            onPress={() => deck.send({ type: s.paused ? "resume" : "pause" })}
-          />
-          <Button
-            label={s.mode === "text" ? "Answer by voice" : "Type instead"}
-            disabled={s.mode === "text" && speech.kind === "unavailable"}
-            onPress={() =>
-              deck.send({ type: s.mode === "text" ? "toVoice" : "toText" })
-            }
-          />
-          <Button label="Read question aloud" onPress={deck.replay} />
-        </View>
         {speech.kind === "unavailable" ? (
           <Notice>
             Voice input needs a supported native build. Type instead.
           </Notice>
         ) : null}
-        {s.phase === "speaking" ? (
-          <Button
-            label="Speak now"
-            onPress={() => deck.send({ type: "bargeIn" })}
-          />
-        ) : null}
-        {s.view !== null ? (
-          <Button
-            label="Return to current question"
-            onPress={() => deck.send({ type: "return" })}
-          />
-        ) : (
-          <Button
-            label={s.idx === s.questions.length - 1 ? lastLabel : "Next"}
-            kind="primary"
-            disabled={
-              s.paused ||
-              s.phase === "speaking" ||
-              ["got", "saved", "skipped"].includes(s.phase)
-            }
-            onPress={() => deck.send({ type: "next" })}
-          />
-        )}
-        <Button
-          label="Previous"
-          disabled={s.idx === 0 && s.view === null}
-          onPress={() => deck.send({ type: "prev" })}
-        />
-        <Button
-          label="I don’t know yet"
-          onPress={() => deck.send({ type: "skip", reason: "dontknow" })}
-        />
+        <View style={{ gap: 8, marginTop: 4 }}>
+          {s.phase === "speaking" ? (
+            <Button
+              label="Speak now"
+              full
+              onPress={() => deck.send({ type: "bargeIn" })}
+            />
+          ) : null}
+          {s.view !== null ? (
+            <Button
+              label="Return to current question"
+              kind="primary"
+              onPress={() => deck.send({ type: "return" })}
+            />
+          ) : (
+            <Button
+              label={s.idx === s.questions.length - 1 ? lastLabel : "Next"}
+              kind="primary"
+              disabled={
+                s.paused ||
+                s.phase === "speaking" ||
+                ["got", "saved", "skipped"].includes(s.phase)
+              }
+              onPress={() => deck.send({ type: "next" })}
+            />
+          )}
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Button
+              label="Previous"
+              style={{ flex: 1 }}
+              full
+              disabled={s.idx === 0 && s.view === null}
+              onPress={() => deck.send({ type: "prev" })}
+            />
+            <Button
+              label="I don’t know yet"
+              style={{ flex: 1.4 }}
+              full
+              onPress={() => deck.send({ type: "skip", reason: "dontknow" })}
+            />
+          </View>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <Button
+              label={s.paused ? "Resume" : "Pause"}
+              kind="ghost"
+              style={{ flex: 1 }}
+              full
+              onPress={() => deck.send({ type: s.paused ? "resume" : "pause" })}
+            />
+            <Button
+              label={s.mode === "text" ? "Answer by voice" : "Type instead"}
+              kind="ghost"
+              style={{ flex: 1.4 }}
+              full
+              disabled={s.mode === "text" && speech.kind === "unavailable"}
+              onPress={() =>
+                deck.send({ type: s.mode === "text" ? "toVoice" : "toText" })
+              }
+            />
+            <Button
+              label="Read aloud"
+              accessibilityLabel="Read question aloud"
+              kind="ghost"
+              style={{ flex: 1 }}
+              full
+              onPress={deck.replay}
+            />
+          </View>
+        </View>
       </View>
     </View>
   );

@@ -9,7 +9,18 @@ jest.mock("@/features/voice/meeting", () => ({
   clearMeetingRecordingData: jest.fn(async () => {}),
 }));
 jest.mock("@/theme", () => ({
-  useColors: () => ({ bg: "white", line: "gray", nav: "white" }),
+  radius: { button: 8 },
+  useColors: () => ({
+    bg: "white",
+    line: "gray",
+    nav: "white",
+    accentBg: "gray",
+    ink: "black",
+    muted: "gray",
+  }),
+}));
+jest.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 jest.mock("@tanstack/react-query", () => {
   const queries = {

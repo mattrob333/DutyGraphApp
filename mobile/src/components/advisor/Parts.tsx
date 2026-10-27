@@ -124,6 +124,21 @@ export function CommandError({ error }: { error: unknown }) {
     </Notice>
   ) : null;
 }
+/** Human label for a speaker cluster: typed notes are N_<id>, recorded voices get "Speaker 1, 2…". */
+export function speakerLabel(
+  cluster: string | null | undefined,
+  clusters: readonly (string | null | undefined)[] = [],
+): string {
+  if (!cluster) return "Unknown speaker";
+  if (cluster.startsWith("N_")) return "Typed note";
+  const voices = [
+    ...new Set(clusters.filter((v): v is string => !!v && !v.startsWith("N_"))),
+  ];
+  const at = voices.indexOf(cluster);
+  if (at >= 0) return `Speaker ${at + 1}`;
+  const numbered = /^S(\d+)$/.exec(cluster);
+  return numbered ? `Speaker ${numbered[1]}` : "Speaker";
+}
 export const proposalText = (p: MeetingProposal): string => {
   const b = p.body;
   return b.kind === "decision"
@@ -195,9 +210,11 @@ export function ProposalEvidenceCard({
           <Text variant="meta" color="muted">
             “{s.quote}”
           </Text>
-          <Text variant="small" color="faint">
-            Source {s.segmentId} · revision {s.revision}
-          </Text>
+          {s.revision > 1 ? (
+            <Text variant="small" color="faint">
+              From a corrected transcript
+            </Text>
+          ) : null}
           {onSource ? (
             <Button
               label={`Source at ${Math.floor((sourceTimes?.[s.segmentId] ?? 0) / 60000)}:${String(Math.floor(((sourceTimes?.[s.segmentId] ?? 0) % 60000) / 1000)).padStart(2, "0")}`}

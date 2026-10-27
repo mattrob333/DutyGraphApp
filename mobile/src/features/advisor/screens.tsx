@@ -1,6 +1,12 @@
 import { saveLiveNote } from "./saveLiveNote";
 import React, { useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, AppState, Platform, View } from "react-native";
+import {
+  AccessibilityInfo,
+  AppState,
+  Platform,
+  Share,
+  View,
+} from "react-native";
 import { router, useLocalSearchParams, type Href } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import {
@@ -28,6 +34,7 @@ import {
   Notice,
   ProposalEvidenceCard,
   proposalText,
+  speakerLabel,
 } from "@/components/advisor/Parts";
 import {
   getAdvisorRepository,
@@ -77,6 +84,13 @@ import type {
 } from "../../../../shared/meetings/types";
 
 export const go = (route: string) => router.push(route as Href);
+/** Accepts "2026-11-03 14:00" as well as ISO text; returns NaN when unreadable. */
+const parseLocalDate = (value: string) =>
+  Date.parse(value.trim().replace(/^(\d{4}-\d{2}-\d{2}) (\d)/, "$1T$2"));
+const meetingTypeLabel = (type: string | null | undefined) => {
+  const words = (type ?? "meeting").toLowerCase().replace(/_/g, " ");
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}${/meeting$/.test(words) ? "" : " meeting"}`;
+};
 const base = (id: string) => `/advisor/meetings/${encodeURIComponent(id)}`;
 const useMeetingId = () =>
   useLocalSearchParams<{ meetingId: string }>().meetingId;
@@ -316,7 +330,9 @@ export function BuilderScreen() {
     const texts = answers.map((a) => a?.raw ?? "");
     const input: CreateMeeting = {
       title: draft.title.trim(),
-      startsAt: draft.startsAt ? new Date(draft.startsAt).toISOString() : null,
+      startsAt: draft.startsAt
+        ? new Date(parseLocalDate(draft.startsAt)).toISOString()
+        : null,
       minutes: Number(draft.minutes),
       purpose: texts[0],
       outcomes: texts[1].split("\n").filter((v) => v.trim()),
@@ -364,7 +380,8 @@ export function BuilderScreen() {
               multiline={false}
             />
             <Field
-              label="Start time (optional, ISO date)"
+              label="Start time (optional)"
+              placeholder="YYYY-MM-DD HH:MM"
               value={draft.startsAt}
               onChange={(startsAt) => update({ startsAt })}
               multiline={false}
@@ -378,7 +395,7 @@ export function BuilderScreen() {
                 Number(draft.minutes) < 1 ||
                 Number(draft.minutes) > 240 ||
                 (!!draft.startsAt &&
-                  !Number.isFinite(Date.parse(draft.startsAt)))
+                  !Number.isFinite(parseLocalDate(draft.startsAt)))
               }
               onPress={() => update({ shown: 0 })}
             />
@@ -606,7 +623,7 @@ export function PlanScreen() {
       ))}
       <ListRow
         title="Attendees and roles"
-        detail={`${m.attendees.length} people`}
+        detail={`${m.attendees.length} ${m.attendees.length === 1 ? "person" : "people"}`}
         onPress={() => go(`${base(id)}/attendees`)}
       />
       {!m.gate ? (
@@ -621,11 +638,11 @@ export function PlanScreen() {
         <>
           <SectionLabel>Proposed plan</SectionLabel>
           <Text variant="bodyStrong">
-            {m.meetingType?.toLowerCase().replace(/_/g, " ")} · {m.minutes}{" "}
-            minutes
+            {meetingTypeLabel(m.meetingType)} · {m.minutes} minutes
           </Text>
           <Button
             label={editingAgenda ? "Cancel agenda edits" : "Edit agenda"}
+            style={{ marginTop: 8, marginBottom: 4 }}
             onPress={() => {
               setEditingAgenda(!editingAgenda);
               setAgenda(m.agenda);
@@ -1577,7 +1594,8 @@ export function LiveScreen() {
         <CoachPanel
           title={topic?.title ?? "Meeting coach"}
           question={
-            coach?.nextQuestion ?? "Refresh the coach for the next question."
+            coach?.nextQuestion ??
+            "Tap Suggest a question when you need a prompt."
           }
           stillNeeded={coach?.stillNeeded ?? m.power.outcomes}
           flags={coach?.flags ?? []}
@@ -1585,7 +1603,9 @@ export function LiveScreen() {
           onPark={() => setNote(topic?.title ?? "")}
         >
           <Button
-            label="Refresh coach"
+            label="Suggest a question"
+            style={{ flex: 1.4 }}
+            full
             loading={cmd.busy}
             onPress={async () => {
               const result = await cmd.run(["coach", sid, elapsed], (r, k) =>
@@ -1702,7 +1722,10 @@ export function LiveScreen() {
           <ListRow
             key={t.id}
             title={t.text}
-            detail={`${t.speakerCluster ?? "Unknown speaker"} · source ${t.revision}`}
+            detail={`${speakerLabel(
+              t.speakerCluster,
+              s.transcript.map((v) => v.speakerCluster),
+            )}${t.revision > 1 ? " · corrected" : ""}`}
           />
         ))}
       {!s.transcript.length ? (
@@ -2004,7 +2027,6 @@ export function ClosingScreen() {
           </View>
         ) : null;
       })}
-      <SectionLabel>Parked items</SectionLabel>
       <ParkedList
         items={q.data.parked.map((p) => ({ id: p.id, title: p.text }))}
       />
@@ -2041,7 +2063,12 @@ export function SpeakersScreen() {
       </Text>
       {current.entries.map((entry) => (
         <Card key={entry.cluster}>
-          <Text variant="bodyStrong">{entry.cluster}</Text>
+          <Text variant="bodyStrong">
+            {speakerLabel(
+              entry.cluster,
+              current.entries.map((v) => v.cluster),
+            )}
+          </Text>
           <Notice>
             {q.data.transcript.find((t) => t.speakerCluster === entry.cluster)
               ?.text ?? "No excerpt available."}
@@ -2135,7 +2162,9 @@ export function ResultsScreen() {
               ...b,
               what: edit,
               ownerPersonKey: editOwner || null,
-              due: editDue ? new Date(editDue).toISOString() : null,
+              due: editDue
+                ? new Date(parseLocalDate(editDue)).toISOString()
+                : null,
             }
           : b.kind === "open_question"
             ? { ...b, question: edit }
@@ -2261,7 +2290,8 @@ export function ResultsScreen() {
                   />
                 ))}
               <Field
-                label="Due date (optional, ISO date)"
+                label="Due date (optional)"
+                placeholder="YYYY-MM-DD"
                 value={editDue}
                 onChange={setEditDue}
                 multiline={false}
@@ -2289,7 +2319,7 @@ export function ResultsScreen() {
             disabled={
               !edit.trim() ||
               (editing.state === "stale" && !sourcesChecked) ||
-              (!!editDue && !Number.isFinite(Date.parse(editDue)))
+              (!!editDue && !Number.isFinite(parseLocalDate(editDue)))
             }
             loading={cmd.busy}
             onPress={saveEdit}
@@ -2329,7 +2359,9 @@ export function ResultsScreen() {
         label="Return to owner confirmations"
         onPress={() => go(sessionRoute(id, "closing", sid))}
       />
-      <SectionLabel>Parked follow-up questions</SectionLabel>
+      {q.data.parked.length ? (
+        <SectionLabel>Parked follow-up questions</SectionLabel>
+      ) : null}
       {q.data.parked.map((p) => (
         <View key={p.id}>
           <ListRow
@@ -2344,7 +2376,7 @@ export function ResultsScreen() {
       ))}
       <SectionLabel>Export for review</SectionLabel>
       <Button
-        label="Prepare Markdown and JSON"
+        label="Export results"
         loading={cmd.busy}
         onPress={async () => {
           const result = await cmd.run(["export", sid], (r) => r.export(sid));
@@ -2362,9 +2394,15 @@ export function ResultsScreen() {
             onChange={setExported}
             maxLength={200000}
           />
+          {Platform.OS !== "web" ? (
+            <Button
+              label="Share export"
+              onPress={() => void Share.share({ message: exported })}
+            />
+          ) : null}
           <Notice>
-            Copy the export for the DutyGraph team. This does not change company
-            records.
+            Copy or share the export for the DutyGraph team. This does not
+            change company records.
           </Notice>
         </>
       ) : null}
