@@ -78,3 +78,9 @@ The standalone Expo app now implements participant and advisor workflows against
 - Added `resolveBackendProfile` and config wiring for mock, dev-server, dutygraph-local, dutygraph-preview, dutygraph-production. Real backend modes use one origin for participant and advisor HTTP. HTTPS required for preview/production; remote preview requires an explicit URL. Stale separate meetings-origin overrides are ignored in real DutyGraph profiles. Legacy `http` keeps earlier behavior.
 - Added focused tests for the five profiles, legacy compatibility and rejecting credentialed URLs/paths/unknown modes. **Not run** in this session: npm install, Jest, typecheck, lint, EAS/native, HTTP integration and device QA (no authenticated local checkout or network). Code changes are unverified pending CI.
 - Defaults: `mock` stays default, no EAS profile automatically points at unimplemented production endpoints. No secrets or provider calls. The live DutyGraph server still needs Sprint 1 endpoints.
+
+## 2026-10-28 — Sprint 2 P4 iOS recording privacy
+
+- Updated the iOS PCM module to expose an Application Support meeting recording directory with `isExcludedFromBackup` and file protection. Expo raw clips now use Cache; stored clips use that private directory on iOS. Existing Documents clips migrate during restore with manifest-first preservation. Cleanup removes private and legacy files. Old builds without this native method cannot start iOS meeting recording.
+- Added two focused Jest cases for private storage and legacy migration (iOS checks). **Not run**: Jest, iOS build, iCloud backup verification, device recording and crash recovery, full suite, typecheck, lint (no authenticated local checkout). Native behavior remains unverified.
+- No production app store rollout, production backend integration or paid provider call.

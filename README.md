@@ -84,3 +84,5 @@ Rehearse with real providers (paid, never in CI): start the dev server with `OPE
 The `codex/live-backend` draft branch includes an early proposal-source warning; real DutyGraph meeting integration remains in development and requires server work and device checks.
 
 - **Backend profiles (draft PR):** `codex/live-backend` adds opt-in explicit mock/dev-server/local/preview/production origins. It does not deploy the new meeting API.
+
+- **iOS recording privacy (draft PR):** meeting evidence now targets an iCloud-backup-excluded native directory; requires rebuilding the app and real-device QA before release.

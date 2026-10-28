@@ -92,3 +92,7 @@ Random and revoked bearer tokens; participant tokens on advisor routes; attendee
 
 - **Injected text inside proposals — mitigated in review UI, not closed end to end.** `ProposalEvidenceCard` now labels source quotations that match explicit role/prompt markers, override instructions or the recorded budget-approval pattern: “This quote looks like an instruction. Check before accepting.” Added 11 helper test cases. This is heuristic and may miss attacks or flag ordinary speech. Manual acceptance rules stay unchanged. **Focused Jest and device visual QA not run in this session.** Keep as open until the test suite and full flow are exercised.
 - Other open findings (iCloud backup, Universal/App Links, signing) are unchanged.
+
+## 2026-10-28 iOS recording privacy mitigation (draft, unverified)
+
+- Previous finding: iPhone meeting evidence was saved to iCloud-backed Documents. Draft P4 code now uses the native module's backup-excluded Application Support directory, keeps temporary clips in Cache, migrates old Documents clips during restore and blocks iOS meeting recording when the native method is missing. Two Jest checks added. **Remains open for confirmation** until native compilation, iPhone recording/restart, and actual iCloud backup exclusion have been verified. No claim of a passing real-device test.

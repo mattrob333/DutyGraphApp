@@ -23,6 +23,8 @@ export interface NativePcmModule {
   finishBackupAsync?(id: string): Promise<SpeechBackupFile[]>;
   recoverBackupsAsync?(): Promise<SpeechBackupFile[]>;
   clearBackupsAsync?(): Promise<void>;
+  /** iOS Application Support, marked to exclude recorded evidence from iCloud backups. */
+  meetingRecordingDirectoryAsync?(): Promise<string>;
   addListener(
     event: "samples",
     callback: (event: PcmSamplesEvent) => void,
