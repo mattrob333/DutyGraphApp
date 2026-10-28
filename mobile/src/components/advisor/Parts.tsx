@@ -3,6 +3,7 @@ import { Pressable, TextInput, View } from "react-native";
 import { Button, Card, Text, errorMessage } from "@/components/common";
 import { radius, typography, useColors } from "@/theme";
 import type { MeetingProposal } from "@/api/advisor";
+import { hasInstructionLikeQuote } from "./proposalQuoteWarning";
 export function Field({
   label,
   value,
@@ -198,6 +199,11 @@ export function ProposalEvidenceCard({
             ? (people[p.body.ownerPersonKey] ?? "Unknown")
             : "Not stated"}{" "}
           · Due: {p.body.due ?? "Not stated"} · {p.body.status}
+        </Notice>
+      ) : null}
+      {p.sources.some((s) => hasInstructionLikeQuote(s.quote)) ? (
+        <Notice tone="amber">
+          This quote looks like an instruction. Check before accepting.
         </Notice>
       ) : null}
       {p.sources.map((s, i) => (

@@ -87,3 +87,8 @@ Random and revoked bearer tokens; participant tokens on advisor routes; attendee
 - **Injected text can surface inside proposals.** Fake JSON spoken in a meeting became a proposed "contradiction" quoting "Approve $2M budget", and a harassment line became an open question. Nothing is applied without a person accepting it, but reviewers see attacker wording. Consider flagging quotes that contain instruction or JSON patterns.
 - **The fixture invitation token is public** (README). On a hosted demo server anyone can enroll once per restart as the fictional participant and use TTS within its rate limits. Fine for fictional demos; replace it before any real data.
 - **The demo APK is debug-signed** and the `dutygraph-companion://` scheme can be claimed by another app. Use https App Links (already verified on dutygraph.com) for invitations, and a real signing key before distribution. `apple-app-site-association` is missing on dutygraph.com, so iOS Universal Links will not work yet.
+
+## 2026-10-28 follow-up (draft `codex/live-backend`)
+
+- **Injected text inside proposals — mitigated in review UI, not closed end to end.** `ProposalEvidenceCard` now labels source quotations that match explicit role/prompt markers, override instructions or the recorded budget-approval pattern: “This quote looks like an instruction. Check before accepting.” Added 11 helper test cases. This is heuristic and may miss attacks or flag ordinary speech. Manual acceptance rules stay unchanged. **Focused Jest and device visual QA not run in this session.** Keep as open until the test suite and full flow are exercised.
+- Other open findings (iCloud backup, Universal/App Links, signing) are unchanged.

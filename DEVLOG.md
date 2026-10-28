@@ -36,3 +36,5 @@ Expanded the root README with a repository map, verified build status and links 
 - Real-provider rehearsal script; fixed finish sending .m4a recordings as `audio/aac` (OpenAI rejected every real recording). Results in PROGRESS.md.
 - Native build workflow now produces an installable release APK, triggered by the `build-android` PR label or by hand.
 - Verified: 488 mobile, 78 shared and 60 API tests; typechecks and lint; all 12 HTTP browser flows.
+
+- 2026-10-28 (draft `codex/live-backend`, preparatory P4): Added an amber warning when a meeting proposal cites instruction-like source text. The warning is informational: it does not auto-accept, change, or reject proposals. Added a pure helper and 11 Jest cases. This change was reviewed as source only; Jest/typecheck/lint/device QA were not run in this GitHub-connector session. Sprint 1's production API and the rest of Sprint 2 remain pending.

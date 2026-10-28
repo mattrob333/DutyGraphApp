@@ -64,3 +64,11 @@ The standalone Expo app now implements participant and advisor workflows against
 - Native/provider speech runs and hook callbacks are fenced by session. Recovering multiple clips preserves earlier words and manual edits; spoken prompts are excluded from backups.
 - Raw PCM backups use the same capture engine, bounded rolling WAV files and private OS-backup-excluded storage. Native file-protection behavior remains unverified on devices.
 - Extraction and facilitator replies recheck consent/state after provider waits; malformed model output cannot publish partial proposals. Withdrawal removes escaped-text caches and derived follow-ups.
+
+## 2026-10-28 — `codex/live-backend` preliminary Sprint 2 hardening
+
+- **P4 (partial):** Added `hasInstructionLikeQuote` and a visible amber warning on proposal evidence cards. Detection is a review hint (not a safety classifier or automatic decision). Added 11 focused Jest examples.
+- **P1–P3, P5:** Not implemented here; production meeting contract, authenticated advisor pairing, PostgreSQL integration runner and backend profiles still depend on DutyGraphV2's `codex/mobile-api` sprint.
+- **Checks:** Code inspection completed. Jest, typecheck, lint, web export, full 626-test suite, EAS/device QA and cross-repo integration **not run**: this session can read/write through the GitHub connector, but lacks an authenticated local checkout and test services. No provider used.
+- **Default:** Flag source quotes with explicit prompt/role markers, directive overrides, or the budget-approval pattern from the recorded red-team case. Treat false positives as prompts to recheck, not as rejection. Do not modify proposal status or authorization.
+- **No production change:** Draft-only branch; no merge or deployment.
