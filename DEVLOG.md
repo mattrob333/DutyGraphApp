@@ -1,3 +1,9 @@
+# October 28, 2026 — Resume queued finish checks safely
+
+The actual-backend HTTP adapter polls queued finish jobs and requires the original command receipt before showing closing. Local polling stops on cancel, background, screen leave or identity change. Pending and ambiguous outcomes retain their retry key; an ambiguous provider dispatch requires advisor review instead of another automatic attempt. The synchronous development/mock flows remain supported. The screen explains that the server can continue after local checks stop.
+
+The final 67-test fake-HTTP/actual-contract/retry-key group passed. It covers pending, completion binding, header/body timeouts, cancellation, identity fencing, ambiguous/definite failures and retries. Mobile typecheck, touched-file lint, mock export and retained 390×844 advisor browser flow passed. The actual served D5 contract and generated job DTO were refreshed from the local backend; details are in PROGRESS.md. No paid provider, hosted API or physical device was used.
+
 # October 28, 2026 — Explicit meeting closing review
 
 Added per-outcome dispositions, deferral owner/date input, partial-outcome follow-up and a server-acknowledged Complete action. Completion uses the current session version/hash and existing durable retry-key mechanism. Local failed-save drafts remain editable. Accepted action owner/date changes use the existing source review instead of bypassing evidence review. A completed meeting can seed a linked next plan with deferred work.

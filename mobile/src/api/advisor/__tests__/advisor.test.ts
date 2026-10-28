@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import {
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 jest.mock("@/features/voice/out", () => ({
   clearVoiceAudioCache: jest.fn(async () => {}),
 }));
@@ -716,5 +723,252 @@ describe("structured closing ritual", () => {
         key: "complete-key",
       },
     ]);
+  });
+});
+
+describe("resumable finish polling", () => {
+  beforeEach(async () => {
+    await advisorTokens.set(session());
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+  const job = (state: string, id = "job-one") => ({
+    job: {
+      id,
+      state,
+      stage: "extract",
+      completedSegments: 1,
+      failureCode: null,
+      simulated: true,
+    },
+  });
+  const done = () => ({
+    session: { endedAt: "2026-10-28T20:00:00Z" },
+    proposals: [],
+  });
+  it("keeps 202 pending, polls to complete, then requires the same command receipt", async () => {
+    const replies = [
+      response(202, job("queued")),
+      response(200, job("running")),
+      response(200, job("complete")),
+      response(200, done()),
+    ];
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async () => replies.shift()!);
+    let settled = false;
+    const pending = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key")
+      .then(() => {
+        settled = true;
+      });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(settled).toBe(false);
+    await jest.advanceTimersByTimeAsync(1000);
+    await pending;
+    expect(settled).toBe(true);
+    expect(
+      fetcher.mock.calls.map(([url]) => String(url).split("/").at(-1)),
+    ).toEqual(["finish", "finish-job", "finish-job", "finish"]);
+    for (const [, init] of fetcher.mock.calls.filter(
+      ([, init]) => init?.method === "POST",
+    ))
+      expect((init!.headers as Record<string, string>)["Idempotency-Key"]).toBe(
+        "same-key",
+      );
+  });
+  it("bounds pending checks and resumes with the same key instead of starting another job", async () => {
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async () => response(202, job("queued")));
+    const repo = new HttpAdvisorRepository("http://localhost", true);
+    const error = repo
+      .finish("session-one", "same-key")
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(61000);
+    expect((await error).code).toBe("COMMAND_PENDING");
+    expect(
+      fetcher.mock.calls.filter(([, init]) => init?.method === "POST"),
+    ).toHaveLength(1);
+    fetcher.mockResolvedValueOnce(response(200, done()));
+    await repo.finish("session-one", "same-key");
+    expect(
+      (fetcher.mock.calls.at(-1)![1]!.headers as Record<string, string>)[
+        "Idempotency-Key"
+      ],
+    ).toBe("same-key");
+  });
+  it.each([
+    ["needs_review", "FINISH_REVIEW_REQUIRED"],
+    ["failed", "COMMAND_FAILED"],
+  ])("reports %s without automatic resubmission", async (state, code) => {
+    const replies = [response(202, job("queued")), response(200, job(state))];
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async () => replies.shift()!);
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key")
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect((await error).code).toBe(code);
+    expect(fetcher.mock.calls).toHaveLength(2);
+  });
+  it("stops checking on cancellation and retains the pending attempt", async () => {
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(response(202, job("queued")));
+    const controller = new AbortController();
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key", { signal: controller.signal })
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(0);
+    controller.abort();
+    expect((await error).code).toBe("COMMAND_PENDING");
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it("does not read another company after logout while polling", async () => {
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(response(202, job("queued")));
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key")
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(0);
+    await clearAdvisorData();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect((await error).code).toBe("SESSION_ENDED");
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it("times out a status request without falsely finishing or resubmitting", async () => {
+    let calls = 0;
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async (_url, init) => {
+        if (++calls === 1) return response(202, job("queued"));
+        return new Promise<Response>((_resolve, reject) =>
+          init!.signal!.addEventListener("abort", () =>
+            reject(new Error("aborted")),
+          ),
+        );
+      });
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key")
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(22000);
+    expect((await error).code).toBe("REQUEST_TIMEOUT");
+    expect(fetcher.mock.calls).toHaveLength(2);
+  });
+  it("cannot use another job's complete status as this command's completion", async () => {
+    let get = false;
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async (_url, init) => {
+        if (init?.method === "GET") {
+          get = true;
+          return response(200, job("complete", "another-job"));
+        }
+        return response(202, job("queued"));
+      });
+    const controller = new AbortController();
+    let settled = false;
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key", { signal: controller.signal })
+      .then(() => {
+        settled = true;
+      })
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(get).toBe(true);
+    expect(settled).toBe(false);
+    expect(fetcher.mock.calls).toHaveLength(3);
+    controller.abort();
+    expect((await error).code).toBe("COMMAND_PENDING");
+  });
+  it("cancels an in-flight status request without accepting its eventual response", async () => {
+    let calls = 0;
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async (_url, init) => {
+        if (++calls === 1) return response(202, job("queued"));
+        return new Promise<Response>((_resolve, reject) =>
+          init!.signal!.addEventListener("abort", () =>
+            reject(new Error("aborted")),
+          ),
+        );
+      });
+    const controller = new AbortController();
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key", { signal: controller.signal })
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    controller.abort();
+    expect((await error).code).toBe("COMMAND_PENDING");
+  });
+  it.each([200, 202])(
+    "refuses an unacknowledged empty finish response (%s)",
+    async (status) => {
+      jest.spyOn(global, "fetch").mockResolvedValue(response(status, {}));
+      await expect(
+        new HttpAdvisorRepository("http://localhost", true).finish(
+          "session-one",
+          "same-key",
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    },
+  );
+  it.each(["cancel", "timeout"])(
+    "keeps %s active while a status response body is still loading",
+    async (mode) => {
+      let calls = 0;
+      jest.spyOn(global, "fetch").mockImplementation(async (_url, init) => {
+        if (++calls === 1) return response(202, job("queued"));
+        return {
+          status: 200,
+          ok: true,
+          text: () =>
+            new Promise<string>((_resolve, reject) =>
+              init!.signal!.addEventListener("abort", () =>
+                reject(new Error("body aborted")),
+              ),
+            ),
+        } as Response;
+      });
+      const controller = new AbortController();
+      const error = new HttpAdvisorRepository("http://localhost", true)
+        .finish("session-one", "same-key", { signal: controller.signal })
+        .catch((error) => error);
+      await jest.advanceTimersByTimeAsync(1000);
+      if (mode === "cancel") controller.abort();
+      else await jest.advanceTimersByTimeAsync(21000);
+      expect((await error).code).toBe(
+        mode === "cancel" ? "COMMAND_PENDING" : "REQUEST_TIMEOUT",
+      );
+      expect(calls).toBe(2);
+    },
+  );
+  it("keeps an ambiguous dispatch review code from the command replay", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue(
+      response(409, {
+        code: "FINISH_REVIEW_REQUIRED",
+        message: "Review required",
+        retryable: false,
+      }),
+    );
+    await expect(
+      new HttpAdvisorRepository("http://localhost", true).finish(
+        "session-one",
+        "same-key",
+      ),
+    ).rejects.toMatchObject({
+      code: "FINISH_REVIEW_REQUIRED",
+      retryable: false,
+    });
   });
 });

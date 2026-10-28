@@ -1,5 +1,15 @@
 # Build progress
 
+## October 28, 2026 — Day-run resumable finish follow-up
+
+- The HTTP adapter treats a queued finish response as pending. It polls job metadata for up to one minute, then reports that the server is still preparing the review. It confirms completion by replaying the original POST with the same command key, rather than trusting a session's latest job alone.
+- Stop checking, background and screen leave cancel local polling. This does not cancel the server job. A later tap resumes the same persisted command key. Logout/company changes fence the entire polling run, including waits between requests.
+- Ambiguous dispatches use FINISH_REVIEW_REQUIRED and retain the original key. They never automatically start another provider attempt. Definite pre-processing failures keep the existing deliberate-retry path. The mock and synchronous development API remain supported.
+- The screen no longer says to keep the app open. It shows a Stop checking action while checking finish. Nothing navigates to closing until this exact command is acknowledged complete.
+- Validation: the final adapter/actual-contract/retry-key group passed 67/67 tests. It includes queued/eventual completion, timeout/resume, cancellation before and during a status response body, logout, failed/review-required jobs, empty acknowledgments and command binding. The request timeout/cancel guard now covers response bodies as well as headers. The final actual served D5 contract was regenerated from local port 4321; polling metadata uses its generated MobileFinishJobStatus type.
+- Mobile typecheck, touched-file lint, mock web export and the retained 390×844 advisor browser flow passed. The browser still completes the fictional closing review and opens a linked follow-up plan. Full mobile suite/CI and independent red team remain parent integration work. Providers are fake; no real device, hosted API or paid call is claimed.
+
+
 ## October 28, 2026 — Day-run meeting closing
 
 - Added an outcome checklist: Met, Partly met, Deferred or Dropped. Deferral requires a consenting attendee owner and an explicit date/time. Partly met outcomes require a follow-up plan. Local edits stay drafts until the save is acknowledged; failures retain the edits.
@@ -8,7 +18,7 @@
 - Checks: 24 advisor repository tests passed, followed by 31 UI/actual-contract tests (three closing UI and 28 contract cases). The full shared suite passed 78/78. The targeted development API closing test passed. Mobile and development API typechecks, repository lint and final touched-file lint passed. Actual DutyGraphV2 advisor wire types were regenerated from the served local API at port 4321 after its closing version pins/provenance update. An initial typecheck ran before mobile installation finished and failed on missing React Native types; the completed-install rerun passed.
 - A mock web export passed with one Metro worker. The maintained advisor browser flow passed at 390×844 through proposal acceptance, deferred-outcome save, acknowledged COMPLETE and explicit linked follow-up planning. [Screens](docs/day-run/screens/) include closing review and completion; the completion image was visually inspected. Browser data was fictional and all providers simulated.
 - Self-review also pinned a local outcome draft to the session version at edit start. If another save changes the server review, the app requires explicit reload instead of overwriting it with a newly refetched version. Inputs lock while saving. The regression covers this two-tab boundary.
-- D5 follow-up remains: when the backend switches finish to queued jobs, the HTTP adapter must treat HTTP 202 as pending, poll finish-job metadata to completion and preserve the same key across retry. The current foreground finish adapter has not been changed in this D2 package.
+- The D2 freeze retained foreground finish; the D5 follow-up below replaces it for queued actual-backend jobs.
 - Providers in tests are fake. No hosted database, paid provider, native build or real device was exercised. Full suite/CI and independent red team remain parent integration work.
 
 

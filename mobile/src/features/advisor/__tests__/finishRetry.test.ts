@@ -46,7 +46,12 @@ test("restart and ambiguous finish outcomes retain the exact key until the serve
   });
   await first.unmount();
   const next = await renderHook(useCommand);
-  for (const code of ["COMMAND_PENDING", "REQUEST_TIMEOUT", "COMMAND_FAILED"]) {
+  for (const code of [
+    "COMMAND_PENDING",
+    "REQUEST_TIMEOUT",
+    "FINISH_REVIEW_REQUIRED",
+    "COMMAND_FAILED",
+  ]) {
     await act(async () => {
       await next.result.current.run(
         ["finish", "session"],

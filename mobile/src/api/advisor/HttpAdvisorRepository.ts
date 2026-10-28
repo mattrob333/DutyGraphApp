@@ -42,6 +42,7 @@ import type {
   SessionWire,
   PeopleWire,
   MeetingRouteWire,
+  MobileFinishJobWire,
 } from "@/api/dutygraphWire";
 
 export class HttpAdvisorRepository implements AdvisorRepository {
@@ -61,8 +62,19 @@ export class HttpAdvisorRepository implements AdvisorRepository {
     retry = true,
     namespace = "/api/mobile/meetings/v1",
     timeoutMs = 20000,
+    callerSignal?: AbortSignal,
   ): Promise<T> {
     if (!this.origin) return notAvailable();
+    const assertNotCancelled = () => {
+      if (callerSignal?.aborted)
+        throw new CompanionApiError(
+          "COMMAND_PENDING",
+          "Checking paused. The server can continue processing. Tap Review closing to check the same attempt.",
+          0,
+          true,
+        );
+    };
+    assertNotCancelled();
     const generation = advisorSessionGeneration();
     const assertCurrent = () => {
       if (generation !== advisorSessionGeneration())
@@ -83,65 +95,88 @@ export class HttpAdvisorRepository implements AdvisorRepository {
       );
     if (session && Date.parse(session.accessExpiresAt) < Date.now() + 30000)
       session = await this.refresh();
+    assertNotCancelled();
     assertCurrent();
     const abort = new AbortController(),
-      timer = setTimeout(() => abort.abort(), timeoutMs);
+      timer = setTimeout(() => abort.abort(), timeoutMs),
+      cancel = () => abort.abort();
+    callerSignal?.addEventListener("abort", cancel, { once: true });
+    if (callerSignal?.aborted) abort.abort();
     let response: Response;
     try {
-      response = await fetch(
-        `${this.origin.replace(/\/+$/, "")}${namespace}${path}`,
-        {
-          method,
-          signal: abort.signal,
-          headers: {
-            Accept: "application/json",
-            ...(body === undefined
-              ? {}
-              : { "Content-Type": "application/json" }),
-            ...(session
-              ? { Authorization: `Bearer ${session.accessToken}` }
-              : {}),
-            ...(key ? { "Idempotency-Key": key } : {}),
+      try {
+        response = await fetch(
+          `${this.origin.replace(/\/+$/, "")}${namespace}${path}`,
+          {
+            method,
+            signal: abort.signal,
+            headers: {
+              Accept: "application/json",
+              ...(body === undefined
+                ? {}
+                : { "Content-Type": "application/json" }),
+              ...(session
+                ? { Authorization: `Bearer ${session.accessToken}` }
+                : {}),
+              ...(key ? { "Idempotency-Key": key } : {}),
+            },
+            body: body === undefined ? undefined : JSON.stringify(body),
           },
-          body: body === undefined ? undefined : JSON.stringify(body),
-        },
-      );
-    } catch {
-      throw abort.signal.aborted ? requestTimeout() : networkOffline();
+        );
+      } catch {
+        assertNotCancelled();
+        throw abort.signal.aborted ? requestTimeout() : networkOffline();
+      }
+      assertNotCancelled();
+      assertCurrent();
+      const readBody = async () => {
+        try {
+          const raw = await response.text();
+          assertNotCancelled();
+          assertCurrent();
+          return raw;
+        } catch (error) {
+          assertNotCancelled();
+          if (abort.signal.aborted) throw requestTimeout();
+          if (error instanceof CompanionApiError) throw error;
+          throw networkOffline();
+        }
+      };
+      if (response.status === 401 && authorized && retry) {
+        await this.refresh();
+        return this.request(
+          path,
+          method,
+          body,
+          key,
+          authorized,
+          false,
+          namespace,
+          timeoutMs,
+          callerSignal,
+        );
+      }
+      if (response.status === 404 || response.status === 501)
+        return notAvailable();
+      if (!response.ok) {
+        const error = errorFromResponse(response.status, await readBody());
+        assertCurrent();
+        if (
+          error.code === "REFRESH_REPLAY" ||
+          (response.status === 401 &&
+            (authorized || path === "/advisor/session/refresh"))
+        )
+          await useAdvisorStore.getState().clear();
+        throw error;
+      }
+      if (response.status === 204) return undefined as T;
+      const raw = await readBody();
+      assertCurrent();
+      return raw ? (JSON.parse(raw) as T) : (undefined as T);
     } finally {
       clearTimeout(timer);
+      callerSignal?.removeEventListener("abort", cancel);
     }
-    assertCurrent();
-    if (response.status === 401 && authorized && retry) {
-      await this.refresh();
-      return this.request(
-        path,
-        method,
-        body,
-        key,
-        authorized,
-        false,
-        namespace,
-        timeoutMs,
-      );
-    }
-    if (response.status === 404 || response.status === 501)
-      return notAvailable();
-    if (!response.ok) {
-      const error = errorFromResponse(response.status, await response.text());
-      assertCurrent();
-      if (
-        error.code === "REFRESH_REPLAY" ||
-        (response.status === 401 &&
-          (authorized || path === "/advisor/session/refresh"))
-      )
-        await useAdvisorStore.getState().clear();
-      throw error;
-    }
-    if (response.status === 204) return undefined as T;
-    const raw = await response.text();
-    assertCurrent();
-    return raw ? (JSON.parse(raw) as T) : (undefined as T);
   }
   private refresh(): Promise<AdvisorSession> {
     if (!this.refreshing)
@@ -544,19 +579,144 @@ export class HttpAdvisorRepository implements AdvisorRepository {
       throw new Error("The server did not acknowledge this recording part.");
     return { uploadedBytes: input.offset + input.bytes.length };
   }
-  async finish(id: string, key: string) {
-    // Batch processing is bounded at 180s on V2; keep the caller connected for
-    // that work plus transport overhead. A lost response keeps the same key.
-    await this.request(
-      `/sessions/${encodeURIComponent(id)}/finish`,
-      "POST",
-      {},
-      key,
-      true,
-      true,
-      "/api/mobile/meetings/v1",
-      210000,
-    );
+  async finish(id: string, key: string, options?: { signal?: AbortSignal }) {
+    // A minimal projection of the generated server DTOs; no transcript content is retained here.
+    type Result = {
+      job?: MobileFinishJobWire;
+      session?: Pick<SessionWire, "endedAt">;
+    };
+    const generation = advisorSessionGeneration();
+    const assertActive = () => {
+      if (generation !== advisorSessionGeneration())
+        throw new CompanionApiError(
+          "SESSION_ENDED",
+          "Pair this phone again to continue.",
+          401,
+          false,
+        );
+      if (options?.signal?.aborted)
+        throw new CompanionApiError(
+          "COMMAND_PENDING",
+          "Checking paused. The server can continue processing. Tap Review closing to check the same attempt.",
+          0,
+          true,
+        );
+    };
+    const pending = () =>
+      new CompanionApiError(
+        "COMMAND_PENDING",
+        "The server is still preparing the review. You can leave and tap Review closing later to check the same attempt.",
+        202,
+        true,
+      );
+    const submit = async () => {
+      assertActive();
+      const result = await this.request<Result>(
+        `/sessions/${encodeURIComponent(id)}/finish`,
+        "POST",
+        {},
+        key,
+        true,
+        true,
+        "/api/mobile/meetings/v1",
+        this.versionedCommands ? 20000 : 210000,
+        options?.signal,
+      );
+      assertActive();
+      if (
+        !result ||
+        (!result.job && this.versionedCommands && !result.session?.endedAt)
+      )
+        throw new CompanionApiError(
+          "INVALID_RESPONSE",
+          "The server has not confirmed that the review is ready. Tap Review closing to check again.",
+          0,
+          true,
+        );
+      return result;
+    };
+    let result = await submit();
+    if (!result.job) return; // The synchronous development API remains supported.
+    const jobId = result.job.id;
+    if (!jobId)
+      throw new CompanionApiError(
+        "INVALID_RESPONSE",
+        "The server did not identify the finish attempt.",
+        0,
+        true,
+      );
+    const deadline = Date.now() + 60000;
+    while (true) {
+      assertActive();
+      const job = result.job;
+      if (!job) return;
+      if (job.id !== jobId) throw pending();
+      if (
+        job.state === "needs_review" ||
+        job.failureCode === "INTERRUPTED_DISPATCH"
+      )
+        throw new CompanionApiError(
+          "FINISH_REVIEW_REQUIRED",
+          "Processing needs an advisor review before another attempt. Your recording is retained.",
+          409,
+          false,
+        );
+      if (job.state === "failed")
+        throw new CompanionApiError(
+          "COMMAND_FAILED",
+          "The finish attempt failed before processing. Your recording is retained.",
+          409,
+          false,
+        );
+      if (job.state === "complete") {
+        // Bind completion to this command receipt, not merely the session's latest job.
+        result = await submit();
+        if (!result.job) return;
+        throw pending();
+      }
+      if (!["queued", "running"].includes(job.state))
+        throw new CompanionApiError(
+          "INVALID_RESPONSE",
+          "The server returned an unknown finish state.",
+          0,
+          true,
+        );
+      if (Date.now() >= deadline) throw pending();
+      await new Promise<void>((resolve, reject) => {
+        const cancel = () => {
+          clearTimeout(timer);
+          options?.signal?.removeEventListener("abort", cancel);
+          reject(pending());
+        };
+        const timer = setTimeout(() => {
+          options?.signal?.removeEventListener("abort", cancel);
+          resolve();
+        }, 1000);
+        options?.signal?.addEventListener("abort", cancel, { once: true });
+        if (options?.signal?.aborted) cancel();
+      });
+      assertActive();
+      result = await this.request<Result>(
+        `/sessions/${encodeURIComponent(id)}/finish-job`,
+        "GET",
+        undefined,
+        undefined,
+        true,
+        true,
+        "/api/mobile/meetings/v1",
+        20000,
+        options?.signal,
+      );
+      assertActive();
+      if (!result?.job)
+        throw new CompanionApiError(
+          "INVALID_RESPONSE",
+          "The server has not confirmed the finish state.",
+          0,
+          true,
+        );
+      if (result.job.id !== jobId) result = await submit();
+    }
   }
   speakers(id: string, map: SpeakerMap, key: string) {
     return this.request<SpeakerMap>(

@@ -388,6 +388,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/mobile/meetings/v1/sessions/{id}/finish-job": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_api_mobile_meetings_v1_sessions_id_finish_job"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/mobile/meetings/v1/sessions/{id}/park": {
         parameters: {
             query?: never;
@@ -878,6 +894,16 @@ export interface components {
             parked: components["schemas"]["ParkedItem"][];
             speakerMap: components["schemas"]["SpeakerMap"];
             proposals: components["schemas"]["MeetingProposal"][];
+        };
+        MobileFinishJobStatus: {
+            id: string;
+            /** @enum {string} */
+            state: "complete" | "failed" | "needs_review" | "queued" | "running";
+            /** @enum {string} */
+            stage: "extract" | "publish" | "transcribe";
+            completedSegments: number;
+            failureCode: null | string;
+            simulated: boolean;
         };
         MobileMeetingAudioReceipt: {
             segmentIndex: number;
@@ -2332,14 +2358,63 @@ export interface operations {
                     "application/json": {
                         session: components["schemas"]["SessionSnapshot"];
                         proposals: components["schemas"]["MeetingProposal"][];
-                    } | ({
-                        session: components["schemas"]["SessionSnapshot"];
-                        proposals: components["schemas"]["MeetingProposal"][];
                     } | {
                         session: components["schemas"]["SessionSnapshot"];
                         proposals: components["schemas"]["MeetingProposal"][];
-                        simulated: boolean;
-                    });
+                        simulated?: boolean;
+                        job?: unknown;
+                        code?: unknown;
+                        message?: unknown;
+                        retryable?: unknown;
+                    };
+                };
+            };
+            /** @description Server acknowledgement. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        job: components["schemas"]["MobileFinishJobStatus"];
+                        code?: unknown;
+                        message?: unknown;
+                        retryable?: unknown;
+                    };
+                };
+            };
+            400: components["responses"]["ApiError"];
+            401: components["responses"]["ApiError"];
+            403: components["responses"]["ApiError"];
+            404: components["responses"]["ApiError"];
+            409: components["responses"]["ApiError"];
+            410: components["responses"]["ApiError"];
+            422: components["responses"]["ApiError"];
+            429: components["responses"]["ApiError"];
+            503: components["responses"]["ApiError"];
+            default: components["responses"]["ApiError"];
+        };
+    };
+    get_api_mobile_meetings_v1_sessions_id_finish_job: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server acknowledgement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        job: components["schemas"]["MobileFinishJobStatus"];
+                    };
                 };
             };
             400: components["responses"]["ApiError"];

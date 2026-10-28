@@ -165,7 +165,11 @@ export interface AdvisorRepository {
     bytes: Uint8Array;
     final: boolean;
   }): Promise<{ uploadedBytes: number }>;
-  finish(id: string, key: string): Promise<void>;
+  finish(
+    id: string,
+    key: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<void>;
   speakers(id: string, map: SpeakerMap, key: string): Promise<SpeakerMap>;
   decide(
     proposal: MeetingProposal,

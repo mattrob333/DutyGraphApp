@@ -2,6 +2,8 @@
 
 | Date (UTC) | Phase | Decision | Reason |
 | --- | --- | --- | --- |
+| 2026-10-28 | Day-run D5 | Poll finish status for at most one minute; subsequent taps reuse the original command key and confirm completion through that receipt. | Keep UI waits finite without duplicating paid work or accepting another job's completion. |
+| 2026-10-28 | Day-run D5 | Stop only local checks on leave/background/cancel. Ambiguous dispatch requires advisor review and retains its key. | Durable server work can finish independently; uncertain provider dispatch must not be repeated automatically. |
 | 2026-10-28 | Day-run D2 | Save outcomes separately from Complete; Complete requires the current server session version/hash and no unsaved outcome changes. | Outcome review must not imply acknowledged meeting completion. |
 | 2026-10-28 | Day-run D2 | Require an explicit timezone on deferred dates; preserve draft input after a failed save. | Avoid silent date/time conversion and retry data loss. |
 | 2026-10-28 | Day-run D2 | Link a follow-up meeting explicitly with previousMeetingId; never create a meeting automatically. | Deferred work carries forward only when the advisor starts the next plan. |

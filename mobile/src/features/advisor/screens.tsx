@@ -1108,6 +1108,9 @@ export function LiveScreen() {
     q = useAdvisorSession(sid),
     meeting = useAdvisorMeeting(id),
     cmd = useCommand();
+  const finishCheck = useRef<AbortController | null>(null);
+  const finishMounted = useRef(true);
+  const finishForeground = useRef(true);
   const [note, setNote] = useState(""),
     [speaker, setSpeaker] = useState(""),
     [clock, setClock] = useState(Date.now()),
@@ -1332,11 +1335,14 @@ export function LiveScreen() {
     deferredLine,
   ]);
   useEffect(() => {
+    finishMounted.current = true;
     const timer = setInterval(() => {
       setClock(Date.now());
       void turns.tick();
     }, 250);
     return () => {
+      finishMounted.current = false;
+      finishCheck.current?.abort();
       clearInterval(timer);
       turns.stop();
       void realtime.voice.dispose();
@@ -1346,7 +1352,9 @@ export function LiveScreen() {
   }, []);
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
+      finishForeground.current = state === "active";
       if (state !== "active") {
+        finishCheck.current?.abort();
         void speech.stop();
         setListening(false);
         turns.skip();
@@ -1403,30 +1411,49 @@ export function LiveScreen() {
       ? Math.max(0, Math.floor((clock - Date.parse(s.topicStartedAt)) / 1000))
       : 0;
   const finish = async () => {
-    turns.stop();
-    realtime.realtime.suspend();
-    setStopped(true);
-    await speech.stop();
-    setListening(false);
-    if (native.current) {
-      await native.current.stop();
-      setRecording(false);
-      try {
-        await native.current.uploadPending();
-      } catch {
-        cmd.setError(
-          new Error(
-            "The recording is saved on this phone. Upload it before finishing.",
-          ),
-        );
-        return;
+    if (cmd.busy || finishCheck.current) return;
+    const controller = new AbortController();
+    finishCheck.current = controller;
+    try {
+      turns.stop();
+      realtime.realtime.suspend();
+      setStopped(true);
+      await speech.stop();
+      setListening(false);
+      if (native.current) {
+        await native.current.stop();
+        setRecording(false);
+        try {
+          await native.current.uploadPending();
+        } catch {
+          cmd.setError(
+            new Error(
+              "The recording is saved on this phone. Upload it before finishing.",
+            ),
+          );
+          return;
+        }
       }
+      if (
+        !finishMounted.current ||
+        !finishForeground.current ||
+        controller.signal.aborted
+      )
+        return;
+      const result = await cmd.run(["finish", sid], async (r, k) => {
+        await r.finish(sid, k, { signal: controller.signal });
+        return true;
+      });
+      if (
+        result &&
+        finishMounted.current &&
+        finishForeground.current &&
+        !controller.signal.aborted
+      )
+        go(sessionRoute(id, "closing", sid));
+    } finally {
+      if (finishCheck.current === controller) finishCheck.current = null;
     }
-    const result = await cmd.run(["finish", sid], async (r, k) => {
-      await r.finish(sid, k);
-      return true;
-    });
-    if (result) go(sessionRoute(id, "closing", sid));
   };
   const addNote = async () => {
     if (!note.trim()) return;
@@ -1938,11 +1965,17 @@ export function LiveScreen() {
         disabled={!s.transcript.length}
         onPress={finish}
       />
-      {cmd.busy ? (
-        <Notice>
-          Preparing the review. Keep the app open while the server processes the
-          recording.
-        </Notice>
+      {cmd.busy && finishCheck.current ? (
+        <View>
+          <Notice>
+            The server is preparing the review. You can stop checking and return
+            later.
+          </Notice>
+          <Button
+            label="Stop checking for now"
+            onPress={() => finishCheck.current?.abort()}
+          />
+        </View>
       ) : null}
       {cmd.error instanceof CompanionApiError &&
       ["COMMAND_PENDING", "REQUEST_TIMEOUT", "NETWORK_OFFLINE"].includes(

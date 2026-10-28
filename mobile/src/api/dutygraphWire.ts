@@ -1,5 +1,8 @@
 /** These aliases come only from the actual V2 server's separately served contracts. */
-import type { operations as Advisor } from "./generated/advisor-mobile-v1";
+import type {
+  operations as Advisor,
+  components as AdvisorComponents,
+} from "./generated/advisor-mobile-v1";
 import type { operations as Extras } from "./generated/participant-extras-v1";
 type Success<T> = T extends { responses: infer Responses }
   ? {
@@ -34,3 +37,6 @@ export type MeetingRouteWire = Body<
 >;
 export type PulseWire = Success<Extras["get_api_mobile_v1x_pulses_id"]>;
 export type ConfigWire = Success<Extras["get_api_mobile_v1x_config"]>;
+
+export type MobileFinishJobWire =
+  AdvisorComponents["schemas"]["MobileFinishJobStatus"];
