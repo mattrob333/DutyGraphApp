@@ -286,7 +286,7 @@ export function createNativeMeetingRecorder(
         // after copying is safe: the source stays until the new manifest is saved.
         if (Platform.OS === "ios") {
           const destination = await privateMeetingDirectory();
-          const documentPrefix = Paths.document.uri.replace(/\\/+$/, "") + "/";
+          const documentPrefix = Paths.document.uri.replace(/\/+$/, "") + "/";
           let changed = false;
           const legacySources: File[] = [];
           for (const segment of manifest.segments) {

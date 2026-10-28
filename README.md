@@ -86,3 +86,5 @@ The `codex/live-backend` draft branch includes an early proposal-source warning;
 - **Backend profiles (draft PR):** `codex/live-backend` adds opt-in explicit mock/dev-server/local/preview/production origins. It does not deploy the new meeting API.
 
 - **iOS recording privacy (draft PR):** meeting evidence now targets an iCloud-backup-excluded native directory; requires rebuilding the app and real-device QA before release.
+
+- Draft iOS recording storage includes a source-review correction for legacy-path normalization; native and device verification is still pending.

@@ -42,8 +42,8 @@ jest.mock("expo-crypto", () => ({
 jest.mock("expo-file-system", () => {
   class File {
     uri: string;
-    constructor(...parts: string[]) {
-      this.uri = parts.join("/");
+    constructor(...parts: (string | { uri: string })[]) {
+      this.uri = parts.map((part) => typeof part === "string" ? part : part.uri).join("/");
     }
     get exists() {
       return mockFiles.has(this.uri);

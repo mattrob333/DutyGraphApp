@@ -84,3 +84,5 @@ The standalone Expo app now implements participant and advisor workflows against
 - Updated the iOS PCM module to expose an Application Support meeting recording directory with `isExcludedFromBackup` and file protection. Expo raw clips now use Cache; stored clips use that private directory on iOS. Existing Documents clips migrate during restore with manifest-first preservation. Cleanup removes private and legacy files. Old builds without this native method cannot start iOS meeting recording.
 - Added two focused Jest cases for private storage and legacy migration (iOS checks). **Not run**: Jest, iOS build, iCloud backup verification, device recording and crash recovery, full suite, typecheck, lint (no authenticated local checkout). Native behavior remains unverified.
 - No production app store rollout, production backend integration or paid provider call.
+
+- P4 self-review correction: fixed legacy-path slash normalization and adjusted the file-system mock to handle Directory objects. Re-run the focused iOS recovery test and native build before accepting the PR.
