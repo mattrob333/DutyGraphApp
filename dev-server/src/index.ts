@@ -2,7 +2,7 @@ import express from "express";
 import { seedDemoPulse, seedDemoWrapUp } from "./fixtures.ts";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { Store, errors, uuid, IDS, digest } from "./core.ts";
 import { createProviders, type Providers } from "./providers/index.ts";
 import { configFromEnv, type Config } from "./config.ts";
@@ -94,11 +94,22 @@ export function createApp(options: AppOptions = {}) {
   );
   if (!origin) app.use("/api/mobile/v1", participantRoutes(store));
   app.post("/dev/pairing-code", (req, res) => {
-    const ip = req.socket.remoteAddress;
-    if (!["::1", "127.0.0.1", "::ffff:127.0.0.1"].includes(ip ?? "")) {
+    // Behind a reverse proxy every caller arrives from loopback, so a shared server must use
+    // DEV_ADMIN_TOKEN; the socket check only protects a server bound to this computer.
+    const ip = req.socket.remoteAddress,
+      supplied = req.header("X-Dev-Admin-Token") ?? "",
+      admin = config.devAdminToken;
+    const allowed = admin
+      ? supplied.length === admin.length &&
+        timingSafeEqual(Buffer.from(supplied), Buffer.from(admin))
+      : config.loopbackOnly &&
+        ["::1", "127.0.0.1", "::ffff:127.0.0.1"].includes(ip ?? "");
+    if (!allowed) {
       res.status(403).json({
         code: "PERSON_FORBIDDEN",
-        message: "Create pairing codes on the local computer.",
+        message: admin
+          ? "Send the admin token to create pairing codes."
+          : "Create pairing codes on the local computer, or set DEV_ADMIN_TOKEN.",
         retryable: false,
         requestId: res.locals.requestId,
       });

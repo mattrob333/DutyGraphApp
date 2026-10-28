@@ -1603,3 +1603,105 @@ test("all structured proposal edits preserve kind, source scope and human owner 
     await f.close();
   }
 });
+test("recording segments are capped at a 24-hour meeting", async () => {
+  const f = await setup();
+  try {
+    const { s, consent } = await start(f, "capture");
+    await f.call(`${api}/sessions/${s.id}/consent`, consent);
+    const audio = Buffer.from("segment");
+    const upload = (segmentIndex: number) =>
+      f.call(`${api}/sessions/${s.id}/segments`, {
+        segmentIndex,
+        chunkIndex: 0,
+        chunkCount: 1,
+        sha256: digest(audio),
+        segmentSha256: digest(audio),
+        data: audio.toString("base64"),
+      });
+    assert.equal((await upload(287)).status, 200);
+    assert.equal((await upload(288)).status, 400);
+    assert.equal((await upload(2 ** 40)).status, 400);
+  } finally {
+    await f.close();
+  }
+});
+test("paid transcription and extraction are charged to the meeting budget", async () => {
+  const f = await setup();
+  try {
+    f.providers.metadata.transcription = "openai";
+    f.providers.metadata.conversation = "openai";
+    const { s, consent } = await start(f, "capture");
+    await f.call(`${api}/sessions/${s.id}/consent`, consent);
+    const audio = Buffer.alloc(3_000_000, 1);
+    const chunk = audio.subarray(0, 512 * 1024);
+    const upload = await f.call(`${api}/sessions/${s.id}/segments`, {
+      segmentIndex: 0,
+      chunkIndex: 0,
+      chunkCount: 1,
+      sha256: digest(chunk),
+      segmentSha256: digest(chunk),
+      data: chunk.toString("base64"),
+      durationMs: 300000,
+    });
+    assert.equal(upload.status, 200);
+    // Five minutes at 0.6 cents rounds to 3; extraction adds 2 once evidence is ready.
+    const record = f.store.records.sessions[s.id].value as {
+      budgetCents: number;
+    };
+    record.budgetCents = 4;
+    const refused = await f.call(`${api}/sessions/${s.id}/finish`, {});
+    assert.equal(refused.status, 409);
+    assert.equal(refused.body.code, "BUDGET_REACHED");
+    // Charging saves a new session version, so set the budget on the current record.
+    (
+      f.store.records.sessions[s.id].value as { budgetCents: number }
+    ).budgetCents = 200;
+    assert.equal(
+      (await f.call(`${api}/sessions/${s.id}/finish`, {})).status,
+      200,
+    );
+    // The refused run already paid for its transcription (3); the full run adds 3 + 2.
+    assert.equal((await f.call(`${api}/sessions/${s.id}`)).body.spentCents, 8);
+  } finally {
+    await f.close();
+  }
+});
+test("a shared server needs the admin token to create pairing codes", async () => {
+  for (const [env, header, expected] of [
+    [{ HOST: "0.0.0.0" }, undefined, 403],
+    [{ HOST: "0.0.0.0", DEV_ADMIN_TOKEN: "s3cret-token" }, "wrong-token!", 403],
+    [{ HOST: "0.0.0.0", DEV_ADMIN_TOKEN: "s3cret-token" }, "s3cret-token", 200],
+    [{ DEV_ADMIN_TOKEN: "s3cret-token" }, undefined, 403],
+    [{}, undefined, 200],
+  ] as const) {
+    const { app } = createApp({
+      config: configFromEnv(env),
+      providers: createFakeProviders(),
+    });
+    const server = createServer(app).listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const port = (server.address() as import("node:net").AddressInfo).port;
+    const r = await fetch(`http://127.0.0.1:${port}/dev/pairing-code`, {
+      method: "POST",
+      headers: header ? { "X-Dev-Admin-Token": header } : {},
+    });
+    await new Promise<void>((done) => server.close(() => done()));
+    assert.equal(r.status, expected, JSON.stringify(env));
+  }
+});
+test("a finish with no evidence is not charged", async () => {
+  const f = await setup();
+  try {
+    f.providers.metadata.conversation = "openai";
+    const { s, consent } = await start(f, "capture");
+    await f.call(`${api}/sessions/${s.id}/consent`, consent);
+    for (let i = 0; i < 2; i++)
+      assert.equal(
+        (await f.call(`${api}/sessions/${s.id}/finish`, {})).body.code,
+        "INSUFFICIENT_EVIDENCE",
+      );
+    assert.equal((await f.call(`${api}/sessions/${s.id}`)).body.spentCents, 0);
+  } finally {
+    await f.close();
+  }
+});

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { proposalBodySchema } from "./schemas/proposals.ts";
 import { z } from "zod";
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   Store,
@@ -806,7 +806,8 @@ export function meetingRoutes(
         );
       const b = z
         .object({
-          segmentIndex: z.number().int().min(0),
+          // 288 five-minute segments is a 24-hour recording; more is abuse, not a meeting.
+          segmentIndex: z.number().int().min(0).max(287),
           chunkIndex: z.number().int().min(0),
           chunkCount: z.number().int().min(1).max(50),
           sha256: z.string().regex(/^[a-f0-9]{64}$/),
@@ -1607,6 +1608,34 @@ export function meetingRoutes(
             "CONSENT_REVIEW_REQUIRED",
             "Remove inseparable speech from declined attendees before processing audio.",
           );
+        // Each paid provider call is charged to the meeting budget just before it runs, so
+        // failed or repeated finishes still count. Bytes floor the client-reported duration:
+        // the phone records AAC at 32 kbit/s (240 KB a minute); 200 KB a minute errs high.
+        const charge = (cents: number) => {
+          if (!cents) return;
+          if (s.spentCents + cents > s.budgetCents)
+            fail(
+              409,
+              "BUDGET_REACHED",
+              "Processing this meeting would pass its budget. Raise the budget to continue.",
+            );
+          s.spentCents += cents;
+          Object.assign(s, saveSession(s, p));
+        };
+        const audioMinutes = chunks.reduce(
+          (sum, chunk) =>
+            sum +
+            Math.max(
+              (chunk.durationMs ?? 0) / 60000,
+              Object.values(chunk.chunks).reduce(
+                (bytes, c) => bytes + statSync(c.file).size,
+                0,
+              ) / 200_000,
+            ),
+          0,
+        );
+        if (chunks.length && providers.metadata.transcription === "openai")
+          charge(Math.ceil(audioMinutes * 0.6));
         const batch: TranscriptSegment[] = [];
         let offset = 0;
         const durations = new Map<number, number>();
@@ -1713,6 +1742,7 @@ export function meetingRoutes(
             ),
           )
           .map((task) => ({ id: task.id, title: task.title }));
+        if (providers.metadata.conversation === "openai") charge(2);
         const result = parseExtractionOutput(
           await providers.conversation.extract({
             transcript: evidence,
