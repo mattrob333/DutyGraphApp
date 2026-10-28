@@ -135,3 +135,9 @@ Identifiers: iOS bundle and Android package `com.dutygraph.companion`. App Links
 - No dynamic follow-ups against the real server yet: it has no facilitator endpoint. The prompt pack for it exists in `server/companion/`.
 - The push token is captured but not registered: `PUT /me/push-token` is not in contract 1.1.
 - Jest sometimes prints "a worker process has failed to exit gracefully" at the end of a full run; all suites pass.
+
+## Backend profiles (draft `codex/live-backend`)
+
+Set `EXPO_PUBLIC_DATA_SOURCE` to `mock`, `dev-server`, `dutygraph-local`, `dutygraph-preview`, or `dutygraph-production`. The existing `http` alias remains supported and, for compatibility, requires `EXPO_PUBLIC_MEETINGS_API_BASE_URL` to opt into the proposed meeting API. In explicit `dev-server` mode, the default is `http://localhost:4417`. The real DutyGraph local origin defaults to `http://localhost:4317`; for a physical phone, supply the computer's reachable local-network address. Preview requires an explicit HTTPS `EXPO_PUBLIC_API_BASE_URL`. Production defaults to `https://dutygraph.com`. Real DutyGraph profiles ignore a separate meetings URL and use **one** origin for both APIs. Do not put tokens, passwords, signing keys or provider credentials in Expo public environment values.
+
+**This is only backend configuration.** The new advisor/meeting endpoints are not yet deployed to DutyGraph; selecting a real profile cannot make missing endpoints work. Existing EAS production/staging configuration has not been switched over automatically.

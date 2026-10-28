@@ -38,3 +38,5 @@ Expanded the root README with a repository map, verified build status and links 
 - Verified: 488 mobile, 78 shared and 60 API tests; typechecks and lint; all 12 HTTP browser flows.
 
 - 2026-10-28 (draft `codex/live-backend`, preparatory P4): Added an amber warning when a meeting proposal cites instruction-like source text. The warning is informational: it does not auto-accept, change, or reject proposals. Added a pure helper and 11 Jest cases. This change was reviewed as source only; Jest/typecheck/lint/device QA were not run in this GitHub-connector session. Sprint 1's production API and the rest of Sprint 2 remain pending.
+
+- 2026-10-28, Sprint 2 P2: implemented a validated backend profile resolver and routed the advisor repository through the same resolved origin as participant requests for DutyGraph profiles. The legacy `http` alias remains opt-in for meetings; `mock` stays the default. Added profile/security regression tests and environment docs. Tests, typecheck, lint and device QA **not run** (GitHub connector only; no local repo checkout). No production deployment or provider call.

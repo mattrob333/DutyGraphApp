@@ -82,3 +82,5 @@ The [native build workflow](.github/workflows/native-build.yml) builds an instal
 Rehearse with real providers (paid, never in CI): start the dev server with `OPENAI_API_KEY` and `OPENAI_TEXT_MODEL` set, then run `npx tsx scripts/real-provider-rehearsal.ts` in `dev-server/` (needs ffmpeg).
 
 The `codex/live-backend` draft branch includes an early proposal-source warning; real DutyGraph meeting integration remains in development and requires server work and device checks.
+
+- **Backend profiles (draft PR):** `codex/live-backend` adds opt-in explicit mock/dev-server/local/preview/production origins. It does not deploy the new meeting API.

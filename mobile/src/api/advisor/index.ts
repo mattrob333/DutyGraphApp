@@ -9,7 +9,7 @@ export const getAdvisorRepository = (): AdvisorRepository =>
     config.dataSource === "mock"
       ? new MockAdvisorRepository()
       : new HttpAdvisorRepository(
-          process.env.EXPO_PUBLIC_MEETINGS_API_BASE_URL,
+          config.meetingsApiBaseUrl,
         ));
 export const setAdvisorRepository = (repository: AdvisorRepository) => {
   singleton = repository;

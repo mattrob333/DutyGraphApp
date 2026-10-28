@@ -72,3 +72,9 @@ The standalone Expo app now implements participant and advisor workflows against
 - **Checks:** Code inspection completed. Jest, typecheck, lint, web export, full 626-test suite, EAS/device QA and cross-repo integration **not run**: this session can read/write through the GitHub connector, but lacks an authenticated local checkout and test services. No provider used.
 - **Default:** Flag source quotes with explicit prompt/role markers, directive overrides, or the budget-approval pattern from the recorded red-team case. Treat false positives as prompts to recheck, not as rejection. Do not modify proposal status or authorization.
 - **No production change:** Draft-only branch; no merge or deployment.
+
+## 2026-10-28 — Sprint 2 P2 backend selection
+
+- Added `resolveBackendProfile` and config wiring for mock, dev-server, dutygraph-local, dutygraph-preview, dutygraph-production. Real backend modes use one origin for participant and advisor HTTP. HTTPS required for preview/production; remote preview requires an explicit URL. Stale separate meetings-origin overrides are ignored in real DutyGraph profiles. Legacy `http` keeps earlier behavior.
+- Added focused tests for the five profiles, legacy compatibility and rejecting credentialed URLs/paths/unknown modes. **Not run** in this session: npm install, Jest, typecheck, lint, EAS/native, HTTP integration and device QA (no authenticated local checkout or network). Code changes are unverified pending CI.
+- Defaults: `mock` stays default, no EAS profile automatically points at unimplemented production endpoints. No secrets or provider calls. The live DutyGraph server still needs Sprint 1 endpoints.
