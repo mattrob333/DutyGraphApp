@@ -2,6 +2,9 @@
 
 | Date (UTC) | Phase | Decision | Reason |
 | --- | --- | --- | --- |
+| 2026-10-28 | Day-run D2 | Save outcomes separately from Complete; Complete requires the current server session version/hash and no unsaved outcome changes. | Outcome review must not imply acknowledged meeting completion. |
+| 2026-10-28 | Day-run D2 | Require an explicit timezone on deferred dates; preserve draft input after a failed save. | Avoid silent date/time conversion and retry data loss. |
+| 2026-10-28 | Day-run D2 | Link a follow-up meeting explicitly with previousMeetingId; never create a meeting automatically. | Deferred work carries forward only when the advisor starts the next plan. |
 | 2026-10-27 | 0 | Use the existing DutyGraphApp Git repository and work branch as the standalone mobile repo. | User opened this repo; it contains only the uploaded brief/archive and no upstream app. |
 | 2026-10-27 | 0 | Extract the original archive, rather than copying generated setup artifacts. | Preserve the supplied seed exactly and make installs reproducible. |
 | 2026-10-27 | 0 | Interpret participant-only seed instructions as applying to participant screens. | The approved PRD explicitly adds company-scoped advisor workflows. |

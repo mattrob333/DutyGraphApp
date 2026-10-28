@@ -1,4 +1,5 @@
 import { saveLiveNote } from "./saveLiveNote";
+import { ClosingRitual } from "@/components/advisor/ClosingRitual";
 import { ClosingResponse } from "@/components/advisor/ClosingResponse";
 import { CompanionApiError } from "@/api/http/errors";
 import { SIMULATED_VOICE_NOTICE } from "@/features/voice/out";
@@ -309,6 +310,7 @@ type BuilderDraft = {
   cardAnswers?: (CardAnswer | null)[];
 };
 export function BuilderScreen() {
+  const { previousMeetingId } = useLocalSearchParams<{ previousMeetingId?: string }>();
   const [draft, setDraft] = useState<BuilderDraft>({
     title: "",
     minutes: "25",
@@ -333,6 +335,7 @@ export function BuilderScreen() {
     const texts = answers.map((a) => a?.raw ?? "");
     const input: CreateMeeting = {
       title: draft.title.trim(),
+      ...(previousMeetingId ? { previousMeetingId } : {}),
       startsAt: draft.startsAt
         ? new Date(parseLocalDate(draft.startsAt)).toISOString()
         : null,
@@ -368,6 +371,7 @@ export function BuilderScreen() {
         <Text variant="small" color="faint">
           Carson Tate’s POWER framework · Work Simply
         </Text>
+        {previousMeetingId ? <Notice>Deferred work from the completed meeting will be added to this plan.</Notice> : null}
         {draft.shown < 0 ? (
           <>
             <Field
@@ -1958,12 +1962,13 @@ export function ClosingScreen() {
   const id = useMeetingId(),
     sid = useSessionId(id),
     q = useAdvisorSession(sid),
+    meeting = useAdvisorMeeting(id),
     people = useAdvisorPeople(),
     cmd = useCommand();
   if (!sid) return <MissingSession id={id} />;
-  if (q.isPending || people.isPending) return <LoadingState />;
-  if (q.isError || people.isError)
-    return <ErrorState error={q.error ?? people.error} onRetry={q.refetch} />;
+  if (q.isPending || people.isPending || meeting.isPending) return <LoadingState />;
+  if (q.isError || people.isError || meeting.isError)
+    return <ErrorState error={q.error ?? people.error ?? meeting.error} onRetry={() => { void q.refetch(); void meeting.refetch(); }} />;
   const names = Object.fromEntries(people.data.map((p) => [p.id, p.name]));
   return (
     <Screen>
@@ -2011,7 +2016,7 @@ export function ClosingScreen() {
                       Due: {p.body.due ?? "Not stated"}
                     </Text>
                   ) : null}
-                  {owner ? (
+                  {owner && meeting.data.state !== "COMPLETE" ? (
                     <ClosingResponse
                       key={`${p.id}:${p.version}:${p.hash}`}
                       busy={cmd.busy}
@@ -2062,15 +2067,19 @@ export function ClosingScreen() {
       <ParkedList
         items={q.data.parked.map((p) => ({ id: p.id, title: p.text }))}
       />
-      <Notice>
-        Missing owners, dates and unresolved questions remain proposals. Follow
-        up with the named people.
-      </Notice>
+      <ClosingRitual
+        meeting={meeting.data}
+        session={q.data}
+        busy={cmd.busy}
+        onSave={async (input) => !!(await cmd.run(["closing-outcomes", sid, input], async (r, k) => { await r.saveClosing(sid, input, k); return true; }))}
+        onComplete={() => { void cmd.run(["complete", sid, q.data.version, q.data.hash], (r, k) => r.complete(sid, { expectedVersion: q.data.version, contentHash: q.data.hash }, k)); }}
+      />
       <Button
-        label="Finish and review sources"
+        label="Review sources, owners and dates"
         kind="primary"
         onPress={() => go(sessionRoute(id, "speakers", sid))}
       />
+      {meeting.data.state === "COMPLETE" && q.data.outcomeReviews?.some(review => review.status === "deferred") ? <Button label="Plan follow-up meeting" onPress={() => go(`/advisor/meetings/new?previousMeetingId=${encodeURIComponent(id)}`)} /> : null}
       <CommandError error={cmd.error} />
     </Screen>
   );

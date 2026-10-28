@@ -1,5 +1,17 @@
 # Build progress
 
+## October 28, 2026 — Day-run meeting closing
+
+- Added an outcome checklist: Met, Partly met, Deferred or Dropped. Deferral requires a consenting attendee owner and an explicit date/time. Partly met outcomes require a follow-up plan. Local edits stay drafts until the save is acknowledged; failures retain the edits.
+- Closing shows the server's readiness. Complete remains unavailable while local edits are unsaved or server checks fail. Completion appears only after a meeting read acknowledges COMPLETE. Existing source review edits action owners/dates and keeps proposal acceptance separate from owner confirmation.
+- HTTP and mock repositories support outcome review and version/hash-bound completion with stable retry keys. A completed meeting with deferred items offers a linked next-meeting plan. The fictional development API supports the same closing commands and shared rules.
+- Checks: 24 advisor repository tests passed, followed by 31 UI/actual-contract tests (three closing UI and 28 contract cases). The full shared suite passed 78/78. The targeted development API closing test passed. Mobile and development API typechecks, repository lint and final touched-file lint passed. Actual DutyGraphV2 advisor wire types were regenerated from the served local API at port 4321 after its closing version pins/provenance update. An initial typecheck ran before mobile installation finished and failed on missing React Native types; the completed-install rerun passed.
+- A mock web export passed with one Metro worker. The maintained advisor browser flow passed at 390×844 through proposal acceptance, deferred-outcome save, acknowledged COMPLETE and explicit linked follow-up planning. [Screens](docs/day-run/screens/) include closing review and completion; the completion image was visually inspected. Browser data was fictional and all providers simulated.
+- Self-review also pinned a local outcome draft to the session version at edit start. If another save changes the server review, the app requires explicit reload instead of overwriting it with a newly refetched version. Inputs lock while saving. The regression covers this two-tab boundary.
+- D5 follow-up remains: when the backend switches finish to queued jobs, the HTTP adapter must treat HTTP 202 as pending, poll finish-job metadata to completion and preserve the same key across retry. The current foreground finish adapter has not been changed in this D2 package.
+- Providers in tests are fake. No hosted database, paid provider, native build or real device was exercised. Full suite/CI and independent red team remain parent integration work.
+
+
 **Current goal:** Complete the existing `codex/live-backend` app integration against DutyGraphV2's actual mobile API while preserving mock/dev-server workflows. Current continuation results are recorded below; physical release and device acceptance remain separate.
 
 The standalone Expo app supports participant and advisor workflows with mock/development repositories and the actual V2 mobile backend on a scratch PostgreSQL database. Current verification passes 538 mobile tests, 78 shared tests, 64 development API tests, typechecks/lint and all twelve actual-backend browser paths with 219 schema-validated exchanges. Handsfree/meeting line coverage is 94.37%. Native integrations remain **not run on a device**. One historical development-server provider rehearsal is documented below; no deployment or app-store release occurred in this continuation.

@@ -11,6 +11,7 @@ import type {
   SetupProposal,
   PulseTeamStatus,
   ClosingItem,
+  ClosingOutcomeReview,
 } from "../../../../shared/meetings/types";
 export type {
   AdvisorSession,
@@ -22,6 +23,7 @@ export type {
   KickoffNote,
   SetupProposal,
   ClosingItem,
+  ClosingOutcomeReview,
 };
 /** Explicit attribution is an input instruction, never inferred from a speaker cluster. */
 export type TranscriptInput = TranscriptSegment & { personKey?: string };
@@ -32,6 +34,7 @@ export type Person = {
   department: string;
 };
 export type CreateMeeting = {
+  previousMeetingId?: string;
   title: string;
   startsAt: string | null;
   minutes: number;
@@ -42,12 +45,27 @@ export type CreateMeeting = {
   agenda?: MeetingDefinition["agenda"];
   meetingType?: NonNullable<MeetingDefinition["meetingType"]>;
 };
+export type ClosingReadiness = {
+  complete: boolean;
+  partial: boolean;
+  missingOutcomes: number;
+  unconfirmedActions: number;
+};
+export type SaveClosing = {
+  expectedVersion: number;
+  contentHash: string;
+  outcomes: ClosingOutcomeReview[];
+  followUpPlan?: string;
+};
 export type SessionDetail = MeetingSession & {
   transcript: TranscriptSegment[];
   parked: ParkedItem[];
   speakerMap: SpeakerMap;
   proposals: MeetingProposal[];
   closing?: ClosingItem[];
+  outcomeReviews?: ClosingOutcomeReview[];
+  followUpPlan?: string;
+  closingReadiness?: ClosingReadiness;
 };
 export type Coach = {
   nextQuestion: string;
@@ -156,6 +174,16 @@ export interface AdvisorRepository {
     body?: MeetingProposal["body"],
   ): Promise<MeetingProposal>;
   confirm(sessionId: string, item: ClosingItem, key: string): Promise<void>;
+  saveClosing(
+    sessionId: string,
+    input: SaveClosing,
+    key: string,
+  ): Promise<void>;
+  complete(
+    sessionId: string,
+    reviewed: { expectedVersion: number; contentHash: string },
+    key: string,
+  ): Promise<MeetingDefinition>;
   followUp(proposalId: string, personId: string, key: string): Promise<void>;
   export(id: string): Promise<{ markdown: string; json: unknown }>;
   audioSource(

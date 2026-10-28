@@ -116,6 +116,22 @@ export interface paths {
         patch: operations["patch_api_mobile_meetings_v1_meetings_id"];
         trace?: never;
     };
+    "/api/mobile/meetings/v1/meetings/{id}/gate-suggestion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_api_mobile_meetings_v1_meetings_id_gate_suggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/mobile/meetings/v1/meetings/{id}/plan": {
         parameters: {
             query?: never;
@@ -286,6 +302,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["post_api_mobile_meetings_v1_sessions_id_coach"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/mobile/meetings/v1/sessions/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["post_api_mobile_meetings_v1_sessions_id_complete"];
         delete?: never;
         options?: never;
         head?: never;
@@ -569,6 +601,7 @@ export interface components {
             state: "proposed";
         };
         MeetingDefinition: {
+            previousMeetingId?: string;
             id: string;
             companyId: string;
             version: number;
@@ -670,6 +703,21 @@ export interface components {
             to?: string;
             reason?: string;
         };
+        ClosingItem: {
+            proposalId: string;
+            ownerPersonKey: null | string;
+            /** @enum {string} */
+            confirmation: "changed" | "confirmed" | "not_mine" | "pending";
+            note?: string;
+        };
+        ClosingOutcomeReview: {
+            outcomeId: string;
+            /** @enum {string} */
+            status: "deferred" | "dropped" | "met" | "partly_met";
+            ownerPersonKey: null | string;
+            dueAt: null | string;
+            note?: string;
+        };
         TranscriptSegment: {
             id: string;
             revision: number;
@@ -743,8 +791,9 @@ export interface components {
                 /** @constant */
                 kind: "task_card_delta";
                 taskCardId: null | string;
+                personKey?: null | string;
                 /** @enum {string} */
-                field: "destination" | "duty" | "humanGate" | "inputs" | "instructions" | "mode" | "output" | "purpose" | "systems" | "title" | "trigger";
+                field: "destination" | "duty" | "humanGate" | "inputs" | "instructions" | "mode" | "output" | "ownerId" | "purpose" | "systems" | "title" | "trigger";
                 from: null | string;
                 to: string;
             } | {
@@ -774,6 +823,7 @@ export interface components {
             decidedBy: null | string;
             decidedAt: null | string;
             editNote?: string;
+            draftRecordId?: null | string;
         };
         /** @enum {string} */
         ProposalKind: "action" | "claim" | "contradiction" | "decision" | "open_question" | "responsibility_delta" | "task_card_delta";
@@ -815,17 +865,19 @@ export interface components {
             budgetCents: number;
             spentCents: number;
             log: components["schemas"]["SessionLogEntry"][];
+            closing?: components["schemas"]["ClosingItem"][];
+            outcomeReviews?: components["schemas"]["ClosingOutcomeReview"][];
+            followUpPlan?: string;
+            closingReadiness?: {
+                complete: boolean;
+                partial: boolean;
+                missingOutcomes: number;
+                unconfirmedActions: number;
+            };
             transcript: components["schemas"]["TranscriptSegment"][];
             parked: components["schemas"]["ParkedItem"][];
             speakerMap: components["schemas"]["SpeakerMap"];
             proposals: components["schemas"]["MeetingProposal"][];
-        };
-        ClosingItem: {
-            proposalId: string;
-            ownerPersonKey: null | string;
-            /** @enum {string} */
-            confirmation: "changed" | "confirmed" | "not_mine" | "pending";
-            note?: string;
         };
         MobileMeetingAudioReceipt: {
             segmentIndex: number;
@@ -1233,6 +1285,8 @@ export interface operations {
                         outcomeIds: string[];
                         async: boolean;
                     }[];
+                    /** Format: uuid */
+                    previousMeetingId?: string;
                 };
             };
         };
@@ -1244,6 +1298,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
+                        previousMeetingId?: string;
                         id: string;
                         companyId: string;
                         version: number;
@@ -1354,6 +1409,8 @@ export interface operations {
                         outcomeIds: string[];
                         async: boolean;
                     }[];
+                    /** Format: uuid */
+                    previousMeetingId?: string;
                     expectedVersion: number;
                     contentHash: string;
                 };
@@ -1367,6 +1424,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeetingDefinition"];
+                };
+            };
+            400: components["responses"]["ApiError"];
+            401: components["responses"]["ApiError"];
+            403: components["responses"]["ApiError"];
+            404: components["responses"]["ApiError"];
+            409: components["responses"]["ApiError"];
+            410: components["responses"]["ApiError"];
+            422: components["responses"]["ApiError"];
+            429: components["responses"]["ApiError"];
+            503: components["responses"]["ApiError"];
+            default: components["responses"]["ApiError"];
+        };
+    };
+    post_api_mobile_meetings_v1_meetings_id_gate_suggestion: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description Server acknowledgement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        deterministic: components["schemas"]["MeetingGateResult"];
+                        suggestion: null;
+                        status: string;
+                    } | {
+                        deterministic: components["schemas"]["MeetingGateResult"];
+                        suggestion: {
+                            /** @enum {string} */
+                            suggestion: "avoid" | "hold" | "shorten";
+                            reason: string;
+                        };
+                        status: string;
+                        simulated: boolean;
+                    };
                 };
             };
             400: components["responses"]["ApiError"];
@@ -1596,6 +1704,15 @@ export interface operations {
                         budgetCents: number;
                         spentCents: number;
                         log: components["schemas"]["SessionLogEntry"][];
+                        closing?: components["schemas"]["ClosingItem"][];
+                        outcomeReviews?: components["schemas"]["ClosingOutcomeReview"][];
+                        followUpPlan?: string;
+                        closingReadiness?: {
+                            complete: boolean;
+                            partial: boolean;
+                            missingOutcomes: number;
+                            unconfirmedActions: number;
+                        };
                         transcript: components["schemas"]["TranscriptSegment"][];
                         parked: components["schemas"]["ParkedItem"][];
                         speakerMap: components["schemas"]["SpeakerMap"];
@@ -1729,8 +1846,9 @@ export interface operations {
                             /** @constant */
                             kind: "task_card_delta";
                             taskCardId: null | string;
+                            personKey?: null | string;
                             /** @enum {string} */
-                            field: "destination" | "duty" | "humanGate" | "inputs" | "instructions" | "mode" | "output" | "purpose" | "systems" | "title" | "trigger";
+                            field: "destination" | "duty" | "humanGate" | "inputs" | "instructions" | "mode" | "output" | "ownerId" | "purpose" | "systems" | "title" | "trigger";
                             from: null | string;
                             to: string;
                         } | {
@@ -1760,6 +1878,7 @@ export interface operations {
                         decidedBy: null | string;
                         decidedAt: null | string;
                         editNote?: string;
+                        draftRecordId?: null | string;
                     };
                 };
             };
@@ -1907,7 +2026,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    items: {
+                    /** @default [] */
+                    items?: {
                         /** Format: uuid */
                         proposalId: string;
                         ownerPersonKey: string | null;
@@ -1917,6 +2037,17 @@ export interface operations {
                         expectedVersion: number;
                         contentHash: string;
                     }[];
+                    outcomes?: {
+                        outcomeId: string;
+                        /** @enum {string} */
+                        status: "met" | "partly_met" | "deferred" | "dropped";
+                        ownerPersonKey: string | null;
+                        dueAt: string | null;
+                        note?: string;
+                    }[];
+                    followUpPlan?: string;
+                    expectedVersion?: number;
+                    contentHash?: string;
                 };
             };
         };
@@ -1929,6 +2060,14 @@ export interface operations {
                 content: {
                     "application/json": {
                         items: components["schemas"]["ClosingItem"][];
+                        outcomes: components["schemas"]["ClosingOutcomeReview"][];
+                        followUpPlan: string;
+                        readiness: {
+                            complete: boolean;
+                            partial: boolean;
+                            missingOutcomes: number;
+                            unconfirmedActions: number;
+                        };
                     };
                 };
             };
@@ -1976,6 +2115,47 @@ export interface operations {
                         remainingMs: number;
                         budgetReached: boolean;
                     };
+                };
+            };
+            400: components["responses"]["ApiError"];
+            401: components["responses"]["ApiError"];
+            403: components["responses"]["ApiError"];
+            404: components["responses"]["ApiError"];
+            409: components["responses"]["ApiError"];
+            410: components["responses"]["ApiError"];
+            422: components["responses"]["ApiError"];
+            429: components["responses"]["ApiError"];
+            503: components["responses"]["ApiError"];
+            default: components["responses"]["ApiError"];
+        };
+    };
+    post_api_mobile_meetings_v1_sessions_id_complete: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    expectedVersion: number;
+                    contentHash: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Server acknowledgement. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeetingDefinition"];
                 };
             };
             400: components["responses"]["ApiError"];
@@ -2525,6 +2705,15 @@ export interface operations {
                         budgetCents: number;
                         spentCents: number;
                         log: components["schemas"]["SessionLogEntry"][];
+                        closing?: components["schemas"]["ClosingItem"][];
+                        outcomeReviews?: components["schemas"]["ClosingOutcomeReview"][];
+                        followUpPlan?: string;
+                        closingReadiness?: {
+                            complete: boolean;
+                            partial: boolean;
+                            missingOutcomes: number;
+                            unconfirmedActions: number;
+                        };
                         transcript: components["schemas"]["TranscriptSegment"][];
                         parked: components["schemas"]["ParkedItem"][];
                         speakerMap: components["schemas"]["SpeakerMap"];
@@ -2592,6 +2781,15 @@ export interface operations {
                         budgetCents: number;
                         spentCents: number;
                         log: components["schemas"]["SessionLogEntry"][];
+                        closing?: components["schemas"]["ClosingItem"][];
+                        outcomeReviews?: components["schemas"]["ClosingOutcomeReview"][];
+                        followUpPlan?: string;
+                        closingReadiness?: {
+                            complete: boolean;
+                            partial: boolean;
+                            missingOutcomes: number;
+                            unconfirmedActions: number;
+                        };
                         transcript: components["schemas"]["TranscriptSegment"][];
                         parked: components["schemas"]["ParkedItem"][];
                         speakerMap: components["schemas"]["SpeakerMap"];

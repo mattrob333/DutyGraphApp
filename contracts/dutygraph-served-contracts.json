@@ -1,11 +1,11 @@
 {
   "source": "DutyGraphV2 served OpenAPI",
-  "origin": "http://127.0.0.1:4317",
+  "origin": "http://127.0.0.1:4321",
   "generator": "openapi-typescript@7.13.0",
   "contracts": {
     "advisor": {
       "path": "/api/mobile/meetings/v1/openapi.json",
-      "sha256": "7e4e8d06293496f4944a7990ae8bb971e733a6623f379aa3ecd560f7fd556c2b",
+      "sha256": "f301ff2667141e35e7292edefad2c657286da0e1037c7b17a7d4bc957661a1b3",
       "version": "0.1.0"
     },
     "participantExtras": {

@@ -11,6 +11,7 @@ export function Field({
   multiline = true,
   placeholder,
   maxLength = 4000,
+  editable = true,
 }: {
   label: string;
   value: string;
@@ -18,6 +19,7 @@ export function Field({
   multiline?: boolean;
   placeholder?: string;
   maxLength?: number;
+  editable?: boolean;
 }) {
   const c = useColors();
   return (
@@ -28,6 +30,7 @@ export function Field({
       <TextInput
         accessibilityLabel={label}
         value={value}
+        editable={editable}
         onChangeText={onChange}
         multiline={multiline}
         placeholder={placeholder}
@@ -199,6 +202,21 @@ export function ProposalEvidenceCard({
             ? (people[p.body.ownerPersonKey] ?? "Unknown")
             : "Not stated"}{" "}
           · Due: {p.body.due ?? "Not stated"} · {p.body.status}
+        </Notice>
+      ) : null}
+      {p.body.kind === "task_card_delta" ? (
+        <Notice>
+          For{" "}
+          {p.body.personKey
+            ? (people[p.body.personKey] ?? "the named person")
+            : "an unconfirmed owner"}
+          .
+          {p.body.taskCardId
+            ? " Linked to an existing Task Card."
+            : " Proposes a new Task Card."}
+          {p.draftRecordId
+            ? " Saved as an advisor draft."
+            : " Review the source before accepting."}
         </Notice>
       ) : null}
       {p.sources.some((s) => hasInstructionLikeQuote(s.quote)) ? (

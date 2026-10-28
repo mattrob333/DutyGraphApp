@@ -36,6 +36,7 @@ import type {
   KickoffNote,
   Person,
   ClosingItem,
+  ClosingOutcomeReview,
 } from "../../shared/meetings/types.ts";
 import {
   reviewLifecycle,
@@ -46,6 +47,7 @@ import {
   canRecord,
   canAccept,
   pulseDone,
+  closingReadiness,
 } from "../../shared/meetings/rules.ts";
 import {
   MEETING_TYPES,
@@ -88,6 +90,7 @@ const topic = z
 const create = z
   .object({
     title: z.string().trim().min(1).max(200),
+    previousMeetingId: z.uuid().optional(),
     startsAt: z.iso.datetime().nullable().default(null),
     minutes: z.number().int().min(1).max(480),
     purpose: z.string().max(4000),
@@ -154,8 +157,29 @@ export function rateLimiter() {
 }
 export function sessionSnapshot(store: Store, id: string, p: Principal) {
   const s = store.get<MeetingSession>("sessions", id, p);
+  const outcomeReviews = (store.records.outcomeReviews?.[id]?.value ??
+    []) as ClosingOutcomeReview[];
+  const followUpPlan = (store.records.closingPlan?.[id]?.value ?? "") as string;
+  const meeting = store.get<MeetingDefinition>("meetings", s.meetingId, p);
+  const proposals = store
+    .list<MeetingProposal>("proposals", p)
+    .filter((item) => item.sessionId === id);
+  const closing = (store.records.closing?.[id]?.value ?? []) as ClosingItem[];
   return {
     ...s,
+    outcomeReviews,
+    followUpPlan,
+    closingReadiness: closingReadiness(
+      meeting.power.outcomes.map(
+        (_, index) =>
+          outcomeReviews.find(
+            (review) => review.outcomeId === `outcome-${index + 1}`,
+          ) ?? { met: false },
+      ),
+      proposals,
+      closing,
+      followUpPlan,
+    ),
     transcript: store
       .list<TranscriptSegment>("transcripts", p)
       .filter((x) => x.sessionId === id),
@@ -215,6 +239,7 @@ export function meetingRoutes(
       .list<MeetingProposal>("proposals", p)
       .filter((x) => x.sessionId === session.id);
     const state = reviewLifecycle(proposals);
+    if (meeting.state === "COMPLETE") return;
     if (meeting.state !== state) saveMeeting({ ...meeting, state }, p);
   };
   const getSession = (id: string, p: Principal) =>
@@ -398,11 +423,66 @@ export function meetingRoutes(
       });
       if (new Set(attendees.map(personKey)).size !== attendees.length)
         fail(400, "VALIDATION_ERROR", "Each person can be added once.");
+      if (b.previousMeetingId) {
+        const previous = getMeeting(b.previousMeetingId, p);
+        if (previous.state !== "COMPLETE")
+          fail(
+            409,
+            "CLOSING_INCOMPLETE",
+            "Complete the previous meeting before carrying deferred work.",
+          );
+        const previousSession = store
+          .list<MeetingSession>("sessions", p)
+          .find((session) => session.meetingId === previous.id);
+        const reviews = (
+          previousSession
+            ? (store.records.outcomeReviews?.[previousSession.id]?.value ?? [])
+            : []
+        ) as ClosingOutcomeReview[];
+        const carried = reviews
+          .filter((review) => review.status === "deferred")
+          .map((review) => ({
+            review,
+            title:
+              previous.power.outcomes[
+                Number(review.outcomeId.replace("outcome-", "")) - 1
+              ],
+          }))
+          .filter((item) => !!item.title);
+        const offset = b.outcomes.length;
+        if (
+          offset + carried.length > 20 ||
+          (b.agenda?.length ?? 0) + carried.length > 30
+        )
+          fail(
+            400,
+            "VALIDATION_ERROR",
+            "Keep up to 20 outcomes and 30 agenda topics, including deferred work.",
+          );
+        b.outcomes.push(...carried.map((item) => item.title));
+        b.agenda = [
+          ...(b.agenda ?? []),
+          ...carried.map((item, index) => ({
+            id: `deferred-${previous.id}-${index + 1}`,
+            title: item.title,
+            minutes: 5,
+            forPersonIds:
+              item.review.ownerPersonKey &&
+              !item.review.ownerPersonKey.startsWith("guest:")
+                ? [item.review.ownerPersonKey]
+                : [],
+            questions: [`Follow up by ${item.review.dueAt}`],
+            outcomeIds: [`outcome-${offset + index + 1}`],
+            async: false,
+          })),
+        ];
+      }
       const now = new Date().toISOString();
       const m = version({
         id: uuid(),
         companyId: p.companyId,
         title: b.title,
+        ...(b.previousMeetingId ? { previousMeetingId: b.previousMeetingId } : {}),
         startsAt: b.startsAt,
         minutes: b.minutes,
         power: {
@@ -1390,6 +1470,12 @@ export function meetingRoutes(
           })
           .strict()
           .parse(req.body);
+      if (b.to === "COMPLETE" && m.state !== "COMPLETE")
+        fail(
+          409,
+          "CLOSING_INCOMPLETE",
+          "Complete the closing review before marking the facilitator complete.",
+        );
       if (b.to) {
         const result = nextMeetingState(
           s.facilitatorState,
@@ -1868,6 +1954,8 @@ export function meetingRoutes(
           p,
         ),
         s = getSession(proposal.sessionId, p);
+      if (getMeeting(s.meetingId, p).state === "COMPLETE")
+        fail(409, "MEETING_COMPLETE", "This meeting is complete.");
       const b = z
         .object({
           decision: z.enum(["accept", "reject", "edit"]),
@@ -2092,10 +2180,71 @@ export function meetingRoutes(
                 })
                 .strict(),
             )
-            .max(80),
+            .max(80)
+            .default([]),
+          expectedVersion: z.number().int().positive().optional(),
+          contentHash: z.string().min(1).optional(),
+          outcomes: z
+            .array(
+              z
+                .object({
+                  outcomeId: z.string().min(1).max(80),
+                  status: z.enum(["met", "partly_met", "deferred", "dropped"]),
+                  ownerPersonKey: z.string().nullable(),
+                  dueAt: z.iso.datetime({ offset: true }).nullable(),
+                  note: z.string().max(2000).optional(),
+                })
+                .strict(),
+            )
+            .max(20)
+            .optional(),
+          followUpPlan: z.string().max(4000).optional(),
         })
         .strict()
         .parse(req.body);
+      const meeting = getMeeting(s.meetingId, p);
+      if (meeting.state === "COMPLETE")
+        fail(409, "MEETING_COMPLETE", "This meeting is complete.");
+      if (b.outcomes || b.followUpPlan !== undefined) {
+        if (!b.expectedVersion || !b.contentHash)
+          fail(
+            409,
+            "VERSION_REQUIRED",
+            "Load the current closing review before saving.",
+          );
+        checkVersion(s, b.expectedVersion!, b.contentHash);
+      }
+      if (b.outcomes) {
+        const allowed = new Set(
+          meeting.power.outcomes.map((_, index) => `outcome-${index + 1}`),
+        );
+        const seen = new Set<string>();
+        for (const review of b.outcomes) {
+          if (!allowed.has(review.outcomeId) || seen.has(review.outcomeId))
+            fail(400, "VALIDATION_ERROR", "Review each current outcome once.");
+          seen.add(review.outcomeId);
+          if (
+            review.status === "deferred" &&
+            (!s.consents.some(
+              (person) =>
+                person.personKey === review.ownerPersonKey &&
+                person.state === "consented",
+            ) ||
+              !review.dueAt)
+          )
+            fail(
+              400,
+              "VALIDATION_ERROR",
+              "Deferred work needs an attendee owner and date.",
+            );
+          if (review.status === "partly_met" && !b.followUpPlan?.trim())
+            fail(
+              400,
+              "VALIDATION_ERROR",
+              "Add a follow-up plan for partly met outcomes.",
+            );
+        }
+      }
       if (
         new Set(b.items.map((item) => item.proposalId)).size !== b.items.length
       )
@@ -2164,6 +2313,10 @@ export function meetingRoutes(
         ...b.items,
       ];
       store.put("closing", s.id, items, p.companyId);
+      if (b.outcomes)
+        store.put("outcomeReviews", s.id, b.outcomes, p.companyId);
+      if (b.followUpPlan !== undefined)
+        store.put("closingPlan", s.id, b.followUpPlan, p.companyId);
       s.log.push({
         at: new Date().toISOString(),
         actor: "leader",
@@ -2173,6 +2326,36 @@ export function meetingRoutes(
       saveSession(s, p);
       updateReview(s, p);
       return { body: { items } };
+    }),
+  );
+  r.post(
+    "/sessions/:id/complete",
+    cmd((req, res) => {
+      const p = principal(res),
+        session = getSession(String(req.params.id), p);
+      const body = z
+        .object({
+          expectedVersion: z.number().int().positive(),
+          contentHash: z.string().min(1),
+        })
+        .strict()
+        .parse(req.body);
+      if (getMeeting(session.meetingId, p).state === "COMPLETE")
+        return { body: getMeeting(session.meetingId, p) };
+      checkVersion(session, body.expectedVersion, body.contentHash);
+      const snapshot = sessionSnapshot(store, session.id, p);
+      if (!session.endedAt || !snapshot.closingReadiness.complete)
+        fail(
+          409,
+          "CLOSING_INCOMPLETE",
+          "Review outcomes, proposals, action owners, dates and confirmations before completing.",
+        );
+      const meeting = saveMeeting(
+        { ...getMeeting(session.meetingId, p), state: "COMPLETE" },
+        p,
+      );
+      saveSession(session, p);
+      return { body: meeting };
     }),
   );
   r.get("/sessions/:id/export", (req, res) => {

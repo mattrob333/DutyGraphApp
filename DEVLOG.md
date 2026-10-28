@@ -1,3 +1,9 @@
+# October 28, 2026 — Explicit meeting closing review
+
+Added per-outcome dispositions, deferral owner/date input, partial-outcome follow-up and a server-acknowledged Complete action. Completion uses the current session version/hash and existing durable retry-key mechanism. Local failed-save drafts remain editable. Accepted action owner/date changes use the existing source review instead of bypassing evidence review. A completed meeting can seed a linked next plan with deferred work.
+
+HTTP/mock adapters and the fictional development API share the closing rule. The development contract is regenerated from its source. Mobile/development API typechecks, lint, 24 advisor tests, 31 UI/actual-contract tests, 78 shared tests and the targeted development API closing regression passed. A mock web export and 390×844 advisor browser flow passed through acknowledged completion and linked follow-up planning; screenshots are in docs/day-run/screens/. Local outcome drafts retain their original session version; concurrent server changes require explicit reload. Full mobile suite and independent review remain parent integration checks. No deployment or physical-device result is claimed.
+
 # Development log
 
 Latest local result (2026-10-28): 538 mobile tests/63 suites, generated-type checks, lint and all twelve actual PostgreSQL browser paths pass. Older connector-session entries below retain their historical pending/unrun status; current evidence is in PROGRESS.md and docs/verification/dutygraph-mobile-2026-10-28.json.

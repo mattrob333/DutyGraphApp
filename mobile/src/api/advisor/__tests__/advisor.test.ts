@@ -541,3 +541,180 @@ it("does not guess a recording offset when duration metadata is missing or the t
   expect(await repo.audioSource("meeting-session", 1500)).toBeNull();
   expect(await repo.audioSource("meeting-session", -1)).toBeNull();
 });
+
+describe("structured closing ritual", () => {
+  async function fixture() {
+    const r = new MockAdvisorRepository();
+    const m = await r.create(input, "closing-create");
+    await r.plan(m.id, "closing-plan");
+    const s = await r.start(m.id, "capture", "closing-start");
+    await r.consent(
+      s.id,
+      s.consents.map((person) => ({
+        ...person,
+        state: "consented",
+        at: new Date().toISOString(),
+      })),
+      "closing-consent",
+    );
+    await r.transcript(
+      s.id,
+      [
+        {
+          id: "closing-source",
+          sessionId: s.id,
+          revision: 1,
+          startMs: 0,
+          endMs: 1000,
+          text: "Follow up on Tuesday.",
+          speakerCluster: "S1",
+          source: "live",
+          committed: true,
+        },
+      ],
+      "closing-text",
+    );
+    await r.finish(s.id, "closing-finish");
+    await r.decide(
+      (await r.session(s.id)).proposals[0],
+      "reject",
+      "closing-reject",
+    );
+    return { r, m, s };
+  }
+  it("guards incomplete and stale review, validates deferral, replays complete once and carries deferred work", async () => {
+    const { r, m, s } = await fixture();
+    let reviewed = await r.session(s.id);
+    await expect(
+      r.complete(
+        s.id,
+        { expectedVersion: reviewed.version, contentHash: reviewed.hash },
+        "incomplete",
+      ),
+    ).rejects.toThrow("Review outcomes");
+    await expect(
+      r.saveClosing(
+        s.id,
+        {
+          expectedVersion: reviewed.version,
+          contentHash: reviewed.hash,
+          outcomes: [
+            {
+              outcomeId: "outcome-1",
+              status: "deferred",
+              ownerPersonKey: "unknown",
+              dueAt: "2026-11-03T19:00:00Z",
+            },
+          ],
+        },
+        "invalid-owner",
+      ),
+    ).rejects.toThrow("attendee owner");
+    const outcomes = [
+      {
+        outcomeId: "outcome-1",
+        status: "deferred" as const,
+        ownerPersonKey: "dana",
+        dueAt: "2026-11-03T19:00:00Z",
+      },
+    ];
+    await r.saveClosing(
+      s.id,
+      {
+        outcomes,
+        expectedVersion: reviewed.version,
+        contentHash: reviewed.hash,
+      },
+      "save-closing",
+    );
+    await expect(
+      r.saveClosing(
+        s.id,
+        {
+          outcomes,
+          expectedVersion: reviewed.version,
+          contentHash: reviewed.hash,
+        },
+        "stale-outcome-save",
+      ),
+    ).rejects.toThrow("changed");
+    await expect(
+      r.complete(
+        s.id,
+        { expectedVersion: reviewed.version, contentHash: reviewed.hash },
+        "stale-closing",
+      ),
+    ).rejects.toThrow("changed");
+    reviewed = await r.session(s.id);
+    expect(reviewed.closingReadiness?.complete).toBe(true);
+    const command = {
+      expectedVersion: reviewed.version,
+      contentHash: reviewed.hash,
+    };
+    const complete = await r.complete(s.id, command, "complete");
+    expect(complete.state).toBe("COMPLETE");
+    expect(await r.complete(s.id, command, "complete")).toEqual(complete);
+    expect((await r.meeting(m.id)).version).toBe(complete.version);
+    const next = await r.create(
+      { ...input, previousMeetingId: m.id },
+      "next-meeting",
+    );
+    expect(next.power.outcomes).toEqual(["A launch date", "A launch date"]);
+    expect(next.agenda[0].forPersonIds).toEqual(["dana"]);
+    await expect(
+      r.saveClosing(
+        s.id,
+        {
+          outcomes,
+          expectedVersion: reviewed.version,
+          contentHash: reviewed.hash,
+        },
+        "after-complete",
+      ),
+    ).rejects.toThrow("complete");
+  });
+  it("posts outcome drafts and completion versions through the HTTP adapter", async () => {
+    await advisorTokens.set(session());
+    const calls: { url: string; body: unknown; key?: string }[] = [];
+    jest.spyOn(global, "fetch").mockImplementation(async (url, options) => {
+      calls.push({
+        url: String(url),
+        body: JSON.parse(String(options?.body)),
+        key: (options?.headers as Record<string, string>)["Idempotency-Key"],
+      });
+      return response(200, { state: "COMPLETE" });
+    });
+    const r = new HttpAdvisorRepository("http://localhost", true);
+    const input = {
+      expectedVersion: 3,
+      contentHash: "current-hash",
+      outcomes: [
+        {
+          outcomeId: "outcome-1",
+          status: "met" as const,
+          ownerPersonKey: null,
+          dueAt: null,
+        },
+      ],
+      followUpPlan: "",
+    };
+    await r.saveClosing("session-1", input, "save-key");
+    await r.complete(
+      "session-1",
+      { expectedVersion: 3, contentHash: "current-hash" },
+      "complete-key",
+    );
+    expect(calls).toEqual([
+      {
+        url: "http://localhost/api/mobile/meetings/v1/sessions/session-1/closing",
+        body: input,
+        key: "save-key",
+      },
+      {
+        url: "http://localhost/api/mobile/meetings/v1/sessions/session-1/complete",
+        body: { expectedVersion: 3, contentHash: "current-hash" },
+        key: "complete-key",
+      },
+    ]);
+  });
+});

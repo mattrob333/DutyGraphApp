@@ -1705,3 +1705,126 @@ test("a finish with no evidence is not charged", async () => {
     await f.close();
   }
 });
+
+test("structured closing requires every outcome and current review before COMPLETE", async () => {
+  const f = await setup();
+  try {
+    const { s, consent } = await start(f, "capture");
+    await f.call(`${api}/sessions/${s.id}/consent`, consent);
+    await f.call(`${api}/sessions/${s.id}/transcript`, {
+      segments: [
+        {
+          id: uuid(),
+          revision: 1,
+          startMs: 0,
+          endMs: 1000,
+          text: "The queue is ready.",
+          personKey: IDS.participant,
+        },
+      ],
+    });
+    assert.equal(
+      (await f.call(`${api}/sessions/${s.id}/finish`, {})).status,
+      200,
+    );
+    let snapshot = (await f.call(`${api}/sessions/${s.id}`)).body;
+    assert.equal(
+      (
+        await f.call(`${api}/sessions/${s.id}/complete`, {
+          expectedVersion: snapshot.version,
+          contentHash: snapshot.hash,
+        })
+      ).status,
+      409,
+    );
+    for (const proposal of snapshot.proposals) {
+      assert.equal(
+        (
+          await f.call(`${api}/proposals/${proposal.id}/decision`, {
+            decision: "reject",
+            expectedVersion: proposal.version,
+            contentHash: proposal.hash,
+          })
+        ).status,
+        200,
+      );
+    }
+    snapshot = (await f.call(`${api}/sessions/${s.id}`)).body;
+    const outcomes = [
+      {
+        outcomeId: "outcome-1",
+        status: "met",
+        ownerPersonKey: null,
+        dueAt: null,
+      },
+      {
+        outcomeId: "outcome-2",
+        status: "deferred",
+        ownerPersonKey: IDS.participant,
+        dueAt: "2026-11-03T19:00:00Z",
+      },
+    ];
+    assert.equal(
+      (
+        await f.call(`${api}/sessions/${s.id}/closing`, {
+          expectedVersion: snapshot.version,
+          contentHash: snapshot.hash,
+          outcomes: [
+            outcomes[0],
+            { ...outcomes[1], ownerPersonKey: "unknown" },
+          ],
+        })
+      ).status,
+      400,
+    );
+    assert.equal(
+      (
+        await f.call(`${api}/sessions/${s.id}/closing`, {
+          outcomes,
+          expectedVersion: snapshot.version,
+          contentHash: snapshot.hash,
+        })
+      ).status,
+      200,
+    );
+    assert.equal(
+      (
+        await f.call(`${api}/sessions/${s.id}/complete`, {
+          expectedVersion: snapshot.version,
+          contentHash: snapshot.hash,
+        })
+      ).status,
+      409,
+    );
+    snapshot = (await f.call(`${api}/sessions/${s.id}`)).body;
+    assert.equal(snapshot.closingReadiness.complete, true);
+    const body = {
+      expectedVersion: snapshot.version,
+      contentHash: snapshot.hash,
+    };
+    const completed = await f.call(
+      `${api}/sessions/${s.id}/complete`,
+      body,
+      "complete-once",
+    );
+    assert.equal(completed.status, 200);
+    assert.equal(completed.body.state, "COMPLETE");
+    assert.deepEqual(
+      (await f.call(`${api}/sessions/${s.id}/complete`, body, "complete-once"))
+        .body,
+      completed.body,
+    );
+    assert.equal(
+      (
+        await f.call(`${api}/sessions/${s.id}/closing`, {
+          outcomes,
+          expectedVersion: snapshot.version,
+          contentHash: snapshot.hash,
+        })
+      ).status,
+      409,
+    );
+  } finally {
+    await f.close();
+  }
+});

@@ -11,6 +11,7 @@ import type {
   Coach,
   Trigger,
   ClosingItem,
+  SaveClosing,
 } from "./types";
 import type {
   SpeakerMap,
@@ -615,6 +616,26 @@ export class HttpAdvisorRepository implements AdvisorRepository {
       `/sessions/${encodeURIComponent(sessionId)}/closing`,
       "POST",
       { items: [this.versionedCommands ? item : legacy] },
+      key,
+    );
+  }
+  async saveClosing(sessionId: string, input: SaveClosing, key: string) {
+    await this.request(
+      `/sessions/${encodeURIComponent(sessionId)}/closing`,
+      "POST",
+      input,
+      key,
+    );
+  }
+  async complete(
+    sessionId: string,
+    reviewed: { expectedVersion: number; contentHash: string },
+    key: string,
+  ): Promise<MeetingDefinition> {
+    return this.request(
+      `/sessions/${encodeURIComponent(sessionId)}/complete`,
+      "POST",
+      reviewed,
       key,
     );
   }

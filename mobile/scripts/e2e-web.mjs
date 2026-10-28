@@ -250,7 +250,7 @@ try {
     await click('Review closing');
     await expectVisible('Close the loop');
     await screenshot('closing');
-    await click('Finish and review sources');
+    await click('Review sources, owners and dates');
     await expectVisible('Who said what?');
     await page.getByRole('button', { name: /Priya Shah/ }).first().click();
     await screenshot('speakers');
@@ -260,6 +260,23 @@ try {
     await screenshot('results');
     await click('Accept');
     await page.getByText('Accepted', { exact: true }).filter({ visible: true }).waitFor({ state: 'visible' });
+    if (mode === 'mock' && flow === 'advisor') {
+      await click('Return to owner confirmations');
+      await click('Deferred: Agree a shipping date.');
+      await click('Priya Shah');
+      await page.getByLabel('Follow-up date: Agree a shipping date.').fill('2026-11-03T14:00:00-05:00');
+      if (await button('Complete meeting').isEnabled()) throw new Error('Unsaved outcome review allowed completion.');
+      await click('Save outcome review');
+      await button('Complete meeting').waitFor({ state: 'visible' });
+      await page.waitForFunction(() => [...document.querySelectorAll('[role="button"]')].some(el => el.getAttribute('aria-label') === 'Complete meeting' && el.getAttribute('aria-disabled') !== 'true'));
+      await screenshot('closing-reviewed');
+      await click('Complete meeting');
+      await expectVisible('Meeting complete. The server acknowledged the closing review.');
+      await screenshot('closing-complete');
+      await click('Plan follow-up meeting');
+      await expectVisible('Deferred work from the completed meeting will be added to this plan.');
+      console.log('PASS structured closing through acknowledged completion and linked follow-up (mock)');
+    }
     if (flow === 'stale') {
       const sourcePost = responses.find(r => /\/sessions\/[^/]+\/transcript$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok());
       if (!sourcePost) throw new Error('Original source segment was not acknowledged.');
