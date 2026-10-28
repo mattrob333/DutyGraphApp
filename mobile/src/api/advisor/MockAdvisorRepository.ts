@@ -22,6 +22,7 @@ import type {
   ClosingItem,
   SaveClosing,
   MeetingGateSuggestionWire,
+  MeetingTaskCardWire,
 } from "./types";
 import type {
   SpeakerMap,
@@ -60,10 +61,35 @@ export class MockAdvisorRepository implements AdvisorRepository {
   private commands = new Map<string, { body: string; result: unknown }>();
   private pulses = new Map<string, PulseStatus>();
   private noteRecords = new Map<string, KickoffNote[]>();
+  private taskCardRecords = new Map<string, MeetingTaskCardWire>();
   constructor() {
     this.seed();
   }
   private seed() {
+    const title = "Confirm the shipping date";
+    this.taskCardRecords.set("task-demo-shipping", {
+      id: "task-demo-shipping",
+      title,
+      version: 1,
+      hash: "mock-task-demo-shipping-1",
+      state: "active",
+      data: {
+        title,
+        duty: "Coordinate shipping",
+        ownerId: "priya",
+        performerId: "priya",
+        purpose: "Confirm when the order can ship",
+        trigger: "Order ready",
+        inputs: "Order details",
+        instructions: "Check the carrier schedule",
+        output: "Confirmed shipping date",
+        systems: ["Dispatch board"],
+        humanGate: "Dana approves",
+        destination: "Warehouse",
+        mode: "human",
+      },
+    });
+
     const meeting = this.make(
       {
         title: "Weekly operations review",
@@ -160,6 +186,14 @@ export class MockAdvisorRepository implements AdvisorRepository {
   async logout() {}
   async people() {
     return copy(DEMO_PEOPLE);
+  }
+  async taskCards() {
+    return copy([...this.taskCardRecords.values()]);
+  }
+  async taskCard(id: string) {
+    return copy(
+      this.taskCardRecords.get(id) ?? problem("Task Card was not found."),
+    );
   }
   async meetings() {
     return copy([...this.records.values()]);
@@ -610,6 +644,10 @@ export class MockAdvisorRepository implements AdvisorRepository {
         p =
           s.proposals.find((v) => v.id === proposal.id) ??
           problem("Proposal was not found.");
+      if (p.draftRecordId && !(p.state === "stale" && decision === "reject"))
+        return problem(
+          "This proposal already created a saved draft. Review the draft record for further changes.",
+        );
       if (this.get(s.meetingId).state === "COMPLETE")
         return problem("This meeting is complete.");
       if (p.version !== proposal.version)
@@ -620,6 +658,64 @@ export class MockAdvisorRepository implements AdvisorRepository {
           return problem(
             allowed.reason ?? "Check the source before accepting.",
           );
+        if (p.body.kind === "task_card_delta") {
+          const change = p.body,
+            meeting = this.get(s.meetingId);
+          if (
+            !change.personKey ||
+            !meeting.attendees.some(
+              (person) => person.personId === change.personKey,
+            )
+          )
+            return problem("Choose a named attendee whose work changes.");
+          if (
+            change.field === "ownerId" &&
+            !meeting.attendees.some((person) => person.personId === change.to)
+          )
+            return problem("Choose a named attendee as owner.");
+          const target = change.taskCardId
+            ? (this.taskCardRecords.get(change.taskCardId) ??
+              problem("Task Card was not found."))
+            : null;
+          const draftId = newId(),
+            title =
+              change.field === "title"
+                ? change.to
+                : (target?.title ?? "Proposed Task Card change");
+          const data = target
+            ? copy(target.data)
+            : {
+                title,
+                duty: "",
+                ownerId: change.personKey,
+                performerId: change.personKey,
+                purpose: "",
+                trigger: "",
+                inputs: "",
+                instructions: "",
+                output: "",
+                systems: [] as string[],
+                humanGate: "",
+                destination: "",
+                mode: "human",
+              };
+          if (change.field === "systems")
+            data.systems = change.to
+              .split("\n")
+              .map((value) => value.trim())
+              .filter(Boolean);
+          else Object.assign(data, { [change.field]: change.to });
+          data.title = title;
+          this.taskCardRecords.set(draftId, {
+            id: draftId,
+            title,
+            version: 1,
+            hash: `mock-${draftId}-1`,
+            state: "proposed",
+            data,
+          });
+          p.draftRecordId = draftId;
+        }
         p.sources = p.sources.map((ref) => ({
           ...ref,
           personKey:
@@ -630,6 +726,24 @@ export class MockAdvisorRepository implements AdvisorRepository {
         }));
       }
       if (decision === "edit") {
+        if (body?.kind === "task_card_delta") {
+          const meeting = this.get(s.meetingId);
+          if (
+            !body.personKey ||
+            !meeting.attendees.some(
+              (person) => person.personId === body.personKey,
+            )
+          )
+            return problem("Choose a named attendee whose work changes.");
+          if (body.taskCardId && !this.taskCardRecords.has(body.taskCardId))
+            return problem("Task Card was not found.");
+          if (
+            body.field === "ownerId" &&
+            !meeting.attendees.some((person) => person.personId === body.to)
+          )
+            return problem("Choose a named attendee as owner.");
+        }
+
         if (
           !proposal.sources.length ||
           proposal.sources.some((ref) => {

@@ -1015,3 +1015,111 @@ describe("optional meeting gate suggestion", () => {
     );
   });
 });
+
+describe("scoped Task Card meeting review", () => {
+  it("reads cards without mutation and pins an accepted proposal to one immutable draft", async () => {
+    const repo = new MockAdvisorRepository();
+    const meeting = await repo.create(input, "task-create");
+    await repo.plan(meeting.id, "task-plan");
+    const started = await repo.start(meeting.id, "capture", "task-start");
+    await repo.consent(
+      started.id,
+      started.consents.map((person) => ({
+        ...person,
+        state: "consented",
+        at: new Date().toISOString(),
+      })),
+      "task-consent",
+    );
+    await repo.transcript(
+      started.id,
+      [
+        {
+          id: "task-source",
+          sessionId: started.id,
+          revision: 1,
+          startMs: 0,
+          endMs: 1000,
+          text: "Dana will own the shipping-date check.",
+          source: "live",
+          speakerCluster: null,
+          personKey: "dana",
+          committed: true,
+        },
+      ],
+      "task-words",
+    );
+    await repo.finish(started.id, "task-finish");
+    const target = (await repo.taskCards())[0];
+    // A fictional provider fixture in this isolated mock, before the advisor reviews it.
+    const records = Reflect.get(repo, "sessions") as Map<
+      string,
+      import("../types").SessionDetail
+    >;
+    const proposal = records.get(started.id)!.proposals[0];
+    proposal.kind = "task_card_delta";
+    proposal.body = {
+      kind: "task_card_delta",
+      taskCardId: target.id,
+      personKey: "dana",
+      field: "ownerId",
+      from: target.data.ownerId,
+      to: "dana",
+    };
+    const reviewed = (await repo.session(started.id)).proposals[0];
+    const accepted = await repo.decide(reviewed, "accept", "task-accept");
+    expect(accepted.draftRecordId).toBeTruthy();
+    expect((await repo.taskCard(accepted.draftRecordId!)).data.ownerId).toBe(
+      "dana",
+    );
+    expect(await repo.taskCard(target.id)).toEqual(target);
+    expect(await repo.decide(reviewed, "accept", "task-accept")).toEqual(
+      accepted,
+    );
+    await expect(
+      repo.decide(accepted, "reject", "task-reject-after-draft"),
+    ).rejects.toThrow("saved draft");
+    await expect(
+      repo.decide(accepted, "edit", "task-edit-after-draft", {
+        ...(accepted.body as Extract<
+          import("../types").MeetingProposal["body"],
+          { kind: "task_card_delta" }
+        >),
+        to: "priya",
+      }),
+    ).rejects.toThrow("saved draft");
+    const preserved = await repo.taskCard(accepted.draftRecordId!);
+    proposal.state = "stale";
+    proposal.version++;
+    proposal.hash = "mock-stale-source";
+    const stale = (await repo.session(started.id)).proposals[0];
+    await expect(
+      repo.decide(stale, "accept", "stale-reaccept"),
+    ).rejects.toThrow("saved draft");
+    const rejected = await repo.decide(stale, "reject", "stale-reject");
+    expect(rejected.state).toBe("rejected");
+    expect(await repo.taskCard(accepted.draftRecordId!)).toEqual(preserved);
+    expect(await repo.decide(stale, "reject", "stale-reject")).toEqual(
+      rejected,
+    );
+    await expect(repo.taskCard("foreign-or-missing")).rejects.toThrow(
+      "not found",
+    );
+  });
+  it("loads scoped list/detail through authenticated GETs without writing", async () => {
+    await advisorTokens.set(session());
+    const card = (await new MockAdvisorRepository().taskCards())[0];
+    const replies = [response(200, { taskCards: [card] }), response(200, card)];
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async () => replies.shift()!);
+    const repo = new HttpAdvisorRepository("http://localhost", true);
+    expect(await repo.taskCards()).toEqual([card]);
+    expect(await repo.taskCard(card.id)).toEqual(card);
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      "http://localhost/api/mobile/meetings/v1/task-cards",
+      `http://localhost/api/mobile/meetings/v1/task-cards/${card.id}`,
+    ]);
+    for (const [, init] of fetcher.mock.calls) expect(init?.method).toBe("GET");
+  });
+});

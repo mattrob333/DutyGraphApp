@@ -43,3 +43,7 @@
 | 2026-10-28 | Actual backend P4 | Retain reviewed version/hash and exact-command identity through real-profile edits, routing, closing and kickoff acknowledgments; preserve legacy request shapes. | A retry cannot silently substitute a newer review or reuse a key with changed content. |
 | 2026-10-28 | Actual backend P4 | Cache extensionless protected voice URLs only with declared WAV/MPEG format and exact same-origin path validation. | Correct native file formats without granting bearer credentials to arbitrary URLs. |
 | 2026-10-28 | Actual backend P4 | Apply compatible audit patches; retain Expo CLI's declared Zod3 dependency pending an upstream fix. | A forced major override would create an unverified toolchain change; remaining advisory is documented. |
+
+## 2026-10-29 — Keep accepted drafts independent
+
+Accepted Task Card proposals are immutable because they already created a separate advisor draft. A stale proposal can be explicitly rejected so closing can continue, but this does not edit or delete that draft. The UI states that requirement and exposes scoped read-only inspection. Owner changes use named selections, and source/card changes update the displayed current value. No automatic acceptance or source-card write is introduced.

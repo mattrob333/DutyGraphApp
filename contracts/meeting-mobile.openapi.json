@@ -380,6 +380,91 @@
         }
       }
     },
+    "/api/mobile/meetings/v1/task-cards": {
+      "get": {
+        "operationId": "get_api_mobile_meetings_v1_task_cards",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acknowledged by the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "taskCards": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AdvisorTaskCard"
+                      }
+                    }
+                  },
+                  "required": [
+                    "taskCards"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/meetings/v1/task-cards/{id}": {
+      "get": {
+        "operationId": "get_api_mobile_meetings_v1_task_cards_id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acknowledged by the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvisorTaskCard"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/mobile/meetings/v1/meetings": {
       "get": {
         "operationId": "get_api_mobile_meetings_v1_meetings",
@@ -5637,6 +5722,99 @@
               "closingReadiness"
             ]
           }
+        ]
+      },
+      "AdvisorTaskCard": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "state": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "duty": {
+                "type": "string"
+              },
+              "ownerId": {
+                "type": "string"
+              },
+              "performerId": {
+                "type": "string"
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "trigger": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "string"
+              },
+              "instructions": {
+                "type": "string"
+              },
+              "output": {
+                "type": "string"
+              },
+              "humanGate": {
+                "type": "string"
+              },
+              "destination": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "systems": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "title",
+              "duty",
+              "ownerId",
+              "performerId",
+              "purpose",
+              "trigger",
+              "inputs",
+              "instructions",
+              "output",
+              "humanGate",
+              "destination",
+              "mode",
+              "systems"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "version",
+          "hash",
+          "state",
+          "data"
         ]
       },
       "QuestionHint": {

@@ -44,3 +44,6 @@ export type MobileFinishJobWire =
 export type MeetingGateSuggestionWire = Success<
   Advisor["post_api_mobile_meetings_v1_meetings_id_gate_suggestion"]
 >;
+
+export type MeetingTaskCardWire =
+  AdvisorComponents["schemas"]["MobileTaskCardView"];

@@ -5,7 +5,7 @@
   "contracts": {
     "advisor": {
       "path": "/api/mobile/meetings/v1/openapi.json",
-      "sha256": "95f2ddda25e6b5d17146a3842f087a020ca1f5c16aa09dae6c37d5329c0254e4",
+      "sha256": "7cd6ee107c4e9beb2cb7409a6023092912072943fb6c2743348962c4915d3479",
       "version": "0.1.0"
     },
     "participantExtras": {

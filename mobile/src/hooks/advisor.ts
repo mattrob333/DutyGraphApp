@@ -22,6 +22,14 @@ export function useAdvisorPeople() {
     queryFn: () => getAdvisorRepository().people(),
   });
 }
+export function useAdvisorTaskCards(enabled = true) {
+  const scope = useScope();
+  return useQuery({
+    queryKey: ["advisor", scope, "task-cards"],
+    queryFn: () => getAdvisorRepository().taskCards(),
+    enabled,
+  });
+}
 export function useAdvisorMeeting(id: string) {
   const scope = useScope();
   return useQuery({

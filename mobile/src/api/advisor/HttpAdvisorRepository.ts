@@ -44,6 +44,7 @@ import type {
   MeetingRouteWire,
   MobileFinishJobWire,
   MeetingGateSuggestionWire,
+  MeetingTaskCardWire,
 } from "@/api/dutygraphWire";
 
 export class HttpAdvisorRepository implements AdvisorRepository {
@@ -313,6 +314,16 @@ export class HttpAdvisorRepository implements AdvisorRepository {
           department: person.department,
         };
       },
+    );
+  }
+  async taskCards() {
+    return (
+      await this.request<{ taskCards: MeetingTaskCardWire[] }>("/task-cards")
+    ).taskCards;
+  }
+  taskCard(id: string) {
+    return this.request<MeetingTaskCardWire>(
+      `/task-cards/${encodeURIComponent(id)}`,
     );
   }
   async meetings() {

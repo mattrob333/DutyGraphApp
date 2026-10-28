@@ -193,6 +193,45 @@ export function sessionSnapshot(store: Store, id: string, p: Principal) {
     closing: (store.records.closing?.[id]?.value ?? []) as ClosingItem[],
   };
 }
+function advisorTaskCardView(store: Store, id: string, principal: Principal) {
+  const stored = store.records.tasks?.[id];
+  if (!stored || stored.companyId !== principal.companyId)
+    fail(404, "NOT_FOUND", "Task Card was not found.");
+  const record = store.get<{
+    id: string;
+    title: string;
+    version: number;
+    hash: string;
+    state: string;
+    data: Record<string, unknown>;
+  }>("tasks", id, principal);
+  const text = (field: string) => String(record.data[field] ?? "");
+  return {
+    id: record.id,
+    title: record.title,
+    version: record.version,
+    hash: record.hash,
+    state: record.state,
+    data: {
+      title: record.title,
+      duty: text("duty"),
+      ownerId: text("ownerId") || store.records.tasks[id].personId || "",
+      performerId:
+        text("performerId") || store.records.tasks[id].personId || "",
+      purpose: text("purpose"),
+      trigger: text("trigger"),
+      inputs: text("inputs"),
+      instructions: text("instructions"),
+      output: text("output"),
+      systems: Array.isArray(record.data.systems)
+        ? record.data.systems.map(String)
+        : [],
+      humanGate: text("humanGate"),
+      destination: text("destination"),
+      mode: text("mode"),
+    },
+  };
+}
 export function meetingRoutes(
   store: Store,
   providers: Providers,
@@ -219,6 +258,18 @@ export function meetingRoutes(
   });
   r.get("/people", (_req, res) =>
     res.json({ people: store.list("people", principal(res)) }),
+  );
+  r.get("/task-cards", (_req, res) => {
+    const p = principal(res);
+    res.json({
+      taskCards: store
+        .list<{ id: string }>("tasks", p)
+        .slice(0, 200)
+        .map((card) => advisorTaskCardView(store, card.id, p)),
+    });
+  });
+  r.get("/task-cards/:id", (req, res) =>
+    res.json(advisorTaskCardView(store, String(req.params.id), principal(res))),
   );
   r.get("/meetings", (_req, res) =>
     res.json({ meetings: store.list("meetings", principal(res)) }),
@@ -482,7 +533,9 @@ export function meetingRoutes(
         id: uuid(),
         companyId: p.companyId,
         title: b.title,
-        ...(b.previousMeetingId ? { previousMeetingId: b.previousMeetingId } : {}),
+        ...(b.previousMeetingId
+          ? { previousMeetingId: b.previousMeetingId }
+          : {}),
         startsAt: b.startsAt,
         minutes: b.minutes,
         power: {
@@ -562,11 +615,23 @@ export function meetingRoutes(
       return { body: saveMeeting(next, p) };
     }),
   );
-  r.post("/meetings/:id/gate-suggestion", cmd((req, res) => {
-    const p = principal(res), meeting = getMeeting(String(req.params.id), p);
-    z.object({}).strict().parse(req.body ?? {});
-    return { body: { deterministic: gateMeeting(meeting), suggestion: null, status: "off" } };
-  }));
+  r.post(
+    "/meetings/:id/gate-suggestion",
+    cmd((req, res) => {
+      const p = principal(res),
+        meeting = getMeeting(String(req.params.id), p);
+      z.object({})
+        .strict()
+        .parse(req.body ?? {});
+      return {
+        body: {
+          deterministic: gateMeeting(meeting),
+          suggestion: null,
+          status: "off",
+        },
+      };
+    }),
+  );
   r.post(
     "/meetings/:id/plan",
     cmd(async (req, res) => {
@@ -1475,12 +1540,6 @@ export function meetingRoutes(
           })
           .strict()
           .parse(req.body);
-      if (b.to === "COMPLETE" && m.state !== "COMPLETE")
-        fail(
-          409,
-          "CLOSING_INCOMPLETE",
-          "Complete the closing review before marking the facilitator complete.",
-        );
       if (b.to) {
         const result = nextMeetingState(
           s.facilitatorState,
@@ -1492,6 +1551,12 @@ export function meetingRoutes(
             409,
             "ILLEGAL_TRANSITION",
             "That meeting transition is not allowed.",
+          );
+        if (b.to === "COMPLETE" && m.state !== "COMPLETE")
+          fail(
+            409,
+            "CLOSING_INCOMPLETE",
+            "Complete the closing review before marking the facilitator complete.",
           );
         s.log.push({
           at: new Date().toISOString(),
@@ -1989,11 +2054,89 @@ export function meetingRoutes(
         })
         .strict()
         .parse(req.body);
+      if (
+        proposal.draftRecordId &&
+        !(proposal.state === "stale" && b.decision === "reject")
+      )
+        fail(
+          409,
+          "DRAFT_ALREADY_CREATED",
+          "This proposal already created a saved draft. Review the draft record for further changes.",
+        );
       checkVersion(proposal, b.expectedVersion, b.contentHash);
       if (b.decision === "accept") {
         const snap = sessionSnapshot(store, s.id, p),
           allowed = canAccept(proposal, snap.transcript, snap.speakerMap);
         if (!allowed.ok) fail(409, "EVIDENCE_REQUIRED", allowed.reason!);
+        if (proposal.body.kind === "task_card_delta") {
+          const change = proposal.body,
+            meeting = getMeeting(s.meetingId, p);
+          if (
+            !change.personKey ||
+            !meeting.attendees.some(
+              (attendee) => attendee.personId === change.personKey,
+            )
+          )
+            fail(
+              403,
+              "PERSON_FORBIDDEN",
+              "Choose a named attendee whose work changes.",
+            );
+          if (
+            change.field === "ownerId" &&
+            !meeting.attendees.some(
+              (attendee) => attendee.personId === change.to,
+            )
+          )
+            fail(403, "PERSON_FORBIDDEN", "Choose a named attendee as owner.");
+          const target = change.taskCardId
+            ? advisorTaskCardView(store, change.taskCardId, p)
+            : null;
+          const id = uuid(),
+            title =
+              change.field === "title"
+                ? change.to
+                : (target?.title ?? "Proposed Task Card change");
+          const data = target
+            ? { ...target.data, systems: [...target.data.systems] }
+            : {
+                title,
+                duty: "",
+                ownerId: change.personKey,
+                performerId: change.personKey,
+                purpose: "",
+                trigger: "",
+                inputs: "",
+                instructions: "",
+                output: "",
+                systems: [] as string[],
+                humanGate: "",
+                destination: "",
+                mode: "human",
+              };
+          if (change.field === "systems")
+            data.systems = change.to
+              .split("\n")
+              .map((value) => value.trim())
+              .filter(Boolean);
+          else Object.assign(data, { [change.field]: change.to });
+          data.title = title;
+          store.put(
+            "tasks",
+            id,
+            version({
+              id,
+              title,
+              state: "proposed",
+              needsAttestation: true,
+              reviewed: false,
+              data,
+            }),
+            p.companyId,
+            change.personKey,
+          );
+          proposal.draftRecordId = id;
+        }
         proposal.state = "accepted";
         proposal.decidedBy = p.personId;
         proposal.decidedAt = new Date().toISOString();
@@ -2082,6 +2225,23 @@ export function meetingRoutes(
                   : null;
         if (referenced && !people.includes(referenced))
           fail(403, "PERSON_FORBIDDEN", "Choose a person from this meeting.");
+        if (body.kind === "task_card_delta") {
+          const attendees = getMeeting(s.meetingId, p).attendees;
+          if (
+            body.personKey &&
+            !attendees.some((attendee) => attendee.personId === body.personKey)
+          )
+            fail(
+              403,
+              "PERSON_FORBIDDEN",
+              "Choose a named attendee whose work changes.",
+            );
+          if (
+            body.field === "ownerId" &&
+            !attendees.some((attendee) => attendee.personId === body.to)
+          )
+            fail(403, "PERSON_FORBIDDEN", "Choose a named attendee as owner.");
+        }
         if (body.kind === "task_card_delta" && body.taskCardId)
           store.get("tasks", body.taskCardId, p);
         if (body.kind === "contradiction")

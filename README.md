@@ -4,6 +4,8 @@ Expo SDK 57 app and a standalone development API for participant information gat
 
 The October 28 day-run adds a structured closing review and explicit server-acknowledged completion. Deferred outcomes can seed a linked follow-up meeting. Queued finish jobs keep the original retry key while the app checks server progress; stopping local checks does not stop the server job. The meeting gate can show an optional AI suggestion beside its rules result; the company setting stays off by default. See the dated entry in [PROGRESS.md](PROGRESS.md) for checks on this change; earlier suite counts below are historical.
 
+Task Card proposal review now includes the linked source and saved draft, attendee/card/owner adjustments, and an explicit way to reject stale proposals while preserving their existing draft. Current checks and limits are in [PROGRESS.md](PROGRESS.md).
+
 ## Build status
 
 The app supports mock/development workflows and opt-in actual DutyGraphV2 integration. Current local checks pass **538 mobile tests**, **78 shared tests**, **64 development API tests**, typechecks/lint, web export and **all twelve PostgreSQL browser paths against the actual V2 application** (219 schema-validated exchanges). Handsfree/meeting line coverage is **94.37%**. Native prebuild/autolinking evidence is from the prior run; native compilation and physical-device QA remain outstanding. The continuation used injected providers; no deployment or app-store release occurred. See [PROGRESS.md](PROGRESS.md) for current versus historical provider evidence.

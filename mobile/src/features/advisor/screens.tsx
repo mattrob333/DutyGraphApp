@@ -1,4 +1,8 @@
 import { saveLiveNote } from "./saveLiveNote";
+import {
+  TaskCardChangeFields,
+  type TaskCardChange,
+} from "@/components/advisor/TaskCardChangeFields";
 import { MeetingGateSuggestion } from "@/components/advisor/MeetingGateSuggestion";
 import { ClosingRitual } from "@/components/advisor/ClosingRitual";
 import { ClosingResponse } from "@/components/advisor/ClosingResponse";
@@ -56,6 +60,7 @@ import {
   useAdvisorPeople,
   useAdvisorPulse,
   useAdvisorSession,
+  useAdvisorTaskCards,
 } from "@/hooks/advisor";
 import { useAdvisorStore } from "@/state/advisor";
 import {
@@ -311,7 +316,9 @@ type BuilderDraft = {
   cardAnswers?: (CardAnswer | null)[];
 };
 export function BuilderScreen() {
-  const { previousMeetingId } = useLocalSearchParams<{ previousMeetingId?: string }>();
+  const { previousMeetingId } = useLocalSearchParams<{
+    previousMeetingId?: string;
+  }>();
   const [draft, setDraft] = useState<BuilderDraft>({
     title: "",
     minutes: "25",
@@ -372,7 +379,11 @@ export function BuilderScreen() {
         <Text variant="small" color="faint">
           Carson Tate’s POWER framework · Work Simply
         </Text>
-        {previousMeetingId ? <Notice>Deferred work from the completed meeting will be added to this plan.</Notice> : null}
+        {previousMeetingId ? (
+          <Notice>
+            Deferred work from the completed meeting will be added to this plan.
+          </Notice>
+        ) : null}
         {draft.shown < 0 ? (
           <>
             <Field
@@ -764,11 +775,17 @@ export function PlanScreen() {
               </Text>
             ) : null}
           </Card>
-          {!editingAgenda ? <MeetingGateSuggestion
-            key={`${m.id}:${m.version}:${m.hash}`}
-            busy={cmd.busy}
-            onRequest={() => cmd.run(["gate-suggestion", id, m.version, m.hash], (r, k) => r.gateSuggestion(id, k))}
-          /> : null}
+          {!editingAgenda ? (
+            <MeetingGateSuggestion
+              key={`${m.id}:${m.version}:${m.hash}`}
+              busy={cmd.busy}
+              onRequest={() =>
+                cmd.run(["gate-suggestion", id, m.version, m.hash], (r, k) =>
+                  r.gateSuggestion(id, k),
+                )
+              }
+            />
+          ) : null}
           <Text variant="meta" color="muted">
             You choose the route. This proposal changes nothing until you
             approve it.
@@ -999,9 +1016,10 @@ export function StartScreen({ capture = false }: { capture?: boolean }) {
         </Notice>
         <Text variant="meta">
           Default estimated dispatch budget:{" "}
-          {mode === "facilitator" ? "$15" : "$2"} per meeting. The server applies
-          the company limit after start. Failed requests can use this estimate;
-          actual provider cost may differ. Recording continues at the limit.
+          {mode === "facilitator" ? "$15" : "$2"} per meeting. The server
+          applies the company limit after start. Failed requests can use this
+          estimate; actual provider cost may differ. Recording continues at the
+          limit.
         </Text>
       </Card>
       <Notice tone="amber">
@@ -2005,9 +2023,18 @@ export function ClosingScreen() {
     people = useAdvisorPeople(),
     cmd = useCommand();
   if (!sid) return <MissingSession id={id} />;
-  if (q.isPending || people.isPending || meeting.isPending) return <LoadingState />;
+  if (q.isPending || people.isPending || meeting.isPending)
+    return <LoadingState />;
   if (q.isError || people.isError || meeting.isError)
-    return <ErrorState error={q.error ?? people.error ?? meeting.error} onRetry={() => { void q.refetch(); void meeting.refetch(); }} />;
+    return (
+      <ErrorState
+        error={q.error ?? people.error ?? meeting.error}
+        onRetry={() => {
+          void q.refetch();
+          void meeting.refetch();
+        }}
+      />
+    );
   const names = Object.fromEntries(people.data.map((p) => [p.id, p.name]));
   return (
     <Screen>
@@ -2110,15 +2137,38 @@ export function ClosingScreen() {
         meeting={meeting.data}
         session={q.data}
         busy={cmd.busy}
-        onSave={async (input) => !!(await cmd.run(["closing-outcomes", sid, input], async (r, k) => { await r.saveClosing(sid, input, k); return true; }))}
-        onComplete={() => { void cmd.run(["complete", sid, q.data.version, q.data.hash], (r, k) => r.complete(sid, { expectedVersion: q.data.version, contentHash: q.data.hash }, k)); }}
+        onSave={async (input) =>
+          !!(await cmd.run(["closing-outcomes", sid, input], async (r, k) => {
+            await r.saveClosing(sid, input, k);
+            return true;
+          }))
+        }
+        onComplete={() => {
+          void cmd.run(["complete", sid, q.data.version, q.data.hash], (r, k) =>
+            r.complete(
+              sid,
+              { expectedVersion: q.data.version, contentHash: q.data.hash },
+              k,
+            ),
+          );
+        }}
       />
       <Button
         label="Review sources, owners and dates"
         kind="primary"
         onPress={() => go(sessionRoute(id, "speakers", sid))}
       />
-      {meeting.data.state === "COMPLETE" && q.data.outcomeReviews?.some(review => review.status === "deferred") ? <Button label="Plan follow-up meeting" onPress={() => go(`/advisor/meetings/new?previousMeetingId=${encodeURIComponent(id)}`)} /> : null}
+      {meeting.data.state === "COMPLETE" &&
+      q.data.outcomeReviews?.some((review) => review.status === "deferred") ? (
+        <Button
+          label="Plan follow-up meeting"
+          onPress={() =>
+            go(
+              `/advisor/meetings/new?previousMeetingId=${encodeURIComponent(id)}`,
+            )
+          }
+        />
+      ) : null}
       <CommandError error={cmd.error} />
     </Screen>
   );
@@ -2215,7 +2265,12 @@ export function ResultsScreen() {
     q = useAdvisorSession(sid),
     people = useAdvisorPeople(),
     cmd = useCommand();
+  const taskCards = useAdvisorTaskCards(
+    q.data?.proposals.some((proposal) => proposal.kind === "task_card_delta") ??
+      false,
+  );
   const playback = useSourcePlayback();
+  const [taskEdit, setTaskEdit] = useState<TaskCardChange | null>(null);
   const [editing, setEditing] = useState<MeetingProposal | null>(null),
     [edit, setEdit] = useState(""),
     [editOwner, setEditOwner] = useState(""),
@@ -2231,8 +2286,14 @@ export function ResultsScreen() {
     ...people.data.map((p) => [p.id, p.name]),
     ...q.data.consents.map((p) => [p.personKey, p.name]),
   ]);
+  const attendees = people.data.filter((person) =>
+    q.data.consents.some(
+      (consent) =>
+        consent.personKey === person.id && consent.state === "consented",
+    ),
+  );
   const saveEdit = async () => {
-    if (!editing) return;
+    if (!editing || editing.draftRecordId) return;
     const b = editing.body;
     let body: MeetingProposal["body"] =
       b.kind === "decision"
@@ -2251,7 +2312,7 @@ export function ResultsScreen() {
             : b.kind === "claim"
               ? { ...b, value: edit }
               : b.kind === "task_card_delta"
-                ? { ...b, to: edit }
+                ? (taskEdit ?? b)
                 : b.kind === "responsibility_delta"
                   ? { ...b, duty: edit }
                   : { ...b, claimA: { ...b.claimA, text: edit } };
@@ -2307,6 +2368,20 @@ export function ResultsScreen() {
           No proposals yet. Keep your evidence and return after extraction.
         </Notice>
       ) : null}
+      {taskCards.isError ? (
+        <View>
+          <Notice tone="amber">
+            Task Cards could not be loaded. Reload them before accepting or
+            changing Task Card proposals.
+          </Notice>
+          <Button
+            label="Reload Task Cards"
+            onPress={() => {
+              void taskCards.refetch();
+            }}
+          />
+        </View>
+      ) : null}
       {q.data.proposals.map((p) => (
         <View key={p.id}>
           <ProposalEvidenceCard
@@ -2321,7 +2396,13 @@ export function ResultsScreen() {
               })),
             }}
             people={names}
-            busy={cmd.busy}
+            busy={
+              cmd.busy ||
+              (p.kind === "task_card_delta" &&
+                (taskCards.isPending || taskCards.isError))
+            }
+            taskCards={taskCards.data}
+            loadTaskCard={(cardId) => getAdvisorRepository().taskCard(cardId)}
             sourceTimes={Object.fromEntries(
               q.data.transcript.map((t) => [t.id, t.startMs]),
             )}
@@ -2340,8 +2421,14 @@ export function ResultsScreen() {
               )
             }
             onEdit={() => {
+              if (p.draftRecordId) return;
               setEditing(p);
-              setEdit(proposalText(p));
+              setTaskEdit(
+                p.body.kind === "task_card_delta" ? { ...p.body } : null,
+              );
+              setEdit(
+                p.body.kind === "task_card_delta" ? p.body.to : proposalText(p),
+              );
               setEditOwner(
                 p.body.kind === "action" ? (p.body.ownerPersonKey ?? "") : "",
               );
@@ -2359,8 +2446,22 @@ export function ResultsScreen() {
       ))}
       {editing ? (
         <Card>
-          <Text variant="bodyStrong">Edit proposal wording</Text>
-          <Field label="Proposal wording" value={edit} onChange={setEdit} />
+          <Text variant="bodyStrong">
+            {editing.body.kind === "task_card_delta"
+              ? "Edit Task Card proposal"
+              : "Edit proposal wording"}
+          </Text>
+          {editing.body.kind === "task_card_delta" ? (
+            <TaskCardChangeFields
+              value={taskEdit ?? editing.body}
+              cards={taskCards.data ?? []}
+              people={attendees}
+              busy={cmd.busy}
+              onChange={setTaskEdit}
+            />
+          ) : (
+            <Field label="Proposal wording" value={edit} onChange={setEdit} />
+          )}
           {editing.body.kind === "action" ? (
             <>
               <SectionLabel>Action owner</SectionLabel>
@@ -2401,10 +2502,23 @@ export function ResultsScreen() {
             onPress={() => setSourcesChecked(!sourcesChecked)}
           />
           <Button
-            label="Save proposed wording"
+            label={
+              editing.body.kind === "task_card_delta"
+                ? "Save Task Card proposal"
+                : "Save proposed wording"
+            }
             kind="primary"
             disabled={
-              !edit.trim() ||
+              (editing.body.kind === "task_card_delta"
+                ? !taskEdit?.to.trim() ||
+                  !attendees.some(
+                    (person) => person.id === taskEdit.personKey,
+                  ) ||
+                  (taskEdit.field === "ownerId" &&
+                    !attendees.some((person) => person.id === taskEdit.to)) ||
+                  taskCards.isPending ||
+                  taskCards.isError
+                : !edit.trim()) ||
               (editing.state === "stale" && !sourcesChecked) ||
               (!!editDue && !Number.isFinite(parseLocalDate(editDue)))
             }

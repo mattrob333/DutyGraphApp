@@ -1851,3 +1851,140 @@ test("optional gate suggestion is off and preserves the deterministic meeting pl
     await f.close();
   }
 });
+
+test("advisor Task Card inspection is scoped and accepted changes create one locked draft", async () => {
+  const f = await setup();
+  try {
+    const { s, consent } = await start(f, "capture");
+    await f.call(`${api}/sessions/${s.id}/consent`, consent);
+    await f.call(`${api}/sessions/${s.id}/transcript`, {
+      segments: [
+        {
+          id: uuid(),
+          revision: 1,
+          startMs: 0,
+          endMs: 1000,
+          text: "Priya will own the carrier check.",
+          personKey: IDS.participant,
+        },
+      ],
+    });
+    const finished = await f.call(`${api}/sessions/${s.id}/finish`, {});
+    const template = finished.body.proposals[0];
+    const before = (await f.call(`${api}/task-cards/${IDS.task}`)).body;
+    assert.equal(before.title, "Book carrier pickup");
+    const proposal = {
+      ...template,
+      id: uuid(),
+      kind: "task_card_delta",
+      body: {
+        kind: "task_card_delta",
+        taskCardId: IDS.task,
+        personKey: IDS.participant,
+        field: "ownerId",
+        from: before.data.ownerId,
+        to: IDS.priya,
+      },
+    };
+    f.store.put("proposals", proposal.id, proposal, IDS.company);
+    const payload = {
+      decision: "accept",
+      expectedVersion: proposal.version,
+      contentHash: proposal.hash,
+    };
+    const accepted = await f.call(
+      `${api}/proposals/${proposal.id}/decision`,
+      payload,
+      "one-task-draft",
+    );
+    assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+    assert.ok(accepted.body.draftRecordId);
+    const draft = await f.call(
+      `${api}/task-cards/${accepted.body.draftRecordId}`,
+    );
+    assert.equal(draft.body.data.ownerId, IDS.priya);
+    assert.equal(draft.body.state, "proposed");
+    assert.deepEqual(
+      (await f.call(`${api}/task-cards/${IDS.task}`)).body,
+      before,
+    );
+    assert.deepEqual(
+      (
+        await f.call(
+          `${api}/proposals/${proposal.id}/decision`,
+          payload,
+          "one-task-draft",
+        )
+      ).body,
+      accepted.body,
+    );
+    const reject = await f.call(`${api}/proposals/${proposal.id}/decision`, {
+      decision: "reject",
+      expectedVersion: accepted.body.version,
+      contentHash: accepted.body.hash,
+    });
+    assert.equal(reject.status, 409);
+    assert.equal(reject.body.code, "DRAFT_ALREADY_CREATED");
+    const preserved = (
+      await f.call(`${api}/task-cards/${accepted.body.draftRecordId}`)
+    ).body;
+    const stale = {
+      ...accepted.body,
+      state: "stale",
+      version: accepted.body.version + 1,
+      hash: digest("stale-source-fixture"),
+    };
+    f.store.put("proposals", proposal.id, stale, IDS.company);
+    assert.equal(
+      (
+        await f.call(`${api}/proposals/${proposal.id}/decision`, {
+          decision: "accept",
+          expectedVersion: stale.version,
+          contentHash: stale.hash,
+        })
+      ).status,
+      409,
+    );
+    const stalePayload = {
+      decision: "reject",
+      expectedVersion: stale.version,
+      contentHash: stale.hash,
+    };
+    const rejected = await f.call(
+      `${api}/proposals/${proposal.id}/decision`,
+      stalePayload,
+      "stale-reject",
+    );
+    assert.equal(rejected.status, 200);
+    assert.equal(rejected.body.state, "rejected");
+    assert.deepEqual(
+      (await f.call(`${api}/task-cards/${accepted.body.draftRecordId}`)).body,
+      preserved,
+    );
+    assert.deepEqual(
+      (
+        await f.call(
+          `${api}/proposals/${proposal.id}/decision`,
+          stalePayload,
+          "stale-reject",
+        )
+      ).body,
+      rejected.body,
+    );
+    const foreignId = uuid();
+    f.store.put(
+      "tasks",
+      foreignId,
+      { ...before, id: foreignId, title: "Other company work" },
+      IDS.otherCompany,
+    );
+    assert.equal((await f.call(`${api}/task-cards/${foreignId}`)).status, 404);
+    assert.ok(
+      !(await f.call(`${api}/task-cards`)).body.taskCards.some(
+        (card: { id: string }) => card.id === foreignId,
+      ),
+    );
+  } finally {
+    await f.close();
+  }
+});

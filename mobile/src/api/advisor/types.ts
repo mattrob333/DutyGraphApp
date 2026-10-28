@@ -1,5 +1,11 @@
-import type { MeetingGateSuggestionWire } from "../dutygraphWire";
-export type { MeetingGateSuggestionWire } from "../dutygraphWire";
+import type {
+  MeetingGateSuggestionWire,
+  MeetingTaskCardWire,
+} from "../dutygraphWire";
+export type {
+  MeetingGateSuggestionWire,
+  MeetingTaskCardWire,
+} from "../dutygraphWire";
 import type {
   AdvisorSession,
   MeetingDefinition,
@@ -105,6 +111,8 @@ export interface AdvisorRepository {
   pair(code: string, key: string): Promise<AdvisorSession>;
   logout(key: string): Promise<void>;
   people(): Promise<Person[]>;
+  taskCards(): Promise<MeetingTaskCardWire[]>;
+  taskCard(id: string): Promise<MeetingTaskCardWire>;
   meetings(): Promise<MeetingDefinition[]>;
   meeting(id: string): Promise<MeetingDefinition>;
   create(input: CreateMeeting, key: string): Promise<MeetingDefinition>;
