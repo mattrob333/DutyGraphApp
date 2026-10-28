@@ -86,3 +86,8 @@ The standalone Expo app now implements participant and advisor workflows against
 - No production app store rollout, production backend integration or paid provider call.
 
 - P4 self-review correction: fixed legacy-path slash normalization and adjusted the file-system mock to handle Directory objects. Re-run the focused iOS recovery test and native build before accepting the PR.
+
+## 2026-10-28 — Sprint 2 P4 release links and signing
+
+- Production-mode invitation links now use HTTPS `dutygraph.com/mobile/enroll`, while mock/dev keep previous behavior. Added focused URL tests and `docs/EAS-RELEASE.md` for signing, AASA, Android asset links and device acceptance.
+- iOS AASA hosting is not performed (DutyGraphV2 website outside this sprint); release signing and on-device links are **not tested**. Existing EAS profile environment remains untouched pending the server port. Unit tests and build not run in this session.

@@ -96,3 +96,7 @@ Random and revoked bearer tokens; participant tokens on advisor routes; attendee
 ## 2026-10-28 iOS recording privacy mitigation (draft, unverified)
 
 - Previous finding: iPhone meeting evidence was saved to iCloud-backed Documents. Draft P4 code now uses the native module's backup-excluded Application Support directory, keeps temporary clips in Cache, migrates old Documents clips during restore and blocks iOS meeting recording when the native method is missing. Two Jest checks added. **Remains open for confirmation** until native compilation, iPhone recording/restart, and actual iCloud backup exclusion have been verified. No claim of a passing real-device test.
+
+## 2026-10-28 App Link and signing follow-up (open)
+
+- Production-mode URL builder now targets `https://dutygraph.com/mobile/enroll` and has focused source tests. Mock/dev links are unchanged. Android intent filters and iOS associated-domain declarations already exist, but the live iOS apple-app-site-association file, release signing, end-to-end delivery and physical-device behavior **have not been verified**. This is not a closed security/release finding.

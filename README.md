@@ -88,3 +88,5 @@ The `codex/live-backend` draft branch includes an early proposal-source warning;
 - **iOS recording privacy (draft PR):** meeting evidence now targets an iCloud-backup-excluded native directory; requires rebuilding the app and real-device QA before release.
 
 - Draft iOS recording storage includes a source-review correction for legacy-path normalization; native and device verification is still pending.
+
+- **HTTPS invitations (draft branch):** production-profile app links target dutygraph.com; real iOS Universal Link acceptance and release signing remain pending. See `docs/EAS-RELEASE.md`.
