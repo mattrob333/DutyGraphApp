@@ -1,3 +1,4 @@
+import { describe, expect, test } from "@jest/globals";
 import { resolveBackendProfile } from "../backendProfile";
 
 describe("backend profiles", () => {

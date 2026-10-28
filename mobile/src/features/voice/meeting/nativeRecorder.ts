@@ -288,7 +288,7 @@ export function createNativeMeetingRecorder(
           const destination = await privateMeetingDirectory();
           const documentPrefix = Paths.document.uri.replace(/\/+$/, "") + "/";
           let changed = false;
-          const legacySources: File[] = [];
+          const legacySources: Array<{ exists: boolean; delete(): void }> = [];
           for (const segment of manifest.segments) {
             if (!segment.uri.startsWith(documentPrefix)) continue;
             const original = new File(segment.uri);

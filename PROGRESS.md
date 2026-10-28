@@ -91,3 +91,8 @@ The standalone Expo app now implements participant and advisor workflows against
 
 - Production-mode invitation links now use HTTPS `dutygraph.com/mobile/enroll`, while mock/dev keep previous behavior. Added focused URL tests and `docs/EAS-RELEASE.md` for signing, AASA, Android asset links and device acceptance.
 - iOS AASA hosting is not performed (DutyGraphV2 website outside this sprint); release signing and on-device links are **not tested**. Existing EAS profile environment remains untouched pending the server port. Unit tests and build not run in this session.
+
+## 2026-10-28 — CI feedback and correction
+
+- GitHub Actions run `40628515406` (commit `26f7311`) passed the shared test/typecheck steps and failed at mobile TypeScript. Exact findings: missing `@jest/globals` in two new tests; wrong `File[]` annotation in `nativeRecorder.ts` resolved to the DOM File type. A corrective commit fixes all three source locations. Run on the corrective commit: **not yet observed**.
+- `npm ci` emitted 25 pre-existing-style dependency audit findings (5 high); no package dependency changed in this branch. A dedicated `npm audit --audit-level=high` is **not run** and advisories require triage before release.
