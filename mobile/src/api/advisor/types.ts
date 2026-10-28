@@ -73,7 +73,14 @@ export interface AdvisorRepository {
     input: { lines: { id: string; text: string }[]; speed?: number },
     key: string,
   ): Promise<{
-    lines: { id: string; url: string; hash: string; durationMs: number }[];
+    lines: {
+      id: string;
+      url: string;
+      hash: string;
+      durationMs: number;
+      mimeType?: "audio/mpeg" | "audio/wav";
+      simulated?: boolean;
+    }[];
   }>;
   pair(code: string, key: string): Promise<AdvisorSession>;
   logout(key: string): Promise<void>;
@@ -83,7 +90,10 @@ export interface AdvisorRepository {
   create(input: CreateMeeting, key: string): Promise<MeetingDefinition>;
   patch(
     id: string,
-    patch: Partial<CreateMeeting> & { expectedVersion: number },
+    patch: Partial<CreateMeeting> & {
+      expectedVersion: number;
+      contentHash?: string;
+    },
     key: string,
   ): Promise<MeetingDefinition>;
   plan(id: string, key: string): Promise<MeetingDefinition>;
@@ -91,6 +101,7 @@ export interface AdvisorRepository {
     id: string,
     choice: "pulse" | "shorter" | "as_planned",
     key: string,
+    reviewed?: Pick<MeetingDefinition, "version" | "hash">,
   ): Promise<MeetingDefinition>;
   pulse(id: string, create?: boolean, key?: string): Promise<PulseStatus>;
   start(
@@ -155,7 +166,11 @@ export interface AdvisorRepository {
     headers: Record<string, string>;
     offsetSeconds: number;
   } | null>;
-  notes(meetingId: string, notes: KickoffNote[], key: string): Promise<void>;
+  notes(
+    meetingId: string,
+    notes: KickoffNote[],
+    key: string,
+  ): Promise<KickoffNote[] | void>;
   setup(key: string): Promise<{ id: string }>;
   understandSetup(
     id: string,

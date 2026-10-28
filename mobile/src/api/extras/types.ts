@@ -30,7 +30,14 @@ export type VoiceLinesInput = {
   voice?: string;
 };
 export type VoiceLinesResult = {
-  lines: { id: string; url: string; hash: string; durationMs: number }[];
+  lines: {
+    id: string;
+    url: string;
+    hash: string;
+    durationMs: number;
+    mimeType?: "audio/mpeg" | "audio/wav";
+    simulated?: boolean;
+  }[];
 };
 export type LiveTranscriptionGrant =
   | { available: false; reason?: string }

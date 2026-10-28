@@ -73,7 +73,8 @@ export function useRealtimeMeetingVoice(options: Options) {
                 .map((segment) => segment.text.slice(0, 400)) ?? [],
           }).slice(0, 4000);
         },
-        // $48/hour is used only as a conservative local stream duration guard, never as measured billing.
+        // $48/hour is an estimated dispatch guard for local stream duration;
+        // actual provider cost may differ, including failed requests.
         lifetimeMs: () =>
           Math.max(
             0,

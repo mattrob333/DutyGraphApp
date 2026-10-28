@@ -5,6 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { servedContract, localOrigin } from './dutygraph-contract.mjs';
+import { contractTraffic } from './dutygraph-traffic.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const app = path.resolve(here, '..');
@@ -17,14 +19,39 @@ if (args.includes('--help')) {
 const mode = read('--mode', process.env.E2E_MODE || 'http');
 const flow = read('--flow', 'all');
 const api = read('--api-url', process.env.E2E_API_URL || 'http://127.0.0.1:4417').replace(/\/$/, '');
+const fixturePath = read('--fixture');
+const fixture = fixturePath ? JSON.parse(fs.readFileSync(fixturePath, 'utf8')) : null;
+if (fixture && (mode !== 'http' || fixture.backend !== 'DutyGraphV2' || fixture.schemaVersion !== 1 || fixture.origin !== localOrigin(api) || (fs.statSync(fixturePath).mode & 0o077)))
+  throw new Error('Use a private mode-0600 DutyGraphV2 fixture manifest for the selected localhost origin.');
+const invitationToken = fixture?.invitationToken ?? 'd'.repeat(64);
+async function pairingCode() {
+  const response = await fetch(fixture ? `${api}/api/mobile/advisor/companies/${encodeURIComponent(fixture.companyId)}/pairing` : `${api}/dev/pairing-code`, {
+    method: 'POST', redirect: 'error',
+    headers: fixture ? { Cookie: fixture.web.cookie, 'X-CSRF-Token': fixture.web.csrf, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() } : {},
+    ...(fixture ? { body: '{}' } : {}),
+  });
+  if (!response.ok) throw new Error(`Could not create a scoped advisor pairing code (${response.status}).`);
+  return (await response.json()).pairingCode;
+}
 if (!['mock', 'http'].includes(mode) || !['participant', 'spoken', 'advisor', 'offline', 'task', 'pulse', 'facilitator', 'hybrid', 'decline', 'stale', 'wrapup', 'kickoff', 'setup', 'all'].includes(flow)) throw new Error('Invalid --mode or --flow; use --help.');
 // Tests may use only the local fake service; verify the provider modes before opening a browser.
-if (mode === 'http') {
+if (mode === 'http' && !fixture) {
   const url = new URL(api);
   if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) throw new Error('HTTP E2E requires a localhost fake server.');
   const response = await fetch(`${api}/health`);
   const health = await response.json();
   if (!response.ok || health.mode !== 'fake' || !health.providers || Object.values(health.providers).some(kind => kind !== 'fake')) throw new Error('HTTP E2E requires fake server and fake providers.');
+}
+let traffic;
+if (fixture) {
+  const manifest = JSON.parse(fs.readFileSync(path.join(app, '../contracts/dutygraph-served-contracts.json'), 'utf8'));
+  const contracts = [];
+  for (const kind of ['advisor', 'participantExtras']) {
+    const contract = await servedContract(api, kind);
+    if (contract.sha256 !== manifest.contracts[kind]?.sha256) throw new Error(`Served ${kind} contract changed; regenerate wire types before browser integration.`);
+    contracts.push(contract.contract);
+  }
+  traffic = contractTraffic(contracts);
 }
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright');
@@ -47,12 +74,13 @@ if (!base) {
 }
 const executablePath = process.env.CHROMIUM_PATH || (fs.existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined);
 const browser = await chromium.launch(executablePath ? { executablePath } : {});
+const newContext = async options => { const context = await browser.newContext(options); traffic?.attach(context); return context; };
 const theme = read('--theme', 'light');
 if (!['light', 'dark'].includes(theme)) throw new Error('Use --theme light or dark.');
 const screens = read('--screens', process.env.E2E_SCREEN_DIR);
 if (screens) fs.mkdirSync(screens, { recursive: true });
 const screenshot = async (name, prefix = 'advisor') => { if (screens) await page.screenshot({ path: path.join(screens, `${prefix}-${name}-${theme}.png`) }); };
-let context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', colorScheme: theme });
+let context = await newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', colorScheme: theme });
 let page = await context.newPage();
 page.setDefaultTimeout(15000);
 const button = name => page.getByRole('button', { name, exact: true });
@@ -68,7 +96,7 @@ try {
     const attempts = [];
     page.on('request', request => { if (request.method() === 'POST' && /\/requests\/[^/]+\/submit$/.test(new URL(request.url()).pathname)) attempts.push(request); });
     page.on('response', response => { if (response.url().includes('/api/mobile/v1/')) requests.push(response); });
-    await page.goto(`${base}/mobile/enroll?t=${'d'.repeat(64)}`);
+    await page.goto(`${base}/mobile/enroll?t=${encodeURIComponent(invitationToken)}`);
     await click('Connect this phone');
     await click("Yes, that's me");
     await click('Not now');
@@ -136,7 +164,7 @@ try {
     if (flow === 'stale' && mode !== 'http') throw new Error('Source revision E2E requires the HTTP fake server.');
     // A fresh browser context keeps the two kinds of session independent.
     await context.close();
-    context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', colorScheme: theme });
+    context = await newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', colorScheme: theme });
     page = await context.newPage();
     page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));
@@ -144,9 +172,7 @@ try {
     page.on('response', response => { if (response.url().includes('/api/mobile/meetings/v1/')) responses.push(response); });
     let code = 'DEMO';
     if (mode === 'http') {
-      const pairing = await fetch(`${api}/dev/pairing-code`, { method: 'POST' });
-      if (!pairing.ok) throw new Error('Could not create a fake-server pairing code.');
-      code = (await pairing.json()).pairingCode;
+      code = await pairingCode();
     }
     await page.goto(`${base}/invite`);
     await click('I run meetings for a company');
@@ -173,8 +199,9 @@ try {
     if (flow === 'hybrid' || flow === 'decline') {
       await page.getByRole('button', { name: /^Marcus Lee,/ }).click();
       if (flow === 'hybrid') {
-      await page.getByRole('button', { name: '✓ Resource person', exact: true }).last().click();
-      await page.getByRole('button', { name: 'Needs to know', exact: true }).last().click();
+      const marcus = page.getByRole('button', { name: /^Marcus Lee,/ }).locator('..');
+      await marcus.getByRole('button', { name: '✓ Resource person', exact: true }).click();
+      await marcus.getByRole('button', { name: 'Needs to know', exact: true }).click();
       }
     }
     await screenshot('attendees');
@@ -202,14 +229,16 @@ try {
     await click('Check everyone’s consent');
     await expectVisible('Ask everyone first');
     await screenshot('consent');
-    await page.getByRole('radio', { name: 'Consent', exact: true }).first().click();
-    if (flow === 'decline') await page.getByRole('radio', { name: 'Declined', exact: true }).last().click();
+    await page.getByRole('radiogroup', { name: 'Recording consent for Priya Shah', exact: true }).getByRole('radio', { name: 'Consent', exact: true }).click();
+    if (flow === 'decline') await page.getByRole('radiogroup', { name: 'Recording consent for Marcus Lee', exact: true }).getByRole('radio', { name: 'Declined', exact: true }).click();
     await click('Confirm consent and continue');
     await expectVisible('Live transcript and notes');
     await screenshot('live');
     if (flow === 'decline' && await page.getByRole('button', { name: /Marcus Lee/ }).count()) throw new Error('Declined attendee can be selected as a note speaker.');
     if (flow === 'facilitator') {
+      const opening = mode === 'http' ? page.waitForResponse(response => /\/facilitator\/turn$/.test(new URL(response.url()).pathname) && response.request().postDataJSON()?.trigger === 'opening') : null;
       await click('Read opening');
+      if (opening && !(await opening).ok()) throw new Error(`Facilitator opening request failed (${(await opening).status()}).`);
       await click('Mute AI');
       await click('Stop AI');
       await expectVisible('AI stopped. Recording and notes continue.');
@@ -288,14 +317,14 @@ try {
   }
   if (['task', 'pulse', 'wrapup', 'kickoff', 'setup'].includes(flow)) {
     await context.close();
-    context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', colorScheme: theme });
+    context = await newContext({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce', colorScheme: theme });
     page = await context.newPage(); page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));
     const extraResponses = [];
     page.on('response', response => { if (response.url().includes('/api/mobile/')) extraResponses.push(response); });
     if (flow === 'kickoff' || flow === 'setup') {
       await page.goto(`${base}/invite`); await click('I run meetings for a company');
-      const code = mode === 'http' ? (await (await fetch(`${api}/dev/pairing-code`, { method: 'POST' })).json()).pairingCode : 'DEMO';
+      const code = mode === 'http' ? await pairingCode() : 'DEMO';
       await page.getByLabel('Pairing code').fill(code); await click('Pair this phone');
       if (flow === 'setup') {
         await page.getByRole('button', { name: /^Setup by voice,/ }).click();
@@ -345,7 +374,7 @@ try {
       console.log(`PASS kickoff three attributed topics and send (${mode}; restart not tested because web storage is memory-only)`);
       }
     } else {
-      await page.goto(`${base}/mobile/enroll?t=${'d'.repeat(64)}`);
+      await page.goto(`${base}/mobile/enroll?t=${encodeURIComponent(invitationToken)}`);
       await click('Connect this phone'); await click("Yes, that's me"); await click('Not now');
       if (flow === 'wrapup') {
         if (mode !== 'http') throw new Error('Wrap-up E2E requires the fake HTTP fixture.');
@@ -354,7 +383,7 @@ try {
         await wrapCard.getByRole('button', { name: 'Review', exact: true }).click();
         await expectVisible('I will check the dispatch queue before the next handoff.');
         if (await page.getByText(/private IT credential checklist/i).count()) throw new Error('Another participant’s item was exposed.');
-        const detail = extraResponses.find(r => /\/confirmations\/50000000-0000-4000-8000-000000000002$/.test(new URL(r.url()).pathname) && r.ok());
+        const detail = extraResponses.find(r => new RegExp(`/confirmations/${fixture?.ids.wrapup ?? '50000000-0000-4000-8000-000000000002'}$`).test(new URL(r.url()).pathname) && r.ok());
         if (!detail) throw new Error('Participant confirmation was not fetched.');
         const view = await detail.json();
         if (view.items?.length !== 1 || JSON.stringify(view).includes('private IT credential checklist')) throw new Error('Participant API exposed another person’s item.');
@@ -364,14 +393,14 @@ try {
         if (!confirmation) throw new Error('Owner confirmation was not acknowledged.');
         const body = confirmation.request().postDataJSON();
         if (body.decision !== 'confirm' || !body.expectedVersion || !body.contentHash) throw new Error('Owner confirmation lacks version/hash.');
-        const pairing = await (await fetch(`${api}/dev/pairing-code`, { method: 'POST' })).json();
+        const pairing = { pairingCode: await pairingCode() };
         const paired = await fetch(`${api}/api/mobile/meetings/v1/advisor/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ pairingCode: pairing.pairingCode }) });
         if (!paired.ok) throw new Error('Could not pair leader to check action status.');
         const auth = await paired.json();
-        const result = await fetch(`${api}/api/mobile/meetings/v1/sessions/70000000-0000-4000-8000-000000000002/proposals`, { headers: { Authorization: `Bearer ${auth.accessToken}` } });
+        const result = await fetch(`${api}/api/mobile/meetings/v1/sessions/${fixture?.ids.wrapupSession ?? '70000000-0000-4000-8000-000000000002'}/proposals`, { headers: { Authorization: `Bearer ${auth.accessToken}` } });
         const proposals = await result.json();
-        const own = proposals.proposals?.find(p => p.id === '80000000-0000-4000-8000-000000000001');
-        const other = proposals.proposals?.find(p => p.id === '80000000-0000-4000-8000-000000000002');
+        const own = proposals.proposals?.find(p => p.id === (fixture?.ids.ownAction ?? '80000000-0000-4000-8000-000000000001'));
+        const other = proposals.proposals?.find(p => p.id === (fixture?.ids.otherAction ?? '80000000-0000-4000-8000-000000000002'));
         if (!result.ok || own?.body?.status !== 'assigned' || other?.body?.status !== 'proposed') throw new Error('Owner confirmation did not assign only the participant’s action.');
         console.log('PASS participant-only wrap-up and owner assignment (http)');
       } else if (flow === 'task') {
@@ -418,11 +447,11 @@ try {
         if (mode === 'http') {
           const submission = extraResponses.find(r => /\/pulses\/[^/]+\/responses$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST' && r.ok());
           if (!submission || !JSON.stringify(submission.request().postDataJSON()).includes('My update')) throw new Error('Pulse response was not acknowledged.');
-          const pairing = await (await fetch(`${api}/dev/pairing-code`, { method: 'POST' })).json();
+          const pairing = { pairingCode: await pairingCode() };
           const paired = await fetch(`${api}/api/mobile/meetings/v1/advisor/pair`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() }, body: JSON.stringify({ pairingCode: pairing.pairingCode }) });
           if (!paired.ok) throw new Error('Could not pair leader for second gate.');
           const auth = await paired.json();
-          const status = await fetch(`${api}/api/mobile/meetings/v1/meetings/50000000-0000-4000-8000-000000000001/pulse`, { headers: { Authorization: `Bearer ${auth.accessToken}` } });
+          const status = await fetch(`${api}/api/mobile/meetings/v1/meetings/${fixture?.ids.pulseMeeting ?? '50000000-0000-4000-8000-000000000001'}/pulse`, { headers: { Authorization: `Bearer ${auth.accessToken}` } });
           const gate = await status.json();
           if (!status.ok || !gate.gate || gate.gate.mode !== 'NO_MEETING') throw new Error('Leader second gate did not show NO_MEETING after completion.');
         }
@@ -430,6 +459,7 @@ try {
       }
     }
   }
+  await traffic?.finish();
   if (errors.length) throw new Error(`Browser errors: ${errors.join('; ')}`);
 } catch (error) {
   console.error('Current route:', new URL(page.url()).pathname);

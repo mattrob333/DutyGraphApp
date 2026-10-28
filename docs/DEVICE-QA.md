@@ -2,6 +2,8 @@
 
 Status: **not run on a device**. Use iPhone and Android development builds with fictional data and a fake server. Record device, OS, app build, date, result and evidence for each check; do not record answer text, tokens or audio. These checks cannot be established by a web build or simulated providers.
 
+2026-10-28 browser evidence: all twelve actual DutyGraphV2/PostgreSQL paths passed with 219 schema-validated exchanges, using injected providers and fictional tenants. This includes mixed-consent attributed notes, corrected-source rereview, exact-version commands and private participant wrap-up. Advisor checkpoint screenshots at 390×844 were inspected. Native cache formats, backup exclusions, actual spoken sound, interruption/restart behavior and signed App Links still require the device checks below. See [DUTYGRAPH-INTEGRATION.md](DUTYGRAPH-INTEGRATION.md) for reproduction.
+
 | Check | iPhone | Android | Evidence / notes |
 | --- | --- | --- | --- |
 | Permission prompt names the app and accurately explains microphone use; denial offers typing | Not run | Not run | |

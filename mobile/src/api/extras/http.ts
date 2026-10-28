@@ -1,5 +1,6 @@
 import { buildQuestions } from "@shared/hands-free/hints";
 import { NOT_AVAILABLE_MESSAGE } from "../http/errors";
+import type { ConfigWire, PulseWire } from "../dutygraphWire";
 import { config } from "../config";
 import { Platform } from "react-native";
 import { ApiClient, TRANSCRIBE_TIMEOUT_MS } from "../http/client";
@@ -176,10 +177,12 @@ export class HttpParticipantExtrasRepository implements ParticipantExtrasReposit
   }
   async getConfig() {
     try {
-      return await this.api.get<import("./types").ParticipantFeatureConfig>(
-        "/config",
-        this.options(),
-      );
+      const value = await this.api.get<ConfigWire>("/config", this.options());
+      return {
+        ...value,
+        followUps:
+          value.followUps === "ai" ? ("ai" as const) : ("table" as const),
+      };
     } catch {
       return {
         speakQuestions: true,
@@ -409,11 +412,27 @@ export class HttpParticipantExtrasRepository implements ParticipantExtrasReposit
     }
     return results;
   }
-  private getPulseDto(id: string) {
-    return this.api.get<PulseDto>(
+  private async getPulseDto(id: string) {
+    const value = await this.api.get<PulseWire>(
       `/pulses/${encodeURIComponent(id)}`,
       this.options(),
     );
+    if (typeof value.contentHash !== "string")
+      throw new CompanionApiError(
+        "INVALID_RESPONSE",
+        "The Pulse could not be read.",
+        502,
+        false,
+      );
+    return {
+      ...value,
+      meetingId: value.meetingId ?? undefined,
+      contentHash: value.contentHash,
+      advisorName:
+        typeof value.advisorName === "string" ? value.advisorName : "",
+      companyName:
+        typeof value.companyName === "string" ? value.companyName : "",
+    };
   }
   async getPulse(id: string) {
     return mapPulse(await this.getPulseDto(id));

@@ -4,7 +4,7 @@ Expo SDK 57 app and a standalone development API for participant information gat
 
 ## Build status
 
-The standalone app implements participant and advisor workflows with mock data and the local development API. The latest local verification passes **626 tests** (488 mobile, 78 shared, 60 API), **12 HTTP end-to-end flows**, typechecks, lint and web export. Native prebuild and module autolinking pass; native compilation, physical-device QA and real-provider testing remain outstanding. This repository has not been deployed to the production DutyGraph backend or released to app stores.
+The app supports mock/development workflows and opt-in actual DutyGraphV2 integration. Current local checks pass **538 mobile tests**, **78 shared tests**, **64 development API tests**, typechecks/lint, web export and **all twelve PostgreSQL browser paths against the actual V2 application** (219 schema-validated exchanges). Handsfree/meeting line coverage is **94.37%**. Native prebuild/autolinking evidence is from the prior run; native compilation and physical-device QA remain outstanding. The continuation used injected providers; no deployment or app-store release occurred. See [PROGRESS.md](PROGRESS.md) for current versus historical provider evidence.
 
 ## Repository map
 
@@ -81,7 +81,7 @@ The [native build workflow](.github/workflows/native-build.yml) builds an instal
 
 Rehearse with real providers (paid, never in CI): start the dev server with `OPENAI_API_KEY` and `OPENAI_TEXT_MODEL` set, then run `npx tsx scripts/real-provider-rehearsal.ts` in `dev-server/` (needs ffmpeg).
 
-The `codex/live-backend` draft branch includes an early proposal-source warning; real DutyGraph meeting integration remains in development and requires server work and device checks.
+The `codex/live-backend` draft branch now integrates with the separately implemented V2 mobile backend in local PostgreSQL tests. Hosted deployment and physical-device acceptance remain separate.
 
 - **Backend profiles (draft PR):** `codex/live-backend` adds opt-in explicit mock/dev-server/local/preview/production origins. It does not deploy the new meeting API.
 
@@ -91,4 +91,6 @@ The `codex/live-backend` draft branch includes an early proposal-source warning;
 
 - **HTTPS invitations (draft branch):** production-profile app links target dutygraph.com; real iOS Universal Link acceptance and release signing remain pending. See `docs/EAS-RELEASE.md`.
 
-- CI follow-up on the draft mobile branch fixed local test imports and an Expo File type annotation; rerun pending.
+- CI follow-up corrections to test imports and the Expo File annotation are now covered by the passing local mobile suite. Hosted CI on the final commit remains a separate check.
+
+The `codex/live-backend` continuation now includes actual DutyGraphV2 served-contract generation and a PostgreSQL browser runner: `npm --prefix mobile run test:e2e:dutygraph`. It starts the actual V2 app with injected test providers and fresh fictional tenants, and validates observed API traffic against the served contracts. See [DUTYGRAPH-INTEGRATION.md](docs/DUTYGRAPH-INTEGRATION.md) for prerequisites, private fixture handling and the separate mock/dev-server workflow. Current run evidence belongs in [PROGRESS.md](PROGRESS.md); no deployment, signing or device acceptance is implied.

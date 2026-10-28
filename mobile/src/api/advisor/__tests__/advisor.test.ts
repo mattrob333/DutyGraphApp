@@ -272,6 +272,91 @@ describe("advisor transport and secure drafts", () => {
     expect(useAdvisorStore.getState().identity).toBeNull();
     expect(await advisorTokens.get()).toBeNull();
   });
+  it.each([200, 401])(
+    "does not restore or clear a new identity after a late refresh (%s)",
+    async (status) => {
+      await useAdvisorStore.getState().setSession(session("old", 1000));
+      let finish!: (value: Response) => void;
+      const fetcher = jest.spyOn(global, "fetch").mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const pending = new HttpAdvisorRepository("http://localhost").people();
+      const rejected = expect(pending).rejects.toMatchObject({
+        code: "SESSION_ENDED",
+      });
+      while (!finish) await new Promise((resolve) => setTimeout(resolve, 0));
+      await useAdvisorStore.getState().clear();
+      const next = {
+        ...session("new"),
+        advisor: { id: "another-advisor", name: "Alex Rivera" },
+      };
+      await useAdvisorStore.getState().setSession(next);
+      finish(
+        response(
+          status,
+          status === 200 ? session("stale") : { code: "REFRESH_REPLAY" },
+        ),
+      );
+      await rejected;
+      expect((await advisorTokens.get())?.accessToken).toBe("new");
+      expect(useAdvisorStore.getState().identity?.advisor.id).toBe(
+        "another-advisor",
+      );
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
+  it("rejects an old in-flight company response after logout", async () => {
+    await advisorTokens.set(session());
+    let finish!: (value: Response) => void;
+    jest.spyOn(global, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = new HttpAdvisorRepository("http://localhost").people();
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: "SESSION_ENDED",
+    });
+    while (!finish) await new Promise((resolve) => setTimeout(resolve, 0));
+    await useAdvisorStore.getState().clear();
+    finish(
+      response(200, {
+        people: [{ id: "old-company-person", name: "Private name" }],
+      }),
+    );
+    await rejected;
+    expect(await advisorTokens.get()).toBeNull();
+  });
+  it("clears advisor access and private drafts before remote logout acknowledges", async () => {
+    await useAdvisorStore.getState().setSession(session("old"));
+    await saveAdvisorDraft("kickoff", { text: "Fictional private note" });
+    let finish!: (value: Response) => void;
+    const fetcher = jest.spyOn(global, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = new HttpAdvisorRepository("http://localhost").logout(
+      "logout-key",
+    );
+    while (!finish) await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(useAdvisorStore.getState().identity).toBeNull();
+    expect(await advisorTokens.get()).toBeNull();
+    expect(await loadAdvisorDraft("kickoff")).toBeNull();
+    await useAdvisorStore.getState().setSession(session("new"));
+    finish(response(204, null));
+    await pending;
+    expect((await advisorTokens.get())?.accessToken).toBe("new");
+    expect(
+      (fetcher.mock.calls[0][1]!.headers as Record<string, string>)
+        .Authorization,
+    ).toBe("Bearer old");
+  });
   it("uses the exact transcript command shape and keeps the caller key", async () => {
     await advisorTokens.set(session());
     const fetcher = jest
@@ -302,6 +387,122 @@ describe("advisor transport and secure drafts", () => {
       "sessionId",
     );
   });
+  it("requires reviewed bindings for real meeting edits and routing without fetching a newer version", async () => {
+    await advisorTokens.set(session());
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(response(200, {}));
+    const r = new HttpAdvisorRepository("http://localhost", true);
+    await expect(
+      r.route("meeting", "as_planned", "route"),
+    ).rejects.toMatchObject({ code: "VERSION_REQUIRED" });
+    await expect(
+      r.patch("meeting", { expectedVersion: 3, minutes: 20 }, "patch"),
+    ).rejects.toMatchObject({ code: "VERSION_REQUIRED" });
+    expect(fetcher).not.toHaveBeenCalled();
+    await r.route("meeting", "as_planned", "route", {
+      version: 3,
+      hash: "a".repeat(64),
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetcher.mock.calls[0][1]!.body as string)).toEqual({
+      choice: "as_planned",
+      expectedVersion: 3,
+      contentHash: "a".repeat(64),
+    });
+  });
+  it("waits for the bounded batch finish instead of aborting at the ordinary 20-second limit", async () => {
+    await advisorTokens.set(session());
+    jest.useFakeTimers();
+    try {
+      jest.spyOn(global, "fetch").mockImplementation(
+        (_url, options) =>
+          new Promise<Response>((resolve, reject) => {
+            const provider = setTimeout(
+              () => resolve(response(200, {})),
+              180000,
+            );
+            options?.signal?.addEventListener("abort", () => {
+              clearTimeout(provider);
+              reject(new Error("aborted"));
+            });
+          }),
+      );
+      let settled = false;
+      const pending = new HttpAdvisorRepository("http://localhost")
+        .finish("session", "same-key")
+        .then(() => {
+          settled = true;
+        });
+      await jest.advanceTimersByTimeAsync(21000);
+      expect(settled).toBe(false);
+      await jest.advanceTimersByTimeAsync(180000);
+      await pending;
+      expect(settled).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it("reports an ordinary transport timeout without claiming the phone is offline", async () => {
+    await advisorTokens.set(session());
+    jest.useFakeTimers();
+    try {
+      jest.spyOn(global, "fetch").mockImplementation(
+        (_url, options) =>
+          new Promise<Response>((_resolve, reject) => {
+            options?.signal?.addEventListener("abort", () =>
+              reject(new Error("aborted")),
+            );
+          }),
+      );
+      const pending = expect(
+        new HttpAdvisorRepository("http://localhost").people(),
+      ).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
+      await jest.advanceTimersByTimeAsync(20000);
+      await pending;
+      expect(await advisorTokens.get()).not.toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it("keeps acknowledged kickoff revisions for the next edit and requires a bound closing review", async () => {
+    await advisorTokens.set(session());
+    const note = {
+      id: "note",
+      meetingId: "meeting",
+      topicId: "business" as const,
+      speakerPersonId: "person",
+      text: "Fictional note",
+      at: new Date().toISOString(),
+      version: 2,
+      hash: "a".repeat(64),
+    };
+    const next = { ...note, version: 3, hash: "b".repeat(64) };
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(response(200, { notes: [next] }));
+    const r = new HttpAdvisorRepository("http://localhost", true);
+    await expect(r.notes("meeting", [note], "notes")).resolves.toEqual([next]);
+    const body = JSON.parse(fetcher.mock.calls[0][1]!.body as string);
+    expect(body.notes[0]).toMatchObject({
+      expectedVersion: 2,
+      contentHash: note.hash,
+    });
+    expect(body.notes[0]).not.toHaveProperty("version");
+    expect(body.notes[0]).not.toHaveProperty("hash");
+    await expect(
+      r.confirm(
+        "meeting",
+        {
+          proposalId: "proposal",
+          ownerPersonKey: "person",
+          confirmation: "confirmed",
+        },
+        "confirm",
+      ),
+    ).rejects.toMatchObject({ code: "VERSION_REQUIRED" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it("rejects missing future API configuration without a network call", async () => {
     const fetcher = jest.spyOn(global, "fetch");
     await expect(
@@ -331,13 +532,11 @@ it("locates source playback using actual completed segment durations after inter
 });
 it("does not guess a recording offset when duration metadata is missing or the time is out of bounds", async () => {
   await advisorTokens.set(session());
-  jest
-    .spyOn(global, "fetch")
-    .mockResolvedValue(
-      response(200, {
-        segments: [{ segmentIndex: 0, complete: true, durationMs: 0 }],
-      }),
-    );
+  jest.spyOn(global, "fetch").mockResolvedValue(
+    response(200, {
+      segments: [{ segmentIndex: 0, complete: true, durationMs: 0 }],
+    }),
+  );
   const repo = new HttpAdvisorRepository("https://api.example.test");
   expect(await repo.audioSource("meeting-session", 1500)).toBeNull();
   expect(await repo.audioSource("meeting-session", -1)).toBeNull();

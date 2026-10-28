@@ -1,5 +1,7 @@
 # Development log
 
+Latest local result (2026-10-28): 538 mobile tests/63 suites, generated-type checks, lint and all twelve actual PostgreSQL browser paths pass. Older connector-session entries below retain their historical pending/unrun status; current evidence is in PROGRESS.md and docs/verification/dutygraph-mobile-2026-10-28.json.
+
 - Initialized standalone layout from the original seed archive; copied reference material into docs/reference.
 - Read the PRD, phase plan, architecture, defaults, guardrails, and mobile agent instructions.
 - Started baseline dependency installation and independent architecture/mobile reviews.
@@ -48,3 +50,11 @@ Expanded the root README with a repository map, verified build status and links 
 - 2026-10-28, Sprint 2 P4: production-profile invitation URL builder now targets HTTPS dutygraph.com, preserving respond.dutygraph.com and custom scheme for mock/dev. Added profile-specific URL assertions, updated inline route comment and documented EAS signing, iOS AASA and release prerequisites. Tests and native link verification **not run**; server AASA and signing remain open. No production changes or provider calls.
 
 - 2026-10-28: GitHub Actions mobile verify failed at TypeScript because two new Jest files lacked explicit `@jest/globals` imports and native recording migration used the DOM `File` type rather than the Expo file object. Fixed both from CI diagnostics. Earlier shared checks passed; full mobile verification **pending rerun**. Dependency audit reported 5 high advisories during installation (not attributable to new dependencies; none were added). No native device checks.
+
+- 2026-10-28, actual-backend continuation: installed all three frozen npm lockfiles on Node 24. Baseline passed 513 mobile tests, 78 shared tests and 64 development API tests with typechecks/lint. Added actual V2 served-contract generation, generated wire adapters and a same-origin PostgreSQL twelve-flow browser runner with fresh synthetic tenants, authenticated pairing, private temporary manifests and schema-validated traffic. Real-profile edits/routing/closing bind reviewed versions/hashes; kickoff note acknowledgments retain revisions. Legacy HTTP browser paths remain compatible. Current final run evidence is recorded in PROGRESS.md.
+- Fixed advisor logout/refresh isolation: local role data clears before remote revocation; stale successful/failed refreshes and old in-flight company responses cannot affect the next login. Added four race regressions and two reviewed-command cases. Protected voice-cache URLs accept declared WAV/MPEG formats without weakening origin/path checks. Added native cache security tests. Review also fixed iOS M4A fallback recording storage and legacy migration; physical-device backup exclusion remains unverified.
+- Applied compatible lock-only `node-forge`1.4.2 and `source-map-js`1.2.2 fixes. High audit findings fell 8→3; the remaining nested Expo CLI Zod 3 advisory and its propagated Expo/CLI findings need an upstream-compatible fix. No forced major override, production provider call, signing operation or app release.
+
+- 2026-10-28 review correction: meeting budget labels now describe estimated dispatch limits and estimated reserved use, including failed requests; actual provider cost may differ. Facilitator defaults use the server's $15 estimate for both TTS and realtime, with $2 for other meeting modes. These are enforcement estimates, not billing evidence.
+
+- Final frozen-backend verification: regenerated both served contracts/types after the final participant live/realtime changes; all twelve actual PostgreSQL browser paths passed with 219 schema-validated exchanges. Final generated TypeScript/lint passed. Fixed interrupted-run private-manifest cleanup and verified SIGTERM removes the directory/stops its server. Sanitized evidence is stored in docs/verification/dutygraph-mobile-2026-10-28.json.

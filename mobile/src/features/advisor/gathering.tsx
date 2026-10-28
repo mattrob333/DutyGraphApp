@@ -27,6 +27,7 @@ import {
   saveKickoffNotes,
 } from "@/storage/advisor";
 import { createAdvisorVoiceOut } from "./voice";
+import { SIMULATED_VOICE_NOTICE } from "@/features/voice/out";
 import type { KickoffNote, SetupProposal } from "@/api/advisor";
 import { newId } from "@/utils/id";
 import { useCommand } from "./useCommand";
@@ -108,7 +109,10 @@ export function KickoffScreen() {
     [sent, setSent] = useState(false);
   const latest = useRef(draft);
   latest.current = draft;
-  const [voice] = useState(createAdvisorVoiceOut);
+  const [simulatedVoice, setSimulatedVoice] = useState(false);
+  const [voice] = useState(() =>
+    createAdvisorVoiceOut(() => setSimulatedVoice(true)),
+  );
   const dictation = useDictation(
     (text) => setDraft((d) => ({ ...d, text })),
     () => voice.stop(),
@@ -153,8 +157,13 @@ export function KickoffScreen() {
   }, [id, loaded]);
   useEffect(() => {
     setSaved(false);
-    setSent(false);
   }, [draft]);
+  const noteContent = JSON.stringify(
+    draft.notes.map(({ version: _version, hash: _hash, ...note }) => note),
+  );
+  useEffect(() => {
+    setSent(false);
+  }, [noteContent]);
   if (!loaded || people.isPending) return <LoadingState />;
   if (people.isError)
     return <ErrorState error={people.error} onRetry={people.refetch} />;
@@ -225,6 +234,7 @@ export function KickoffScreen() {
   return (
     <Screen>
       <Heading>Executive kickoff</Heading>
+      {simulatedVoice ? <Notice>{SIMULATED_VOICE_NOTICE}</Notice> : null}
       <Text color="muted">One topic at a time. Keep who said what.</Text>
       <SectionLabel>Topic {draft.topic + 1} of 8</SectionLabel>
       <Card>
@@ -343,11 +353,23 @@ export function KickoffScreen() {
           const result = await cmd.run(
             ["notes", id, draft.notes],
             async (r, k) => {
-              await r.notes(id, draft.notes, k);
-              return true;
+              const notes = await r.notes(id, draft.notes, k);
+              return notes ?? draft.notes;
             },
           );
-          if (result) setSent(true);
+          if (result) {
+            const revisions = new Map(result.map((note) => [note.id, note]));
+            setDraft((current) => ({
+              ...current,
+              notes: current.notes.map((note) => {
+                const revision = revisions.get(note.id);
+                return revision
+                  ? { ...note, version: revision.version, hash: revision.hash }
+                  : note;
+              }),
+            }));
+            setSent(true);
+          }
         }}
       />
       {sent ? (
@@ -397,7 +419,10 @@ export function SetupScreen() {
     }),
     [loaded, setLoaded] = useState(false),
     [sent, setSent] = useState(false);
-  const [voice] = useState(createAdvisorVoiceOut);
+  const [simulatedVoice, setSimulatedVoice] = useState(false);
+  const [voice] = useState(() =>
+    createAdvisorVoiceOut(() => setSimulatedVoice(true)),
+  );
   const dictation = useDictation(
     (text) =>
       setDraft((d) => ({
@@ -437,6 +462,7 @@ export function SetupScreen() {
     >
       <View style={{ paddingHorizontal: draft.proposals.length ? 0 : 20 }}>
         <Heading>Setup by voice</Heading>
+        {simulatedVoice ? <Notice>{SIMULATED_VOICE_NOTICE}</Notice> : null}
         <Text color="muted">
           Your answers become proposals. Check each one before it counts.
         </Text>

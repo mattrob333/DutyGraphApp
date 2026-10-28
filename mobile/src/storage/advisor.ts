@@ -7,9 +7,19 @@ const COMMANDS = "dg.advisor.command-keys";
 let writing = Promise.resolve();
 let generation = 0;
 let clearing = false;
+/** Changes synchronously when a role/company session is cleared. */
+export const advisorSessionGeneration = () => generation;
 export const advisorTokens = {
   get: () => secureGetJson<AdvisorSession>(SESSION),
-  set: (s: AdvisorSession) => secureSetJson(SESSION, s),
+  set: (s: AdvisorSession, expectedGeneration = generation): Promise<void> => {
+    const operation = writing.then(async () => {
+      if (clearing || expectedGeneration !== generation)
+        throw new Error("Advisor session ended.");
+      await secureSetJson(SESSION, s);
+    });
+    writing = operation.catch(() => {});
+    return operation;
+  },
   clear: () => secureDelete(SESSION),
 };
 export async function saveAdvisorDraft<T>(id: string, draft: T): Promise<void> {

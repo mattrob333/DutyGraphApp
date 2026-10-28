@@ -261,6 +261,8 @@ export type ClosingItem = {
   ownerPersonKey: string | null;
   confirmation: "pending" | "confirmed" | "changed" | "not_mine";
   note?: string;
+  expectedVersion?: number;
+  contentHash?: string;
 };
 
 export type Pulse = {
@@ -296,6 +298,8 @@ export type KickoffNote = {
   speakerPersonId: string | null;
   text: string;
   at: string;
+  version?: number;
+  hash?: string;
 };
 export type ClaimProposal = {
   fieldPath: string;

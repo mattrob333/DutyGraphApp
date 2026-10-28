@@ -4,9 +4,10 @@ import { advisorTokens } from "@/storage/advisor";
 import { config } from "@/api/config";
 import { newIdempotencyKey } from "@/utils/id";
 /** Server TTS uses the advisor credential. Missing audio falls back to device speech. */
-export function createAdvisorVoiceOut() {
+export function createAdvisorVoiceOut(onSimulation?: () => void) {
   const repository = getAdvisorRepository();
   return createVoiceOut({
+    onSimulation,
     ...(repository.kind === "http"
       ? {
           repository: {

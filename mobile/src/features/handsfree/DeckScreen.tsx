@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -26,7 +32,7 @@ import {
 } from "@/api/extras";
 import { useMe } from "@/hooks/queries";
 import { usePreferencesStore } from "@/state/preferences";
-import { createVoiceOut } from "@/features/voice/out";
+import { createVoiceOut, SIMULATED_VOICE_NOTICE } from "@/features/voice/out";
 import { ErrorState, LoadingState, Text } from "@/components/common";
 import {
   CaptionBox,
@@ -144,6 +150,7 @@ function DeckRun({
   const demoFollowUps = usePreferencesStore((s) => s.followUps);
   const speed = usePreferencesStore((s) => s.voiceSpeed);
   const speakQuestions = me.data?.voicePreferences?.speakQuestions ?? true;
+  const [simulatedVoice, setSimulatedVoice] = useState(false);
   const output = useMemo(
     () =>
       createVoiceOut({
@@ -151,6 +158,7 @@ function DeckRun({
         requestId: set.requestId,
         speed,
         enabled: speakQuestions,
+        onSimulation: () => setSimulatedVoice(true),
         downloadHeaders: () => extras.getVoiceDownloadHeaders(),
       }),
     [extras, set.requestId, speed, speakQuestions],
@@ -322,6 +330,9 @@ function DeckRun({
           />
         </View>
 
+        {simulatedVoice ? (
+          <Text color="muted">{SIMULATED_VOICE_NOTICE}</Text>
+        ) : null}
         <View style={{ marginTop: 14 }}>
           <CardDeck
             height={cardHeight}
