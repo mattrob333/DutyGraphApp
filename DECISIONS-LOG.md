@@ -2,6 +2,8 @@
 
 | Date (UTC) | Phase | Decision | Reason |
 | --- | --- | --- | --- |
+| 2026-10-28 | Day-run D3 | Request optional gate advice only on a tap; render it separately and keep the deterministic result and route unchanged. | AI is advice, and off/unavailable/over-budget cases must preserve the rules. |
+| 2026-10-28 | Day-run D3 | Keep mock/development gate advice off and add no provider-settings editor. | The app has no existing provider configuration UI; authorization must not be invented. |
 | 2026-10-28 | Day-run D5 | Poll finish status for at most one minute; subsequent taps reuse the original command key and confirm completion through that receipt. | Keep UI waits finite without duplicating paid work or accepting another job's completion. |
 | 2026-10-28 | Day-run D5 | Stop only local checks on leave/background/cancel. Ambiguous dispatch requires advisor review and retains its key. | Durable server work can finish independently; uncertain provider dispatch must not be repeated automatically. |
 | 2026-10-28 | Day-run D2 | Save outcomes separately from Complete; Complete requires the current server session version/hash and no unsaved outcome changes. | Outcome review must not imply acknowledged meeting completion. |

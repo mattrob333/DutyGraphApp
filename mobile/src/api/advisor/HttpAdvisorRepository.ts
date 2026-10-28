@@ -43,6 +43,7 @@ import type {
   PeopleWire,
   MeetingRouteWire,
   MobileFinishJobWire,
+  MeetingGateSuggestionWire,
 } from "@/api/dutygraphWire";
 
 export class HttpAdvisorRepository implements AdvisorRepository {
@@ -358,6 +359,14 @@ export class HttpAdvisorRepository implements AdvisorRepository {
         key,
       )
     ).meeting;
+  }
+  gateSuggestion(id: string, key: string) {
+    return this.request<MeetingGateSuggestionWire>(
+      `/meetings/${encodeURIComponent(id)}/gate-suggestion`,
+      "POST",
+      {},
+      key,
+    );
   }
   route(
     id: string,

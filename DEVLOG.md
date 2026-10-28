@@ -1,3 +1,9 @@
+# October 28, 2026 — Optional meeting gate advice and adapter contract sync
+
+The meeting plan now exposes an explicit optional AI second opinion through the repository. It labels the reason as a suggestion, keeps the rules result visible and never changes the route. Off/unavailable/over-budget states explain that the rules still apply. Mock/development workflows remain off by default; no provider settings authority was added.
+
+Regenerated actual served wire artifacts against the final combined mobile/adapter source at 27503b89. Extras now includes AI_USAGE_RECORD_FAILED. Validation: 75 focused tests, mobile/development API typechecks, touched-file lint, a development API off-state regression, mock export and the 390×844 advisor browser flow passed. See PROGRESS.md and the dated phone screenshot. Providers remain fake; no hosted or device acceptance is claimed.
+
 # October 28, 2026 — Resume queued finish checks safely
 
 The actual-backend HTTP adapter polls queued finish jobs and requires the original command receipt before showing closing. Local polling stops on cancel, background, screen leave or identity change. Pending and ambiguous outcomes retain their retry key; an ambiguous provider dispatch requires advisor review instead of another automatic attempt. The synchronous development/mock flows remain supported. The screen explains that the server can continue after local checks stop.

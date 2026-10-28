@@ -657,6 +657,87 @@
         }
       }
     },
+    "/api/mobile/meetings/v1/meetings/{id}/gate-suggestion": {
+      "post": {
+        "operationId": "post_api_mobile_meetings_v1_meetings_id_gate_suggestion",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acknowledged by the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deterministic": {
+                      "$ref": "#/components/schemas/Gate"
+                    },
+                    "suggestion": {
+                      "type": "null"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "deterministic",
+                    "suggestion",
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/mobile/meetings/v1/meetings/{id}/plan": {
       "post": {
         "operationId": "post_api_mobile_meetings_v1_meetings_id_plan",

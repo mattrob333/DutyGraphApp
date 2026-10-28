@@ -1828,3 +1828,26 @@ test("structured closing requires every outcome and current review before COMPLE
     await f.close();
   }
 });
+
+test("optional gate suggestion is off and preserves the deterministic meeting plan", async () => {
+  const f = await setup();
+  try {
+    await f.call(`${api}/meetings/${f.meeting.id}/plan`, {});
+    const before = (await f.call(`${api}/meetings/${f.meeting.id}`)).body;
+    const result = await f.call(
+      `${api}/meetings/${f.meeting.id}/gate-suggestion`,
+      {},
+      "gate-suggestion-off",
+    );
+    assert.equal(result.status, 200);
+    assert.equal(result.body.status, "off");
+    assert.equal(result.body.suggestion, null);
+    assert.deepEqual(result.body.deterministic, before.gate);
+    assert.deepEqual(
+      (await f.call(`${api}/meetings/${f.meeting.id}`)).body,
+      before,
+    );
+  } finally {
+    await f.close();
+  }
+});

@@ -562,6 +562,11 @@ export function meetingRoutes(
       return { body: saveMeeting(next, p) };
     }),
   );
+  r.post("/meetings/:id/gate-suggestion", cmd((req, res) => {
+    const p = principal(res), meeting = getMeeting(String(req.params.id), p);
+    z.object({}).strict().parse(req.body ?? {});
+    return { body: { deterministic: gateMeeting(meeting), suggestion: null, status: "off" } };
+  }));
   r.post(
     "/meetings/:id/plan",
     cmd(async (req, res) => {

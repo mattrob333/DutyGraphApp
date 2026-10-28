@@ -972,3 +972,46 @@ describe("resumable finish polling", () => {
     });
   });
 });
+
+describe("optional meeting gate suggestion", () => {
+  it("keeps the mock off and never changes the rules or meeting route", async () => {
+    const repo = new MockAdvisorRepository();
+    const meeting = await repo.create(input, "suggestion-create");
+    const planned = await repo.plan(meeting.id, "suggestion-plan");
+    const before = await repo.meeting(meeting.id);
+    const result = await repo.gateSuggestion(meeting.id, "suggestion-key");
+    expect(result.status).toBe("off");
+    expect(result.suggestion).toBeNull();
+    expect(result.deterministic).toEqual(planned.gate);
+    expect(await repo.meeting(meeting.id)).toEqual(before);
+  });
+  it("sends an explicit authenticated idempotent request without applying its suggestion", async () => {
+    await advisorTokens.set(session());
+    const result = {
+      deterministic: { mode: "LIVE", reason: "Rules still apply" },
+      suggestion: { suggestion: "shorten", reason: "One issue remains" },
+      status: "suggestion",
+      simulated: true,
+    };
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(response(200, result));
+    const repo = new HttpAdvisorRepository("http://localhost", true);
+    expect(await repo.gateSuggestion("meeting-one", "gate-key")).toEqual(
+      result,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe(
+      "http://localhost/api/mobile/meetings/v1/meetings/meeting-one/gate-suggestion",
+    );
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({});
+    expect((init?.headers as Record<string, string>)["Idempotency-Key"]).toBe(
+      "gate-key",
+    );
+    expect((init?.headers as Record<string, string>).Authorization).toBe(
+      "Bearer one",
+    );
+  });
+});

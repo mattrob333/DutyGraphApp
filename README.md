@@ -2,7 +2,7 @@
 
 Expo SDK 57 app and a standalone development API for participant information gathering and advisor Meeting OS. Includes spoken/typed question decks, Task Card review, Pulse, POWER/Gate planning, consent, capture, Facilitator controls, source-linked proposals, speaker mapping, kickoff and setup. [PROGRESS.md](PROGRESS.md) records verification and remaining device/provider checks.
 
-The October 28 day-run adds a structured closing review and explicit server-acknowledged completion. Deferred outcomes can seed a linked follow-up meeting. Queued finish jobs keep the original retry key while the app checks server progress; stopping local checks does not stop the server job. See the dated entry in [PROGRESS.md](PROGRESS.md) for checks on this change; earlier suite counts below are historical.
+The October 28 day-run adds a structured closing review and explicit server-acknowledged completion. Deferred outcomes can seed a linked follow-up meeting. Queued finish jobs keep the original retry key while the app checks server progress; stopping local checks does not stop the server job. The meeting gate can show an optional AI suggestion beside its rules result; the company setting stays off by default. See the dated entry in [PROGRESS.md](PROGRESS.md) for checks on this change; earlier suite counts below are historical.
 
 ## Build status
 

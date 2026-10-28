@@ -1,3 +1,5 @@
+import type { MeetingGateSuggestionWire } from "../dutygraphWire";
+export type { MeetingGateSuggestionWire } from "../dutygraphWire";
 import type {
   AdvisorSession,
   MeetingDefinition,
@@ -115,6 +117,7 @@ export interface AdvisorRepository {
     key: string,
   ): Promise<MeetingDefinition>;
   plan(id: string, key: string): Promise<MeetingDefinition>;
+  gateSuggestion(id: string, key: string): Promise<MeetingGateSuggestionWire>;
   route(
     id: string,
     choice: "pulse" | "shorter" | "as_planned",

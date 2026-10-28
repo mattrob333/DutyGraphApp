@@ -10,7 +10,7 @@
     },
     "participantExtras": {
       "path": "/api/mobile/v1x/openapi.json",
-      "sha256": "8267b56ec888ab20e32ca9cf4fd8788c1b6f88d18717eeb0356d2103ea000195",
+      "sha256": "9ad9bc3e037ff8908e7b30d706c7d60686616b4a4e94e895d96d5c82365a4203",
       "version": "0.1.0"
     }
   }

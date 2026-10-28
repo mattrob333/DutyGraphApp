@@ -1,5 +1,13 @@
 # Build progress
 
+## October 28, 2026 — Optional gate advice and final adapter contract sync
+
+- Added an explicit Ask AI for a suggestion action to the meeting gate. The rules result remains visible. Any reason is labelled as a suggestion and never changes the saved gate or route. Off, unavailable, over-budget and rules-required results retain the deterministic result. The mock and development API stay off; this app has no provider-settings editor and adds no new configuration authority.
+- Refreshed both actual served wire contracts from a restarted local backend at `27503b89e4fae598255b51677b379eba82617cee`. The extras provider-code enum now includes AI_USAGE_RECORD_FAILED. The served-contract byte hashes match the checked-in manifest. Backend voice_server is an additive participant-v1 source enum; this advisor/extras generator intentionally preserves the separately pinned participant-v1 contract.
+- Checks: 75 focused UI/advisor/actual-contract tests passed; mobile/development API typechecks and touched-file lint passed. The focused development API off-state regression passed. Mock web export and the 390×844 advisor browser flow passed: asking for an optional suggestion showed the company off-state while the rules result and route stayed available. [Phone screenshot](docs/day-run/screens/advisor-gate-ai-off-light.png).
+- All provider responses in tests are fake. No paid call, hosted acceptance or physical-device result is claimed. Full mobile suite and independent review remain parent integration checks.
+
+
 ## October 28, 2026 — Day-run resumable finish follow-up
 
 - The HTTP adapter treats a queued finish response as pending. It polls job metadata for up to one minute, then reports that the server is still preparing the review. It confirms completion by replaying the original POST with the same command key, rather than trusting a session's latest job alone.

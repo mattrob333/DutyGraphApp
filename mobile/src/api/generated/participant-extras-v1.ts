@@ -287,7 +287,7 @@ export interface components {
         /** @enum {string} */
         ProposalKind: "action" | "claim" | "contradiction" | "decision" | "open_question" | "responsibility_delta" | "task_card_delta";
         /** @enum {string} */
-        MobileProviderCode: "BUDGET_REACHED" | "IDEMPOTENCY_CONFLICT" | "NOT_AVAILABLE" | "PROVIDER_ALREADY_DISPATCHED" | "PROVIDER_FAILED" | "PROVIDER_INVALID_INPUT" | "PROVIDER_INVALID_OUTPUT";
+        MobileProviderCode: "AI_USAGE_RECORD_FAILED" | "BUDGET_REACHED" | "IDEMPOTENCY_CONFLICT" | "NOT_AVAILABLE" | "PROVIDER_ALREADY_DISPATCHED" | "PROVIDER_FAILED" | "PROVIDER_INVALID_INPUT" | "PROVIDER_INVALID_OUTPUT";
     };
     responses: {
         /** @description Structured API failure. requestId is supplied by the application error handler; provider refusals may omit it. */
@@ -767,7 +767,7 @@ export interface operations {
                     questionAnswerSources?: {
                         [key: string]: {
                             /** @enum {string} */
-                            via: "typed" | "voice_openai" | "voice_device" | "voice_browser";
+                            via: "typed" | "voice_openai" | "voice_server" | "voice_device" | "voice_browser";
                             edited?: boolean;
                         };
                     };

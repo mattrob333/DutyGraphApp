@@ -40,3 +40,7 @@ export type ConfigWire = Success<Extras["get_api_mobile_v1x_config"]>;
 
 export type MobileFinishJobWire =
   AdvisorComponents["schemas"]["MobileFinishJobStatus"];
+
+export type MeetingGateSuggestionWire = Success<
+  Advisor["post_api_mobile_meetings_v1_meetings_id_gate_suggestion"]
+>;

@@ -21,6 +21,7 @@ import type {
   Trigger,
   ClosingItem,
   SaveClosing,
+  MeetingGateSuggestionWire,
 } from "./types";
 import type {
   SpeakerMap,
@@ -109,7 +110,9 @@ export class MockAdvisorRepository implements AdvisorRepository {
       version: 1,
       hash: `mock-${id}-1`,
       title: input.title,
-      ...(input.previousMeetingId ? { previousMeetingId: input.previousMeetingId } : {}),
+      ...(input.previousMeetingId
+        ? { previousMeetingId: input.previousMeetingId }
+        : {}),
       startsAt: input.startsAt,
       minutes: input.minutes,
       power: {
@@ -248,6 +251,16 @@ export class MockAdvisorRepository implements AdvisorRepository {
     });
   }
 
+  async gateSuggestion(
+    id: string,
+    key: string,
+  ): Promise<MeetingGateSuggestionWire> {
+    return this.run(key, { id, operation: "gate-suggestion" }, () => ({
+      deterministic: gateMeeting(this.get(id)),
+      suggestion: null,
+      status: "off",
+    }));
+  }
   async route(
     id: string,
     choice: "pulse" | "shorter" | "as_planned",

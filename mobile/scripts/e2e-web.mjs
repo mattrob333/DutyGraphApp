@@ -208,6 +208,15 @@ try {
     await click('Build the plan');
     await expectVisible('Meeting gate');
     await screenshot('plan');
+    if (mode === 'mock' && flow === 'advisor') {
+      await expectVisible('Keep a live meeting');
+      await click('Ask AI for a suggestion');
+      await expectVisible('AI meeting suggestions are off for this company.');
+      await expectVisible('Keep a live meeting');
+      if (!await button('Keep as planned').isEnabled()) throw new Error('Optional AI off-state disabled the deterministic route.');
+      await screenshot('gate-ai-off');
+    }
+
     if (flow === 'hybrid') {
       await expectVisible('Pulse first, then a shorter meeting');
       await expectVisible('people can receive the result instead');

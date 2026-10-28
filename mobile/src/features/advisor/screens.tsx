@@ -1,4 +1,5 @@
 import { saveLiveNote } from "./saveLiveNote";
+import { MeetingGateSuggestion } from "@/components/advisor/MeetingGateSuggestion";
 import { ClosingRitual } from "@/components/advisor/ClosingRitual";
 import { ClosingResponse } from "@/components/advisor/ClosingResponse";
 import { CompanionApiError } from "@/api/http/errors";
@@ -763,6 +764,11 @@ export function PlanScreen() {
               </Text>
             ) : null}
           </Card>
+          {!editingAgenda ? <MeetingGateSuggestion
+            key={`${m.id}:${m.version}:${m.hash}`}
+            busy={cmd.busy}
+            onRequest={() => cmd.run(["gate-suggestion", id, m.version, m.hash], (r, k) => r.gateSuggestion(id, k))}
+          /> : null}
           <Text variant="meta" color="muted">
             You choose the route. This proposal changes nothing until you
             approve it.
