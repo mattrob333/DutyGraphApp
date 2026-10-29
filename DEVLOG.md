@@ -1,3 +1,13 @@
+# October 29, 2026 — One client app: Connect your AI and company Files on the phone
+
+This branch (`claude/voice-client-app`) joins the Earn phone work (#4) and the live backend work (#3), then adds the two client screens the phone was missing, so the voice interviews, Earn and the MCP flow sit in one app.
+
+- **Connect your AI** (`/earn/connect`): the plain `<origin>/api/mcp` OAuth connector link with Copy, a "do not paste it into a chat" warning, step lists for claude.ai and ChatGPT, what to say (start, Build my Task Cards, Find more tasks, Show my Task Cards), Share the steps to a computer, and the bring-work prompt as the no-connector fallback. Text matches the DutyGraphV2 web client (client/src/earn/SendMore.tsx).
+- **Files** (`/files`, `/files/view`): Company and Mine tabs, folder breadcrumb, file view with linked files. Reads DutyGraphV2 `GET /api/mobile/v1/files` and `/files/file?path=` (DutyGraphV2 branch claude/project-thread-kql8vh), which returns only the Company Repo files shared with the team member. Mock mode shows three fictional files. Uploads stay in the web app for now.
+- Me shows Connect your AI and Company files under Your work.
+
+Checks: mobile typecheck, lint and the whole suite (76 suites, 645 tests) pass. No device, hosted backend or real AI connector was used.
+
 # October 28, 2026 — Optional meeting gate advice and adapter contract sync
 
 The meeting plan now exposes an explicit optional AI second opinion through the repository. It labels the reason as a suggestion, keeps the rules result visible and never changes the route. Off/unavailable/over-budget states explain that the rules still apply. Mock/development workflows remain off by default; no provider settings authority was added.

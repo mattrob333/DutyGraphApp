@@ -10,6 +10,8 @@ Task Card proposal review now includes the linked source and saved draft, attend
 
 The app supports mock/development workflows and opt-in actual DutyGraphV2 integration. Current local checks pass **538 mobile tests**, **78 shared tests**, **64 development API tests**, typechecks/lint, web export and **all twelve PostgreSQL browser paths against the actual V2 application** (219 schema-validated exchanges). Handsfree/meeting line coverage is **94.37%**. Native prebuild/autolinking evidence is from the prior run; native compilation and physical-device QA remain outstanding. The continuation used injected providers; no deployment or app-store release occurred. See [PROGRESS.md](PROGRESS.md) for current versus historical provider evidence.
 
+One client app (2026-10-29, branch `claude/voice-client-app`): voice interviews, Earn, Connect your AI (MCP connector steps) and company Files in the phone app. See DEVLOG.md.
+
 ## Repository map
 
 | Path | Contents |

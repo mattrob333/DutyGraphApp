@@ -103,6 +103,11 @@ export function EarnEntry() {
         onPress={() => nav("/earn/connect")}
       />
       <Row
+        label="Company files"
+        detail="Browse the files your company shares with the team"
+        onPress={() => nav("/files")}
+      />
+      <Row
         label="Find the gaps"
         detail="Suggest a fix where work waits or breaks"
         onPress={() => nav("/earn/gaps")}
