@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { newIdempotencyKey } from "@/utils/id";
+import { runPendingEarnCommand } from "./pending-command";
 export function useEarnResource<T>(load: () => Promise<T>) {
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState<unknown>(null),
@@ -30,8 +30,7 @@ export function useEarnCommand() {
     [error, setError] = useState(""),
     [conflict, setConflict] = useState(false);
   const active = useRef(false),
-    owner = useRef(0),
-    keys = useRef(new Map<string, string>());
+    owner = useRef(0);
   useFocusEffect(
     useCallback(() => {
       const token = ++owner.current;
@@ -44,7 +43,7 @@ export function useEarnCommand() {
     }, []),
   );
   const run = async <T>(
-    intent: unknown,
+    intent: { operation: string; body: unknown },
     send: (key: string) => Promise<T>,
     done: (value: T) => void,
   ) => {
@@ -53,16 +52,16 @@ export function useEarnCommand() {
     active.current = true;
     setBusy(true);
     setError("");
-    const signature = JSON.stringify(intent);
-    let key = keys.current.get(signature);
-    if (!key) {
-      key = newIdempotencyKey();
-      keys.current.set(signature, key);
-    }
     try {
-      const value = await send(key);
+      const descriptor = intent;
+      if (!descriptor.operation)
+        throw new Error("This command needs an operation name.");
+      const value = await runPendingEarnCommand(
+        descriptor.operation,
+        descriptor.body,
+        send,
+      );
       if (owner.current !== generation) return;
-      keys.current.delete(signature);
       done(value);
     } catch (e) {
       if (owner.current !== generation) return;

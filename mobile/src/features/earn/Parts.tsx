@@ -51,12 +51,13 @@ export function Row({
   onPress?: () => void;
 }) {
   const c = useColors();
+  const Container = onPress ? Pressable : View;
   return (
-    <Pressable
-      accessibilityRole={onPress ? "button" : undefined}
-      accessibilityLabel={label}
+    <Container
+      accessible
+      accessibilityRole={onPress ? "button" : "text"}
+      accessibilityLabel={detail ? `${label}. ${detail}` : label}
       onPress={onPress}
-      disabled={!onPress}
       style={{
         paddingVertical: 14,
         borderBottomWidth: 1,
@@ -70,7 +71,7 @@ export function Row({
           {detail}
         </Text>
       )}
-    </Pressable>
+    </Container>
   );
 }
 export function EarnError({

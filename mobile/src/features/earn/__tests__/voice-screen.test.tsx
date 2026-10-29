@@ -10,12 +10,28 @@ import {
 import type { DraftCreation, TaskCardDraft } from "@/api/earn/types";
 import type { EarnRepository } from "@/api/earn/repository";
 
+let mockPending: unknown = null;
+let mockKeySequence = 0;
+jest.mock("@/storage/tokens", () => ({
+  tokenStore: {
+    get: async () => ({
+      deviceId: "voice-device",
+      localSessionId: "voice-enrollment",
+    }),
+  },
+}));
+jest.mock("@/storage/secure", () => ({
+  secureGetJson: async () => mockPending,
+  secureSetJson: async (_key: string, value: unknown) => {
+    mockPending = JSON.parse(JSON.stringify(value));
+  },
+}));
 jest.mock("expo-haptics", () => ({
   impactAsync: async () => {},
   ImpactFeedbackStyle: { Light: "light" },
 }));
 jest.mock("expo-crypto", () => ({
-  randomUUID: () => "fictional-voice-intent-key",
+  randomUUID: () => `fictional-voice-intent-key-${++mockKeySequence}`,
 }));
 jest.mock("expo-router", () => ({
   router: { replace: jest.fn() },
@@ -59,15 +75,18 @@ function repository(
   } satisfies EarnRepository;
 }
 afterEach(() => {
+  mockPending = null;
   setEarnRepository(null);
   jest.clearAllMocks();
 });
 async function show(repo: EarnRepository) {
   setEarnRepository(repo);
-  await render(
-    <RepositoryProvider><ThemeProvider>
-      <VoiceTaskScreen />
-    </ThemeProvider></RepositoryProvider>,
+  return render(
+    <RepositoryProvider>
+      <ThemeProvider>
+        <VoiceTaskScreen />
+      </ThemeProvider>
+    </RepositoryProvider>,
   );
 }
 async function typeTask() {
@@ -138,7 +157,7 @@ describe("Earn voice task destination and acknowledgement", () => {
       .fn<EarnRepository["createDraftFromTask"]>()
       .mockRejectedValueOnce(new Error("Connection interrupted."))
       .mockResolvedValueOnce({ drafts: [seededDraft], refused: [] });
-    await show(repository(true, save));
+    const first = await show(repository(true, save));
     await typeTask();
     await fireEvent.press(
       screen.getByRole("button", { name: "Save app draft" }),
@@ -147,6 +166,9 @@ describe("Earn voice task destination and acknowledgement", () => {
       expect(screen.getByText("Connection interrupted.")).toBeTruthy(),
     );
     expect(screen.queryByText("Draft saved")).toBeNull();
+    await first.unmount();
+    await show(repository(true, save));
+    await typeTask();
     await fireEvent.press(
       screen.getByRole("button", { name: "Save app draft" }),
     );

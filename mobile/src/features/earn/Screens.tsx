@@ -185,7 +185,7 @@ function FixRows({
     </>
   );
 }
-function ClaimRows({ claims, note }: { claims: Claim[]; note: string }) {
+function ClaimRows({ claims, note, maxPaidCards }: { claims: Claim[]; note: string; maxPaidCards: number | null }) {
   return (
     <>
       {claims.length === 0 ? (
@@ -196,7 +196,7 @@ function ClaimRows({ claims, note }: { claims: Claim[]; note: string }) {
             <Text variant="bodyStrong">{claim.title}</Text>
             <Text>{claimLabel(claim.state)}</Text>
             <PayAmount cents={claim.amountCents} note={note} />
-            {claim.state === "not_paid" && <Text>{claimReason(claim)}</Text>}
+            {claim.state === "not_paid" && <Text>{claimReason(claim, maxPaidCards)}</Text>}
             {!!claim.askAgainNote && (
               <Text>Your Ask again note: {claim.askAgainNote}</Text>
             )}
@@ -253,6 +253,7 @@ export function EarnScoreboardScreen({
           </Text>
           <SectionLabel>My cards</SectionLabel>
           <ClaimRows
+            maxPaidCards={summary.data.me.maxPaidCards}
             claims={summary.data.claims}
             note={summary.data.settings.payRulesNote}
           />
@@ -390,7 +391,7 @@ function DraftRun({
             key={`${draft.id}:${draft.version}`}
             card={reviewCard ?? draft.card}
             checks={
-              summary.data && !summary.data.settings.enabled
+              summary.data?.settings.enabled !== true
                 ? { ...draft.checks, earnHint: "off", earnHintReasons: [] }
                 : draft.checks
             }
@@ -456,7 +457,7 @@ function DraftRun({
           {waiting && (
             <>
               <Text>
-                Confirming sends this card for advisor review. It does not
+                Confirming sends this card for manager review. It does not
                 approve a payment.
               </Text>
               <Button
@@ -467,10 +468,8 @@ function DraftRun({
                 onPress={() =>
                   void command.run(
                     {
-                      id,
-                      version: draft.version,
-                      decision: "confirm",
-                      card: reviewCard ?? undefined,
+                      operation: `draft:${id}:confirm`,
+                      body: { expectedVersion: draft.version, ...(reviewCard ? { card: reviewCard } : {}) },
                     },
                     (key) =>
                       repo.confirmDraft(
@@ -494,7 +493,7 @@ function DraftRun({
                 disabled={command.conflict}
                 onPress={() =>
                   void command.run(
-                    { id, version: draft.version, decision: "not_mine" },
+                    { operation: `draft:${id}:not_mine`, body: { expectedVersion: draft.version } },
                     (key) => repo.notMine(id, draft.version, key),
                     (value) => {
                       setReviewCard(null);
@@ -654,6 +653,7 @@ export function EarnRulesScreen({
           ))}
           <SectionLabel>My cards</SectionLabel>
           <ClaimRows
+            maxPaidCards={summary.data.me.maxPaidCards}
             claims={summary.data.claims}
             note={summary.data.settings.payRulesNote}
           />
@@ -712,7 +712,7 @@ export function EarnGapsScreen({
       };
       setInputError("");
       void command.run(
-        body,
+        { operation: "fix:create", body },
         (key) => repo.createFix(body, key),
         () => {
           setSent("Fix sent. Your manager can review it.");

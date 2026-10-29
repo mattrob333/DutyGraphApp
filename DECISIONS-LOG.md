@@ -34,3 +34,15 @@ Use Agent A's generated eight-operation mobile contract independently of partici
 ## 2026-10-28 — Phone review semantics and platform accessibility
 
 Use the existing Confirm request's optional card for local missing-slot edits, so production needs no invented PATCH endpoint. Never auto-confirm spoken words or persist local task tick boxes as execution. Preserve native accessibility state and supply web ARIA state explicitly; decorative SVG native props are excluded from web DOM. Render optional string notices through boolean conditions so empty values cannot become raw View children. Verify development fake data with Expo development mode and release refusal with a separate production export.
+
+## 2026-10-28 — Earn phone B2.2: browser and release boundary
+
+Development fake-HTTP journeys passed at360/1280; production HTTP export and actual static-release fixture refusal passed before any Earn seed request. Nineteen screenshots and two result files are linked in docs/earn-client/BROWSER.md. Exported JavaScript contained none of the three checked Earn seed strings. No physical phone, native microphone or hosted backend was tested. Five fresh-context reviews follow at this committed freeze.
+
+Phone review freeze: `79c890dabcdf5587b9c31b86266994c11e4a3ef7`, pushed before five independent fresh-context reviewers. Browser evidence belongs in the existing DECISIONS-LOG.md; the mistakenly named extra log was consolidated here.
+
+## 2026-10-28 — Earn phone B2.3: five reviews and corrections
+
+Pushed review freeze79c890dabcdf5587b9c31b86266994c11e4a3ef7. Five fresh-context reviewers completed independently. No confirmed High; all five confirmed Medium and the reported Low findings are corrected: durable scoped retries, atomic local confirmation/receipt, quoted-secret removal, accessible row summaries, reopenable slot corrections, precise rejection copy and fail-closed hints. See docs/REDTEAM.md for evidence and the independent persistence correction review. Local enrollment identity is explicit client metadata retained on refresh; current server contract has no sessionId and was not changed. Web storage is memory-only; native secure storage/device behavior remains unverified. Existing root decisions log now contains browser choices; the accidentally named duplicate DECISIONS.md is removed. Final full checks and post-correction browser/export follow.
+
+Post-review verification: whole mobile **552/552** (65 suites,36.997s), dev-server **76/76**, shared **78/78**; mobile/dev/shared TypeScript and whole lint passed. An integrated typecheck first caught new test-only Jest imports/literal/tuple types; those were corrected, final TypeScript exit0, and affected four suites28/28 passed. No product type bypass, skipped test or timeout increase. Mobile high-threshold audit rerun exits1 with20 findings (14low,3moderate,3high) in the documented SDK tool chain; root/dev audits0. Review freeze CI40824655411 passed including legacy browser/HTTP/coverage checks. Corrected-head CI and post-correction browser/export follow.

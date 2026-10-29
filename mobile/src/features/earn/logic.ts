@@ -77,16 +77,28 @@ export function draftReason(checks: DraftChecks) {
                 : "Your manager must check this card before it can earn.",
   );
 }
-export function claimReason(claim: Claim) {
+export function claimReason(claim: Claim, maxPaidCards?: number | null) {
   return (
-    claim.reasonText ||
+    claim.reasonText?.trim() ||
     (claim.reason === "too_generic"
       ? "Too generic: everyone writes emails. What is the email for? If it is part of a task only your role does, write that task instead."
       : claim.reason === "not_linked"
         ? "Not linked to your department: this card does not show how it serves your team's goal. Link it, or send it to the team it belongs to."
         : claim.reason === "pool_empty"
           ? "The company's pool for this pilot is used up. This card is still saved to your map."
-          : "Open this card with your manager to check why it is not paid.")
+          : claim.reason === "cap_reached"
+            ? maxPaidCards != null && Number.isInteger(maxPaidCards) && maxPaidCards >= 0
+              ? `You have ${maxPaidCards} paid cards, the most for one person. This card is still saved to your map.`
+              : "Your company set a paid-card limit. Ask your manager for the limit. This card is still saved to your map."
+            : claim.reason === "not_ready"
+              ? "Not ready: some required details are missing. Fill them and send it again."
+              : claim.reason === "too_small"
+                ? "Too small to earn: this task does not show an effect on what the team is measured on. It is still saved to your map."
+                : claim.reason === "already_mapped"
+                  ? "Already mapped: another card covers this work. Ask your manager which card and whether your extra steps were added."
+                  : claim.reason === "manager_declined"
+                    ? "Your manager did not approve this card. Ask your manager for the reason."
+                    : "Open this card with your manager to check why it is not paid.")
   );
 }
 export function parseHours(value: string) {

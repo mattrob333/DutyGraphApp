@@ -120,7 +120,8 @@ export function earnChecks(
     card.steps.length >= 3 &&
     !!card.doneMeans?.trim() &&
     !!card.slots.handsTo.value?.trim();
-  const generic = /^(answer|check|read)( my)? (emails|messages)$/i.test(
+  // Deliberately narrow local examples, not the production generic-work policy.
+  const generic = /^(?:(answer|check|read)( my)? (emails|messages)|attend meetings|submit timesheets)$/i.test(
     card.title.trim(),
   );
   const reasons: DraftChecks["earnHintReasons"] = [];
@@ -140,6 +141,40 @@ export function earnChecks(
     earnHint: !enabled ? "off" : reasons.length ? "not_yet" : "likely",
     earnHintReasons: enabled ? reasons : [],
   };
+}
+/**
+ * Opt-in deterministic warning examples for development/tests only.
+ * Candidate scores and ownership below are authored fixture values. They do not
+ * detect similarity, enforce uniqueness, decide split-task eligibility or approve
+ * money. Default seeds stay unchanged; production checks belong to the server.
+ */
+export function earnFairnessScenarios(): {
+  kind: "generic" | "duplicate" | "split";
+  card: TaskCardDraftInput;
+  checks: DraftChecks;
+}[] {
+  return (["generic", "duplicate", "split"] as const).map((kind) => {
+    const card = manualEarnCard();
+    card.title =
+      kind === "generic"
+        ? "Attend meetings"
+        : kind === "duplicate"
+          ? "Restock service van bins"
+          : "Refill the van seal-kit bin";
+    const checks = earnChecks(card);
+    if (kind !== "generic") {
+      checks.possibleDuplicates = [{
+        kind: "card",
+        id: "11111111-1111-4111-8111-111111111111",
+        title: "Restock the service van",
+        ownerName: "Dana Cole",
+        score: kind === "duplicate" ? 0.9 : 0.7,
+      }];
+      checks.earnHint = "not_yet";
+      checks.earnHintReasons = ["already_mapped"];
+    }
+    return { kind, card, checks };
+  });
 }
 export function earnSeed(p: Principal, enabled = true) {
   const now = new Date().toISOString(),

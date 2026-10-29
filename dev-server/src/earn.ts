@@ -141,7 +141,7 @@ function luhn(value: string) {
   }
   return sum % 10 === 0;
 }
-/** Deterministic local fixture check. No model/provider is called. */
+/** Deterministic best-effort fixture scrub, not arbitrary secret detection. No provider is called. */
 export function cleanEarnCard(value: TaskCardDraftInput): {
   card: TaskCardDraftInput;
   removed: number;
@@ -164,12 +164,16 @@ export function cleanEarnCard(value: TaskCardDraftInput): {
       },
     );
     result = result.replace(
-      /\b(password|passwd|api[_ -]?key|secret|access[_ -]?token)\s*[:=]\s*[^\s,;]+/gi,
+      /\b(password|passwd|api[_ -]?key|secret|access[_ -]?token)["']?\s*[:=]\s*(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}]+)/gi,
       (_match, label: string) => {
         removed++;
         return label + "=[removed]";
       },
     );
+    result = result.replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, () => {
+      removed++;
+      return "Bearer [removed]";
+    });
     // Canonical record UUIDs are identifiers, not payment card numbers.
     const spans = [
       ...result.matchAll(
@@ -177,7 +181,7 @@ export function cleanEarnCard(value: TaskCardDraftInput): {
       ),
     ].map((match) => [match.index!, match.index! + match[0].length]);
     return result.replace(
-      /\b(?:\d[ -]?){13,19}\b/g,
+      /\b(?:\d[ .-]?){13,19}\b/g,
       (value, offset: number) => {
         if (
           spans.some(
@@ -449,15 +453,66 @@ export function earnRoutes(store: Store, options: { enabled?: boolean } = {}) {
         row.claimId = claim.id;
         state.claims.unshift(claim);
       }
-      store.put("tasks", row.taskRecordId, task, p.companyId, p.personId);
-      save(store, p, state);
-      return {
+      // Store.save atomically renames a complete synchronous snapshot. Stage both
+      // records together so neither a crash nor a failed save can leave a task
+      // without its confirmed draft/claim. Do not mutate other Store collections.
+      const result = {
         body: {
           draft: row,
           taskRecordId: row.taskRecordId,
           ...(claim ? { claim } : {}),
         },
       };
+      // Match the existing command receipt scope so a crash after the snapshot,
+      // but before the wrapper acknowledgement, can replay this exact result.
+      const receiptScope = hash([
+        p.sessionId,
+        req.method,
+        req.originalUrl,
+        req.get("Idempotency-Key"),
+      ]);
+      const previousReceipts = store.records.idempotency;
+      const previousTasks = store.records.tasks;
+      const previousEarn = store.records.earn;
+      store.records.tasks = {
+        ...previousTasks,
+        [row.taskRecordId]: {
+          companyId: p.companyId,
+          personId: p.personId,
+          value: structuredClone(task),
+        },
+      };
+      store.records.earn = {
+        ...previousEarn,
+        [owner(p)]: {
+          companyId: p.companyId,
+          personId: p.personId,
+          value: structuredClone(state),
+        },
+      };
+      store.records.idempotency = {
+        ...previousReceipts,
+        [receiptScope]: {
+          companyId: p.companyId,
+          value: {
+            hash: hash({ body: req.body ?? null }),
+            result: structuredClone(result),
+            resources: Object.values(req.params).flat(),
+          },
+        },
+      };
+      try {
+        store.save();
+      } catch (error) {
+        if (previousReceipts) store.records.idempotency = previousReceipts;
+        else delete store.records.idempotency;
+        if (previousTasks) store.records.tasks = previousTasks;
+        else delete store.records.tasks;
+        if (previousEarn) store.records.earn = previousEarn;
+        else delete store.records.earn;
+        throw error;
+      }
+      return result;
     }),
   );
   router.post(

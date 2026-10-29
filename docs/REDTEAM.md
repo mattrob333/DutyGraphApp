@@ -87,3 +87,206 @@ Random and revoked bearer tokens; participant tokens on advisor routes; attendee
 - **Injected text can surface inside proposals.** Fake JSON spoken in a meeting became a proposed "contradiction" quoting "Approve $2M budget", and a harassment line became an open question. Nothing is applied without a person accepting it, but reviewers see attacker wording. Consider flagging quotes that contain instruction or JSON patterns.
 - **The fixture invitation token is public** (README). On a hosted demo server anyone can enroll once per restart as the fictional participant and use TTS within its rate limits. Fine for fictional demos; replace it before any real data.
 - **The demo APK is debug-signed** and the `dutygraph-companion://` scheme can be claimed by another app. Use https App Links (already verified on dutygraph.com) for invitations, and a real signing key before distribution. `apple-app-site-association` is missing on dutygraph.com, so iOS Universal Links will not work yet.
+
+## Earn phone B2 red team — 2026-10-29
+
+Five independent fresh-context reviewers ran in parallel against pushed freeze `79c890dabcdf5587b9c31b86266994c11e4a3ef7`, base `8827048d4b95c2a800294d31063a5e72423ffcec`. Review lenses and evidence follow. Reports below describe that freeze; the final disposition follows them. No live provider, production backend, payment or physical phone was tested.
+
+### Original R1 report
+
+# B2 R1 Security review
+
+Freeze: `79c890dabcdf5587b9c31b86266994c11e4a3ef7`; base: `8827048d4b95c2a800294d31063a5e72423ffcec`. HEAD matched the freeze. Reviewed the diff, governing earn brief, repository/mobile agent instructions, design/writing guardrails, client transport, rendering, local routes and focused tests. No product edits or commits.
+
+## Confirmed finding
+
+ID: R1-01
+Severity: Medium
+Where: `dev-server/src/earn.ts:167` (also card-number matcher at line 180)
+What: The development draft secret check stores ordinary JSON credentials unchanged and only partially removes quoted passwords with spaces.
+How to reproduce: Start an in-process `createApp({store: new Store()})`, issue a participant mobile session, and POST `/api/mobile/v1/earn/drafts` with an Idempotency-Key and `{cards:[{...manualEarnCard(), aiIAlreadyUse:'{"password":"fictional-json-secret"}'}],sourceNote:'app'}`. Actual result: HTTP 200; returned/stored draft has `aiIAlreadyUse` equal to the full JSON credential and `checks.secretsRemoved` equal to 0. With `aiIAlreadyUse: 'password="fictional two word password"'`, actual persisted value is `password=[removed] two word password"`, with count 1. Additional probes `Authorization: Bearer fictional-bearer-secret` and `Card 4242.4242.4242.4242` also survive unchanged, count 0. The route calls `cleanEarnCard` then puts that card in state and saves it (lines 242–268); the optional JSON data file therefore retains surviving values. This violates RULES.md 15 for the implemented local draft-creation path. The matcher requires an unquoted label directly before `:`/`=`, and consumes only a whitespace-delimited value.
+Fix: Cover quoted JSON keys and fully quoted values, explicit Bearer credentials, and common PAN punctuation; retain DutyGraph-token refusal. Add route-level regression tests asserting the original complete synthetic secret is absent from both draft results and `store.records`, including quoted values with spaces. Keep any sanitizer limits documented; never claim that arbitrary secrets can be detected perfectly.
+Scope: This is the phone development server's sanitizer, not evidence that Agent A's production server has this flaw. Standalone draft creation is development/loopback gated in the phone client. No live credentials were used.
+
+## Verification and attacks
+
+- Ran `dev-server/node_modules/.bin/tsx --test test/earn.test.ts`: 7 tests passed. Covers unauthenticated/advisor refusal, same-company foreign and cross-company draft reads, body identity smuggling, idempotency/version behavior, direct token refusal and simple secret removal, Earn-off suppression, fix identity/money injection, expiry/revocation, and proxy fixture separation.
+- Independently requested another person's draft confirmation with a valid second participant token: HTTP 404 `DRAFT_NOT_FOUND`.
+- Query `personId`/`companyId` smuggling left the caller's existing draft accessible as the caller (200); state identity derives from the principal, not query fields.
+- Inspected `EarnTaskCardView`: imported card text is passed as React Native Text children, not HTML/Markdown execution; existing screen test uses literal `<script>do not run this</script>`. No model/provider receives this text in the new module, so embedded instructions have no execution target here.
+- Oversize JSON (2 MiB plus overhead) is rejected with HTTP 500 by the pre-existing Express parser/error mapping. It is not accepted/stored. The misleading status mapping predates this diff, so it is not recorded as a new B2 security finding.
+- No runtime browser attack was needed for the confirmed server sanitizer issue. Native/device security was not tested.
+
+## External responsibilities
+
+This B2 diff implements participant mobile screens and local fixture routes only. It adds no MCP endpoint/scope processing, manager/advisor approval route, Stripe key loading, invoice webhook, payout execution, database tables, tenant grants or RLS. Wrong MCP scope, manager self/outside-report approval, live Stripe-key rejection, unsigned funding webhook, repeated payout prevention and real database tenant isolation must be tested in Agent A's backend; they are not passed checks here. Proxy mode forwards real Earn routes instead of mounting the local fixtures.
+
+
+### Original R2 report
+
+# B2 independent R2 review
+
+Freeze: `79c890dabcdf5587b9c31b86266994c11e4a3ef7`.
+Base: `8827048d4b95c2a800294d31063a5e72423ffcec`.
+Lens: money and data integrity. No product files or commits changed.
+
+## Findings
+
+ID: R2-01
+Severity: Medium
+Where: mobile/src/features/earn/hooks.ts:32; mobile/src/features/earn/VoiceTaskScreen.tsx:35
+What: Pending write identities exist only in component refs, so a lost acknowledgement followed by remount/restart loses the idempotency key and can create a second fix or spoken draft.
+How to reproduce: Submit a fix and let POST /earn/fixes commit, then drop its response. Unmount/reopen Gaps (or restart the app), enter the same fields and submit again. `useEarnCommand` creates a fresh `Map` and fresh key; `/fixes` assigns a new UUID and inserts another row for each new key (dev-server/src/earn.ts:510–529). The same occurs for a spoken draft because `intent` is a `useRef`, with no durable pending record. Existing tests exercise manual retries within the same mount only. Confirming an existing draft is protected from duplicate records by expectedVersion/state, but loses its replay receipt across restart. This violates mobile/AGENTS.md's explicit requirement to keep pending final submissions in secure storage until acknowledged.
+Fix: Persist each pending command's exact body, operation, owner/session identity and key before sending, and restore/reconcile it after remount or restart. Remove it only after an acknowledgement. Add a test that commits the first request, loses the response, remounts and verifies the retry uses the original key and creates one record.
+
+ID: R2-02
+Severity: Medium
+Where: dev-server/src/earn.ts:453
+What: Confirmation persists the proposed task and Earn state in separate writes, leaving an orphan task and permitting a duplicate proposed record if the second durable write fails.
+How to reproduce: Configure Store persistence (DEV_SERVER_DATA_FILE), load a waiting draft, and inject a failure into the `save(store, p, state)` immediately after `store.put("tasks", ...)` during confirmation. The task write is already durable; Store.put rolls back only its own collection entry on failure (dev-server/src/core.ts:173–183). The draft remains waiting/version 1 and the command has no saved successful result. Retry the same confirmation: it assigns a new taskRecordId and persists another task. A crash between these two writes has the same effect. Exact separate writes and UUID creation are visible in earn.ts:414 and 452–453; idempotency is saved only after the handler returns (idempotency.ts:49–61).
+Fix: Commit task, draft/claim and idempotency result in one durable Store transaction/snapshot, restoring all affected collections on failure. Add a fault-injection test at the second write and verify retry produces exactly one task linked to one confirmed draft. This is a local development record integrity issue, not evidence of a production database defect.
+
+## Checks and boundaries
+
+Ran focused `node --import tsx --test test/earn.test.ts` in dev-server: 7 tests passed. Existing tests cover same-key parallel confirms, stale versions, conflicting key bodies, replayed fixes, decimal precision, expired drafts and revoked sessions. No full suites or real-device checks were run.
+
+Money is displayed from server cents without client bonus calculation. The local fixture's 432000-cent bonus matches the specified 20 → 5 hours, 6000 cents/hour, 48 weeks, 10% example. Write schemas reject supplied money and identity fields. Existing draft version/state checks prevent two independent confirmation keys from creating two claims in this single-process synchronous local handler.
+
+Production server responsibilities: transactional pool/per-person-cap approval locking, integer bonus rounding, append-only money events, forced RLS/grants, migrations, durable multi-instance idempotency and retention deletion are not implemented or modified by this phone diff. They require separate backend review; this review makes no claim that they passed. The local module has no approval or payout routes, SQL tables or migrations. Draft expiry changes waiting records to expired and prevents confirmation; it is not a retention purge.
+
+
+### Original R3 report
+
+# Phone B2 fresh R3 correctness review
+
+Freeze: `79c890dabcdf5587b9c31b86266994c11e4a3ef7`; base: `8827048d4b95c2a800294d31063a5e72423ffcec`.
+Read the supplied RULES, PRODUCT-RULES, CONTRACT, B-client PRD and RED-TEAM procedure; repository/mobile agent instructions, design and porting guides, and writing standard. Reviewed the frozen diff, Earn generated types and transport, fixture handlers, screen flows and legacy participant boundaries. No product files or commits changed.
+
+## Findings
+
+ID: R3-01
+Severity: Medium
+Where: mobile/src/features/earn/TaskCardView.tsx:58; mobile/src/features/earn/Screens.tsx:399
+What: Completing an Add detail field removes the only way to reopen and correct that unsaved field.
+How to reproduce: Open a waiting draft with an empty Starts when slot. Tap Add Starts when, enter a nonempty value, then tap Done adding detail. The renderer now considers that slot filled (`slotMissing` is false), so the Add button disappears. There is no Edit action for populated slots. The draft screen only opens an editor through `onAddSlot`, and Done clears `activeSlot`. The person cannot correct a typo or wrong detail before Confirm without Reload card, which discards every unsaved change. The same limitation prevents correcting populated AI slot values during review. This falls short of acceptance check 1's draft editing flow. Evidence is the explicit missing-only guard at TaskCardView.tsx:58–64 and the editor/Done state transitions at Screens.tsx:399–405,417–447,449–452.
+Fix: Show an Edit action for filled slots while the waiting draft is editable, and reuse the same local review-card editor. Keep saving through the optional Confirm card body. Add a screen test that adds a missing value, closes its editor, reopens it and corrects it before confirmation while preserving another edited slot.
+
+## Checks and scope
+
+- Focused Earn screen/repository tests: 27 passed across 2 suites.
+- Existing participant HTTP repository/client tests: 30 passed across 2 suites.
+- Development Earn API tests: 7 passed, including ownership, replay/version, expiry, proxy and Earn-off checks.
+- Generated Earn shapes are consumed through aliases; existing participant OpenAPI/generated contracts are untouched. Shared participant transport adds only metadata/access methods and nested-error handling; focused legacy tests passed.
+- Manager/advisor approvals are web B1 scope, not missing B2 phone features. Standalone production POST drafts is explicitly absent from Agent A's pinned mobile contract; the development-only capability and honest unavailable state are documented, so no defect is reported for that limitation.
+- No full concurrent suites, physical-device checks, live providers, upstream backend integration or fresh browser journey were run by this reviewer.
+
+
+### Original R4 report
+
+# B2 phone red team — R4 Gaming and fairness
+
+Reviewed freeze `79c890dabcdf5587b9c31b86266994c11e4a3ef7` against base `8827048d4b95c2a800294d31063a5e72423ffcec` in `/workspace/DutyGraphApp-earn-phone`. No product files or commits changed.
+
+Read the brief rules, product rules, contract, client PRD and red-team procedure; repository and mobile agent instructions; mobile CLAUDE.md; design system, porting guidance and writing standard.
+
+Result: no High or Medium findings in the phone implementation under this lens. Two Low findings follow. Production anti-farming and payment authorization remain server responsibilities; the local fixture server cannot establish that production controls work.
+
+ID: R4-01
+Severity: Low
+Where: mobile/src/features/earn/logic.ts:80–89; mobile/src/features/earn/Screens.tsx:199
+What: A valid not-paid claim with `reason: "cap_reached"` and no optional `reasonText` loses the specific cap explanation.
+How to reproduce: Supply a summary containing a not-paid claim with `reason: "cap_reached"`, omit `reasonText`, and set `me.maxPaidCards` to 5. `ClaimRows` calls `claimReason`, whose only special cases are too_generic, not_linked and pool_empty; the result is "Open this card with your manager to check why it is not paid." This does not use the product message "You have {max} paid cards, the most for one person. This card is still saved to your map." CONTRACT.md defines reasonText as optional. The same fallback drops useful context for already_mapped, too_small and not_ready when reasonText is absent.
+Fix: Pass the available summary cap into the claim message helper and cover the cap reason explicitly; preserve server-provided reasonText when present. Add a case for a capped rejection without reasonText. This is a display issue and does not bypass an approval cap.
+
+ID: R4-02
+Severity: Low
+Where: dev-server/src/earn-fixtures.ts:123–140
+What: Development checks label many generic and duplicate/split cards likely to earn, so fixture journeys cannot validate the anti-farming experience.
+How to reproduce: Run `node --import tsx --input-type=module` in dev-server and import `earnChecks` and `manualEarnCard` from `./src/earn-fixtures.ts`; clone the example and replace its title with "Attend meetings" or "Submit timesheets". Both return generic.flagged=false and earnHint="likely". "Answer my emails" correctly returns flagged=true/not_yet. Independently, possibleDuplicates is hardcoded to [] and earnChecks accepts no existing-card collection, so exact repeats, minor rewrites and split copies can never yield duplicate checks in this fixture. These are deterministic code observations, not evidence of a production server bypass.
+Fix: Add explicit fixture cases for a broad generic task, duplicate card and split task and test their phone rendering. If dynamic fixture duplicate behavior is useful, compare against the local existing cards. Do not implement payment authorization in the client or claim these fixture checks verify server controls.
+
+## Verified and scoped observations
+
+- `teamRows` sorts a copy by name with localeCompare; TeamRows renders only names, card counts and fix counts. No ordinal, medals, top labels or count ranking. It never reads arbitrary peer card/title fields, so titles-off does not leak peer content on the board. The current contract board has no title field; titles-on grants permission to show titles but does not require them.
+- `paidCardCount(3, null)` gives `Paid cards: 3`; `(3, 5)` gives `Paid cards: 3 of 5`. No invented default cap.
+- Draft detail renders server earnHintReasons and possibleDuplicates as plain native text and says the manager decides. Confirmation does not promise payment.
+- Phone repository exposes reads, confirmation, rejection and fix submission; it has no approve or mark-paid operation. Generic detection, similarity across people and drafts, task splitting decisions, merge credit, person-cap enforcement and transactional pool reservations require Agent A's server and manager decisions. Not verified here against a real backend.
+- The fixture server creates manager_checking claims, not approvals or payouts. Its permissive checks are confined to a documented local development harness; the app labels the data and release repository refuses advertised fixture data.
+
+## Focused verification
+
+- `npm test -- --runInBand src/features/earn/__tests__/screens.test.tsx` in mobile: PASS, 13 tests. Includes name sort/count-only board, null/explicit cap text, server confirmation acknowledgement and conflict handling.
+- Read-only tsx probe of earnChecks: PASS as a probe; observed generic and duplicate limitations recorded above.
+- Device tests, real-server approvals, cross-user duplicate detection, cap concurrency and payment tests: not run; outside the phone-only review and local fake-server scope.
+
+
+### Original R5 report
+
+# Phone R5 — Product and claims
+
+Reviewed freeze `79c890dabcdf5587b9c31b86266994c11e4a3ef7` against base `8827048d4b95c2a800294d31063a5e72423ffcec`. No product edits or commits.
+
+## Findings
+
+ID: R5-01
+Severity: Medium
+Where: mobile/src/features/earn/Parts.tsx:57
+What: Every shared row overrides its accessible name with the title, omitting the detail that contains draft readiness/source/duration and team card/fix counts.
+How to reproduce: Inspect a draft row on From your AI: Screens.tsx passes readiness and timing only through `detail`, while Row supplies `accessibilityLabel={label}` to its Pressable. The resulting accessible button name is only the task title. Likewise TeamRows supplies counts in detail but Row names the element only with the person's name. VoiceOver/TalkBack users cannot obtain the same summary at the row focus stop; on web an explicit aria-label also overrides descendant text for the button name. This is direct property evidence; a native screen-reader device run was not performed.
+Fix: Include detail in the accessible label (or expose it as an accessible description with verified platform behavior), and add a focused accessibility-name regression for a draft and a team row.
+
+ID: R5-02
+Severity: Low
+Where: mobile/src/features/earn/logic.ts:80
+What: Several valid unpaid reason codes lose the required reason message when optional reasonText is absent.
+How to reproduce: A Claim with state `not_paid`, reason `not_ready` (or `cap_reached`, `too_small`, `already_mapped`, `manager_declined`) and no reasonText is valid under the frozen Claim schema; claimReason returns only “Open this card with your manager to check why it is not paid.” The branch at lines 83–89 handles only too_generic, not_linked and pool_empty. PRODUCT-RULES section 4 requires the specific messages. Some required interpolation values are not available in Claim, so this needs contract coordination; no ungrounded values should be invented.
+Fix: Render the required reason-specific messages from server-provided text, require that text for declined claims, and provide accurate code-specific fallback copy when details are unavailable.
+
+ID: R5-03
+Severity: Low
+Where: mobile/src/features/earn/Screens.tsx:393
+What: Draft Earn hints are displayed while the independent company-settings request is pending or failed.
+How to reproduce: Return a waiting draft with earnHint `likely`, and leave getSummary unresolved or reject it. The false branch at lines 393–395 passes the original checks; TaskCardView displays “Likely to earn” before settings have established enabled=true. If the company has just disabled Earn, this can briefly expose stale financial guidance. The same branch falls back to the default pay note instead of the company note. The normal server response may already set earnHint off; this finding concerns stale/inconsistent responses and is therefore Low.
+Fix: Suppress financial hints until summary positively establishes enabled=true. Keep the draft review usable if company settings fail.
+
+## Verification and limits
+
+- Focused existing suite: `npm test -- --runInBand src/features/earn/__tests__/screens.test.tsx` passed: 13 tests, one suite. No full suite was run.
+- Inspected committed 360px screenshots for Scoreboard, Earn rules and gap/fix: readable wrapping and adjacent company pay notes; no visible horizontal clipping in those captures.
+- Code review found explicit loading/error/empty list branches, acknowledged confirmation states, clearly labelled local fake money, payroll responsibility copy, local-only tick explanation, and honest voice-service wording. Monetary components consistently pair displayed amounts with pay rules.
+- Committed browser ledger claims are scoped to fake HTTP, typed voice fallback, intercepted off/error cases, and stubbed Clipboard/Share. It explicitly does not claim native voice/device or real-payment testing.
+- Native keyboard, largest Dynamic Type and screen-reader operation were not run. Existing 360px screenshots are reviewed evidence, not a fresh browser run.
+
+### Verified final disposition
+
+No confirmed High findings. All five confirmed Medium findings are fixed. Root verified the reported code paths and failing-before/passing-after evidence; independent R2 correction review additionally found no new High/Medium in persistence/retry scope.
+
+| ID | Disposition and regression evidence |
+| --- | --- |
+| R1-01 Medium | Fixed quoted JSON/password values, Bearer credentials and punctuated payment numbers in the local sanitizer. Route test showed one removal instead of four before, all four values absent from response/persisted records after. Detection remains best effort; do not enter secrets. |
+| R2-01 Medium | Exact operation/body/key is stored before dispatch using native encrypted storage. Manual same-body retry loads it after remount; acknowledgement removes it. Origin/device/local enrollment scope and generation checks prevent cross-login reuse. Local enrollment UUID is client metadata, preserved on refresh; no nonexistent server sessionId is assumed. Storage failure prevents send. Six targeted pending tests and transport enrollment/refresh tests cover these boundaries. Web storage remains memory-only. |
+| R2-02 Medium | Local confirmation stages task, draft/claim and matching replay receipt in one synchronous atomic file snapshot. Failure restores all affected collections. Fault injection reproduced an orphan before; after fix a failed save leaves none and retry creates one. Restart after acknowledgement-save failure replays one committed task. This is single-process development persistence, not production database acceptance. |
+| R3-01 Medium | All seven slots expose Add/Edit while waiting; reopen/correct retains other local fields, basis=told_me, and sends only with explicit Confirm. Not mine never sends edits. Before/after component regression covers the lost editor. |
+| R5-01 Medium | Actionable draft and static team row accessible names include summary detail. Static rows are text, not disabled buttons. Two focused semantic tests failed before and pass after. No device screen-reader claim. |
+| R4-01 / R5-02 Low duplicate | Fixed reason-specific unpaid fallbacks and exact configured-cap copy; server reasonText wins. Missing duplicate/card/slot detail is never invented. Eight focused a11y/reason tests passed. |
+| R5-03 Low | Financial hints stay suppressed until summary positively enables Earn, including pending/error cases; draft review still works. Component tests failed on pending/error before and pass after. |
+| R4-02 Low | Added deterministic generic, duplicate and split warning scenarios and renderer tests; broadened explicit generic fixture examples. Default seed IDs/counts unchanged. Server regression failed before, then fairness plus existing Earn tests passed; three renderer tests passed. These authored examples do not implement production similarity or split/payment enforcement. |
+
+# Independent R2 correction review
+
+Reviewed the uncommitted working diff after freeze `79c890dabcdf5587b9c31b86266994c11e4a3ef7`. Read-only review; no product edits.
+
+## Disposition
+
+**R2-01: substantively addressed for native phone manual retries.** `pending-command.ts` persists the exact operation/body/signature/key before network dispatch and loads matching pending records on a fresh invocation. Origin plus device/local-enrollment identity scope prevents cross-enrollment reuse; localSessionId is replaced on enrollment and retained on refresh. Storage failures prevent sending. Identity checks before dispatch and after response prevent an old enrollment from acknowledging another enrollment's command. Hooks and spoken-draft save use this mechanism. Acknowledgement removes pending records; failures retain them. This supports manual same-body retry without automatic replay. Web's memory-only secure-storage implementation remains an explicitly documented limitation; this is a native phone correction.
+
+**R2-02: substantively addressed.** `dev-server/src/earn.ts` stages tasks, Earn draft/claim state, and the exact command receipt in one synchronous Store.save snapshot. Its failure handler restores all three prior collection references. Matching the existing wrapper's receipt key/body hash closes the crash window after snapshot persistence but before wrapper acknowledgement. The wrapper's later receipt persistence may fail, but the previously committed receipt can be replayed after restart. No other Store collections are overwritten.
+
+## Independent focused verification
+
+- `node --import tsx --test test/earn.test.ts`: **10 passed**, including fault injection before snapshot persistence and failure of wrapper acknowledgement persistence followed by restart/replay.
+- `npx jest src/features/earn/__tests__/pending-command.test.ts --runInBand`: **6 passed**, including lost acknowledgement/fresh invocation for fixes, drafts and confirmations, failed durable storage, enrollment changes and identity fencing.
+
+Inspected session/token storage serialization and native chunked secure storage. No confirmed new High or Medium counterexample found in the correction scope. No full suite or device validation run. Production transactional pool/cap checks, append-only money ledger, database RLS/grants/migrations and retention remain separate server responsibilities as in the original review.
+
+Post-review verification: whole mobile **552/552** (65 suites,36.997s), dev-server **76/76**, shared **78/78**; mobile/dev/shared TypeScript and whole lint passed. An integrated typecheck first caught new test-only Jest imports/literal/tuple types; those were corrected, final TypeScript exit0, and affected four suites28/28 passed. No product type bypass, skipped test or timeout increase. Mobile high-threshold audit rerun exits1 with20 findings (14low,3moderate,3high) in the documented SDK tool chain; root/dev audits0. Review freeze CI40824655411 passed including legacy browser/HTTP/coverage checks. Corrected-head CI and post-correction browser/export follow.

@@ -84,6 +84,14 @@ jest.mock("@/api/earn", () => ({ useEarnRepository: () => mockRepository }));
 jest.mock("@/hooks/queries", () => ({
   useMe: () => ({ data: { displayName: "Dana Reed" } }),
 }));
+let mockPendingStorage: unknown = null;
+jest.mock("@/storage/secure", () => ({
+  secureGetJson: async () => mockPendingStorage,
+  secureSetJson: async (_key: string, value: unknown) => { mockPendingStorage = structuredClone(value); },
+}));
+jest.mock("@/storage/tokens", () => ({
+  tokenStore: { get: async () => ({ deviceId: "fictional-device", localSessionId: "fictional-enrollment" }) },
+}));
 jest.mock("expo-haptics", () => ({
   impactAsync: async () => {},
   ImpactFeedbackStyle: { Light: "light" },
@@ -263,6 +271,7 @@ beforeEach(() => {
   mockCheckboxProps = [];
   mockCompositeChildren = [];
   mockKey = 0;
+  mockPendingStorage = null;
   mockRepository = baseRepository();
 });
 function assertNoRawViewText(value: unknown): void {
@@ -364,7 +373,7 @@ describe("Earn phone core screens", () => {
     });
     await show(<EarnEntry />);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "From your AI" })).toBeTruthy(),
+      expect(screen.getByRole("button", { name: /^From your AI/ })).toBeTruthy(),
     );
     expect(screen.queryByRole("button", { name: "Scoreboard" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Earn" })).toBeNull();
@@ -387,6 +396,15 @@ describe("Earn phone core screens", () => {
     expect(screen.queryByText("$30,000")).toBeNull();
     expect(screen.queryByText("$10,000")).toBeNull();
   });
+  it("uses the available paid-card cap in declined claim text", async () => {
+    mockRepository.getSummary = async () => ({
+      ...structuredClone(summary),
+      me: { ...summary.me, maxPaidCards: 8 },
+      claims: [{ id: "capped", draftId: null, taskRecordId: "task", title: "Check parts", state: "not_paid", amountCents: 10000, reason: "cap_reached", createdAt: draft.createdAt }],
+    });
+    await show(<EarnScoreboardScreen repository={mockRepository} />);
+    await waitFor(() => expect(screen.getByText("You have 8 paid cards, the most for one person. This card is still saved to your map.")).toBeTruthy());
+  });
   it("does not label a failed confirmed-card list as empty and can retry it", async () => {
     let failed = true;
     mockRepository.listDrafts = async (state) => {
@@ -403,7 +421,7 @@ describe("Earn phone core screens", () => {
     );
     expect(screen.queryByText("No cards confirmed here yet.")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "Restock the service van" }),
+      screen.getByRole("button", { name: /^Restock the service van/ }),
     ).toBeTruthy();
     failed = false;
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
@@ -525,6 +543,60 @@ describe("Earn phone core screens", () => {
       basis: "told_me",
     });
   });
+  it("reopens filled slots and preserves other local corrections for Confirm", async () => {
+    let submitted: TaskCardDraftInput | undefined;
+    mockRepository.confirmDraft = async (_id, _version, _key, reviewed) => {
+      submitted = reviewed;
+      return { draft: { ...draft, card: reviewed!, state: "confirmed" }, taskRecordId: "task" };
+    };
+    await show(<EarnDraftScreen id={draft.id} repository={mockRepository} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add Only I know" })).toBeTruthy());
+    await fireEvent.press(screen.getByRole("button", { name: "Add Only I know" }));
+    await fireEvent.changeText(screen.getByLabelText("Only I know detail"), "Wrong bin");
+    await fireEvent.press(screen.getByRole("button", { name: "Done adding detail" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Edit Starts when" }));
+    await fireEvent.changeText(screen.getByLabelText("Starts when detail"), "Delivery arrives.");
+    await fireEvent.press(screen.getByRole("button", { name: "Done adding detail" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Edit Only I know" }));
+    expect(screen.getByLabelText("Only I know detail").props.value).toBe("Wrong bin");
+    await fireEvent.changeText(screen.getByLabelText("Only I know detail"), "Blue bin");
+    await fireEvent.press(screen.getByRole("button", { name: "Done adding detail" }));
+    for (const label of ["Starts when", "Gets from", "Does", "Hands to", "How often", "How long", "Only I know"])
+      expect(screen.getByRole("button", { name: `Edit ${label}` })).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(submitted).toBeDefined());
+    expect(submitted!.slots.onlyIKnow).toEqual({ value: "Blue bin", basis: "told_me" });
+    expect(submitted!.slots.startsWhen).toEqual({ value: "Delivery arrives.", basis: "told_me" });
+    expect(submitted!.steps).toEqual(card.steps);
+  });
+  it("never sends local corrections with Not mine", async () => {
+    const rejected: unknown[][] = [];
+    mockRepository.notMine = async (...args) => {
+      rejected.push(args);
+      return { ...draft, state: "not_mine" };
+    };
+    await show(<EarnDraftScreen id={draft.id} repository={mockRepository} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Add Only I know" })).toBeTruthy());
+    await fireEvent.press(screen.getByRole("button", { name: "Add Only I know" }));
+    await fireEvent.changeText(screen.getByLabelText("Only I know detail"), "Unsaved correction");
+    await fireEvent.press(screen.getByRole("button", { name: "Not mine" }));
+    await waitFor(() => expect(rejected).toHaveLength(1));
+    expect(rejected[0]).toEqual([draft.id, draft.version, expect.any(String)]);
+  });
+  it.each(["pending", "off", "error"])("hides financial draft hints while summary is %s", async (state) => {
+    mockRepository.getSummary = state === "pending"
+      ? () => new Promise(() => {})
+      : state === "error"
+        ? async () => { throw new Error("Summary unavailable"); }
+        : async () => ({ ...structuredClone(summary), settings: { ...summary.settings, enabled: false } });
+    mockRepository.getDraft = async () => ({ ...structuredClone(draft), checks: { ...checks, earnHint: "not_yet", earnHintReasons: ["pool_empty"] } });
+    await show(<EarnDraftScreen id={draft.id} repository={mockRepository} />);
+    await waitFor(() => expect(screen.getByText("Draft state: waiting")).toBeTruthy());
+    expect(screen.queryByText(/Will not earn yet/)).toBeNull();
+    expect(screen.queryByText(/Likely to earn/)).toBeNull();
+    expect(screen.queryByText(/pool for this pilot/)).toBeNull();
+    expect(screen.getByText("Ready to hand off")).toBeTruthy();
+  });
   it("submits a gap fix through the repository with no identity fields", async () => {
     const requests: unknown[] = [];
     mockRepository.getGaps = async () => ({
@@ -561,11 +633,11 @@ describe("Earn phone core screens", () => {
     await show(<EarnGapsScreen repository={mockRepository} />);
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Returns wait for a check" }),
+        screen.getByRole("button", { name: /^Returns wait for a check/ }),
       ).toBeTruthy(),
     );
     await fireEvent.press(
-      screen.getByRole("button", { name: "Returns wait for a check" }),
+      screen.getByRole("button", { name: /^Returns wait for a check/ }),
     );
     await fireEvent.press(screen.getByRole("button", { name: "I have a fix" }));
     await fireEvent.changeText(
@@ -646,11 +718,11 @@ describe("Earn phone core screens", () => {
     await show(<EarnGapsScreen repository={mockRepository} />);
     await waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Returns wait for a check" }),
+        screen.getByRole("button", { name: /^Returns wait for a check/ }),
       ).toBeTruthy(),
     );
     await fireEvent.press(
-      screen.getByRole("button", { name: "Returns wait for a check" }),
+      screen.getByRole("button", { name: /^Returns wait for a check/ }),
     );
     await fireEvent.press(screen.getByRole("button", { name: "I have a fix" }));
     expect(screen.getByLabelText("What would you change?")).toBeTruthy();

@@ -55,9 +55,9 @@ export function EarnTaskCardView({
           <Text color={slotMissing(card, key) ? "amber" : "ink"}>
             {slotMissing(card, key) ? "Not stated" : card.slots[key].value}
           </Text>
-          {slotMissing(card, key) && onAddSlot && (
+          {onAddSlot && (
             <Button
-              label={`Add ${SLOT_LABELS[key]}`}
+              label={`${slotMissing(card, key) ? "Add" : "Edit"} ${SLOT_LABELS[key]}`}
               kind="link"
               disabled={editDisabled}
               onPress={() => onAddSlot(key)}

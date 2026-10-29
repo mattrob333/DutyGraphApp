@@ -1,4 +1,7 @@
 import test from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:http";
@@ -334,5 +337,132 @@ test("Proxy mode never shadows or seeds real Earn routes with development fixtur
     });
   } finally {
     await f.close();
+  }
+});
+
+test("Quoted credentials and punctuated PANs never persist", async () => {
+  const f = await fixture();
+  try {
+    const secrets = [
+      "fictional-json-secret",
+      "fictional two word password",
+      "fictional-bearer-secret",
+      "4242.4242.4242.4242",
+    ];
+    const card = manualEarnCard();
+    card.aiIAlreadyUse =
+      '{"password":"fictional-json-secret"} password="fictional two word password" Authorization: Bearer fictional-bearer-secret Card 4242.4242.4242.4242';
+    const result = await f.call(
+      "/drafts",
+      { cards: [card], sourceNote: "app" },
+      "quoted-secrets",
+    );
+    assert.equal(result.status, 200);
+    assert.equal(result.body.drafts[0].checks.secretsRemoved, 4);
+    for (const secret of secrets) {
+      assert.ok(!JSON.stringify(result.body).includes(secret));
+      assert.ok(!JSON.stringify(f.store.records).includes(secret));
+    }
+  } finally {
+    await f.close();
+  }
+});
+test("Confirmation snapshot failure leaves no orphan in memory or disk; retry creates one", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "earn-atomic-"));
+  const file = join(dir, "state.json");
+  const store = new Store(file);
+  const f = await fixture({ store });
+  try {
+    const row = (await f.call("/drafts")).body.drafts[0];
+    const before = Object.keys(store.records.tasks ?? {}).length;
+    const original = store.save.bind(store);
+    let failOnce = true;
+    store.save = () => {
+      if (
+        failOnce &&
+        Object.keys(store.records.tasks ?? {}).length > before &&
+        (Object.values(store.records.earn)[0].value as any).drafts.some(
+          (d: any) => d.id === row.id && d.state === "confirmed",
+        )
+      ) {
+        failOnce = false;
+        throw new Error("synthetic snapshot failure");
+      }
+      original();
+    };
+    const path = "/drafts/" + row.id + "/confirm";
+    assert.equal(
+      (await f.call(path, { expectedVersion: 1 }, "durable-confirm")).status,
+      500,
+    );
+    for (const snapshot of [store, new Store(file)]) {
+      assert.equal(Object.keys(snapshot.records.tasks ?? {}).length, before);
+      const state = Object.values(snapshot.records.earn)[0].value as any;
+      assert.equal(
+        state.drafts.find((d: any) => d.id === row.id).state,
+        "waiting",
+      );
+    }
+    const result = await f.call(
+      path,
+      { expectedVersion: 1 },
+      "durable-confirm",
+    );
+    assert.equal(result.status, 200);
+    assert.equal(Object.keys(new Store(file).records.tasks).length, before + 1);
+    const state = Object.values(new Store(file).records.earn)[0].value as any;
+    assert.equal(
+      state.drafts.find((d: any) => d.id === row.id).taskRecordId,
+      result.body.taskRecordId,
+    );
+    assert.equal(
+      state.claims.filter((c: any) => c.draftId === row.id).length,
+      1,
+    );
+  } finally {
+    await f.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Committed confirmation receipt survives failure of wrapper acknowledgement save and restart", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "earn-receipt-"));
+  const file = join(dir, "state.json");
+  const store = new Store(file);
+  const f = await fixture({ store });
+  let restarted: Awaited<ReturnType<typeof fixture>> | undefined;
+  try {
+    const row = (await f.call("/drafts")).body.drafts[0];
+    const before = Object.keys(store.records.tasks ?? {}).length;
+    const original = store.save.bind(store);
+    let committed = false;
+    store.save = () => {
+      if (Object.keys(store.records.tasks ?? {}).length > before) {
+        if (committed)
+          throw new Error("synthetic acknowledgement save failure");
+        committed = true;
+      }
+      original();
+    };
+    const path = "/drafts/" + row.id + "/confirm";
+    assert.equal(
+      (await f.call(path, { expectedVersion: 1 }, "receipt-confirm")).status,
+      500,
+    );
+    restarted = await fixture({ store: new Store(file) });
+    // Retry the original session's pending request, rather than a new owner/key.
+    const result = await restarted.call(
+      path,
+      { expectedVersion: 1 },
+      "receipt-confirm",
+      f.session.accessToken,
+    );
+    assert.equal(result.status, 200);
+    assert.equal(result.body.draft.state, "confirmed");
+    assert.equal(Object.keys(restarted.store.records.tasks).length, before + 1);
+  } finally {
+    await f.close();
+    await restarted?.close();
+    rmSync(dir, { recursive: true, force: true });
   }
 });

@@ -10,7 +10,7 @@ import {
   Screen,
   Text,
 } from "@/components/common";
-import { newIdempotencyKey } from "@/utils/id";
+import { runPendingEarnCommand } from "./pending-command";
 import { radius, spacing, useColors } from "@/theme";
 import type { TaskCardDraftInput } from "@/api/earn/types";
 import { spokenTaskDraft } from "./voice-logic";
@@ -31,8 +31,7 @@ export function VoiceTaskScreen() {
     [saved, setSaved] = useState(false);
   const stopVoice = useRef<(() => Promise<boolean>) | null>(null);
   const alive = useRef(true),
-    pending = useRef(false),
-    intent = useRef<{ signature: string; key: string } | null>(null);
+    pending = useRef(false);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -63,10 +62,9 @@ export function VoiceTaskScreen() {
       if (!closed)
         throw new Error("Close voice capture before saving this draft.");
       const card = spokenTaskDraft(title, duty, words, workType);
-      const signature = JSON.stringify(card);
-      if (intent.current?.signature !== signature)
-        intent.current = { signature, key: newIdempotencyKey() };
-      const result = await repo.createDraftFromTask(card, intent.current.key);
+      const result = await runPendingEarnCommand("create-draft", card, (key) =>
+        repo.createDraftFromTask(card, key),
+      );
       if (!alive.current) return;
       if (result.refused.length)
         throw new Error(result.refused.map((item) => item.message).join(" "));
