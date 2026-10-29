@@ -1,4 +1,5 @@
 import type { ApiClient } from "../http/client";
+import { assertParticipantGeneration, getParticipantSessionGeneration } from "../http/client";
 import { config } from "../config";
 import { CompanionApiError } from "@/types/domain";
 import type { EarnRepository } from "./repository";
@@ -61,7 +62,9 @@ export class HttpEarnRepository implements EarnRepository {
     return this.client.get<T>(path);
   }
   private async write<T>(path: string, body: unknown, key: string): Promise<T> {
+    const owner = getParticipantSessionGeneration();
     await this.environment();
+    assertParticipantGeneration(owner);
     return this.client.post<T>(path, body, { idempotencyKey: key });
   }
   getSummary() {
@@ -118,6 +121,7 @@ export class HttpEarnRepository implements EarnRepository {
     }
   }
   async createDraftFromTask(card: TaskCardDraftInput, key: string) {
+    const owner = getParticipantSessionGeneration();
     if (!(await this.supportsDraftCreation()))
       throw new CompanionApiError(
         "NOT_AVAILABLE",
@@ -125,6 +129,7 @@ export class HttpEarnRepository implements EarnRepository {
         501,
         false,
       );
+    assertParticipantGeneration(owner);
     return this.write<DraftCreation>(
       "/earn/drafts",
       { cards: [card], sourceNote: "app" },

@@ -60,6 +60,34 @@ const response = (status: number, body: unknown) =>
     headers: { get: () => null },
   }) as unknown as Response;
 describe("Earn repository boundary", () => {
+  it("does not send reviewed words under a replacement enrollment after capabilities resolves", async () => {
+    let stored: StoredSession | null = {
+      accessToken: "old-access", refreshToken: "old-refresh",
+      accessExpiresAt: "2099-01-01T00:00:00Z", deviceId: "old-device",
+    };
+    const sent: { method: string; bearer: string; body: unknown }[] = [];
+    const client = new ApiClient({
+      baseUrl: "http://localhost",
+      tokenStore: { get: async () => stored, set: async value => { stored = value; }, clear: async () => { stored = null; } },
+      fetch: async (_url, init) => {
+        sent.push({ method: init.method, bearer: init.headers.Authorization, body: init.body });
+        return response(200, {});
+      },
+    });
+    const repo = new HttpEarnRepository({
+      get: async <T>(path: string) => {
+        const value = await client.get<T>(path);
+        // The GET has passed its own generation fence. Replace enrollment
+        // before the repository continuation dispatches its separate POST.
+        await client.clearSession();
+        stored = { accessToken: "new-access", refreshToken: "new-refresh", accessExpiresAt: "2099-01-01T00:00:00Z", deviceId: "new-device" };
+        return value;
+      },
+      post: client.post.bind(client),
+    }, "http://localhost", true);
+    await expect(repo.createFix({ text: "Old person's reviewed words", kind: "new_steps", measureName: "Returns", hoursBefore: 20, hoursAfter: 5 }, "old-intent-key")).rejects.toMatchObject({ code: "SESSION_ENDED" });
+    expect(sent.map(item => item.method)).toEqual(["GET"]);
+  });
   it("uses scoped URLs, version pins and the caller retry key without identity body fields", async () => {
     const { client, calls } = fake(),
       repo = new HttpEarnRepository(client, "http://127.0.0.1:4510", true);

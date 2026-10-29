@@ -292,3 +292,41 @@ Inspected session/token storage serialization and native chunked secure storage.
 Post-review verification: whole mobile **552/552** (65 suites,36.997s), dev-server **76/76**, shared **78/78**; mobile/dev/shared TypeScript and whole lint passed. An integrated typecheck first caught new test-only Jest imports/literal/tuple types; those were corrected, final TypeScript exit0, and affected four suites28/28 passed. No product type bypass, skipped test or timeout increase. Mobile high-threshold audit rerun exits1 with20 findings (14low,3moderate,3high) in the documented SDK tool chain; root/dev audits0. Review freeze CI40824655411 passed including legacy browser/HTTP/coverage checks. Corrected-head CI and post-correction browser/export follow.
 
 Final post-correction browser/export: actual enrollment and pending helper journeys passed360/1280; fresh release fixture refusal passed before seed fetch. No native device or production authorization/payment claim. Screenshots/results are in [Earn browser evidence](earn-client/BROWSER.md). Final whole counts remain552 mobile,76 dev-server and78 shared; TypeScript/lint passed; mobile audit remains explicitly failed as above.
+
+### Additional confirmed correction R2-03 — enrollment boundary
+
+# Independent R2 correction: enrollment race
+
+ID: R2-03
+Severity: Medium
+Where: mobile/src/api/earn/HttpEarnRepository.ts, private write() and createDraftFromTask(); mobile/src/features/earn/pending-command.ts, immediately before send(entry.key)
+What: A replacement enrollment between the capability GET and write POST could send the old person's reviewed words using the new person's bearer.
+
+## Confirmed evidence before correction
+
+Added focused regression `does not send reviewed words under a replacement enrollment after capabilities resolves` in `mobile/src/api/earn/__tests__/repository.test.ts`.
+
+The test uses the actual ApiClient and its token-store/generation behavior. The injected fetch records requests. The repository's injected GET delegates to actual ApiClient.get(), waits for its successful result (including that request's generation checks), then calls client.clearSession() and replaces the stored session before returning the capabilities result to the repository. The pending createFix body contains the old person's reviewed words; the replacement token store contains new-access/new-device.
+
+Before the correction, the regression failed: Jest reported `Received promise resolved instead of rejected`, resolved value `{}`. The write continued through a new ApiClient.post(), which captured the new generation and read the replacement bearer. This is a confirmed request-boundary defect rather than an assumption that ApiClient's own per-request fence was absent. A logout/enrollment change after GET completion but before the outer continuation is the relevant scheduling window.
+
+## Root issue and correction
+
+Each ApiClient GET/POST independently captures participant generation. The repository previously treated its asynchronous capabilities check and subsequent POST as one authorized operation without retaining the original generation across that await.
+
+The correction captures generation at entry to write(), awaits environment(), then calls assertParticipantGeneration(owner) synchronously immediately before client.post(). It also captures/asserts around createDraftFromTask()'s outer supportsDraftCreation() await. Finally, pending-command.ts checks its captured generation synchronously immediately before invoking send(entry.key), closing the continuation gap after its asynchronous owner verification.
+
+No network action can interleave between each new synchronous fence and the direct invocation that captures the corresponding generation. Existing ApiClient fences continue to protect token reads, refresh and response processing within that request.
+
+## Verification after correction
+
+- `npx jest src/api/earn/__tests__/repository.test.ts src/features/earn/__tests__/pending-command.test.ts --runInBand`: **2 suites passed, 21 tests passed**. The new replacement-enrollment regression now rejects with SESSION_ENDED and verifies only GET was sent.
+- `npm run typecheck` in mobile: **passed**.
+
+Changed only HttpEarnRepository.ts, repository.test.ts and pending-command.ts during this correction. No commits or repository log edits were made by this reviewer.
+
+## Limits
+
+The deterministic regression injects the enrollment change at the exact boundary after a real ApiClient GET has completed; it is not a device timing rehearsal. No full suite, real backend, real device or provider checks were run by this reviewer. The original durable retry and atomic local confirmation corrections remain separately reviewed in phone-correction-r2.md. Production database and money-ledger responsibilities remain outside this phone correction.
+
+Root full mobile verification after the fix: **553/553**,65 suites,35.604s; TypeScript and whole lint passed. This is the sixth confirmed Medium, corrected with a failing-before/passing-after actual transport regression. No confirmed High; no uncorrected Medium remains in reviewed client scope.

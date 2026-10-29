@@ -91,6 +91,9 @@ export async function runPendingEarnCommand<T>(
     return created;
   });
   await assertOwner();
+  // No asynchronous gap may separate this fence from callback dispatch.
+  if (getParticipantSessionGeneration() !== owner.generation)
+    throw new Error("Your session changed. Open this screen again before sending.");
   const result = await send(entry.key);
   await assertOwner();
   await locked(async () => {
