@@ -30,3 +30,7 @@
 ## 2026-10-28 — Earn phone client defaults
 
 Use Agent A's generated eight-operation mobile contract independently of participant v1. Share the existing participant ApiClient/context; independent refreshers can rotate the same refresh token twice. Missing settings and financial authority never come from screen input. No new Earn data is embedded in the phone bundle; release builds refuse a fixture-advertising backend. The real contract has no standalone draft-creation route, so spoken task saving uses only the authenticated development capability on loopback, not an invented production route. Voice uses existing native recognition with no provider grant; all unknown task slots remain Not stated. Clipboard uses the installed SDK57-compatible package; native acceptance remains unverified. Keep the current SDK rather than apply audit's proposed breaking downgrade; remaining tooling findings are an explicit release limitation.
+
+## 2026-10-28 — Phone review semantics and platform accessibility
+
+Use the existing Confirm request's optional card for local missing-slot edits, so production needs no invented PATCH endpoint. Never auto-confirm spoken words or persist local task tick boxes as execution. Preserve native accessibility state and supply web ARIA state explicitly; decorative SVG native props are excluded from web DOM. Render optional string notices through boolean conditions so empty values cannot become raw View children. Verify development fake data with Expo development mode and release refusal with a separate production export.

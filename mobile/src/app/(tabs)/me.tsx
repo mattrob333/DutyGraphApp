@@ -1,3 +1,4 @@
+import { EarnEntry } from "@/features/earn/Screens";
 import React from 'react';
 import { router } from 'expo-router';
 import { useRepository } from '@/api';
@@ -31,6 +32,7 @@ export default function MeTab() {
     <Screen refreshing={me.isRefetching} onRefresh={() => me.refetch()}>
       <Heading>You</Heading>
       <ProfileHeader displayName={p.displayName} subtitle={subtitle} />
+      <EarnEntry />
 
       {full && time ? (
         <>

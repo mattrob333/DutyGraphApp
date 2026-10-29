@@ -82,3 +82,5 @@ The [native build workflow](.github/workflows/native-build.yml) builds an instal
 Rehearse with real providers (paid, never in CI): start the dev server with `OPENAI_API_KEY` and `OPENAI_TEXT_MODEL` set, then run `npx tsx scripts/real-provider-rehearsal.ts` in `dev-server/` (needs ffmpeg).
 
 Earn phone B2 adds a generated contract adapter and a separate fictional development server; [details](docs/earn-client/README.md). Review/verification is in progress; not released or device-tested.
+
+Earn phone core screens and typed voice fallback now pass527 mobile tests and360/1280px local development browser journeys. Production export and independent phone review are in progress; [verification](docs/earn-client/BROWSER.md).
