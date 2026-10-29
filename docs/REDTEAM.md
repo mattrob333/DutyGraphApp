@@ -259,7 +259,7 @@ Fix: Suppress financial hints until summary positively establishes enabled=true.
 
 ### Verified final disposition
 
-No confirmed High findings. All five confirmed Medium findings are fixed. Root verified the reported code paths and failing-before/passing-after evidence; independent R2 correction review additionally found no new High/Medium in persistence/retry scope.
+No confirmed High findings. All five Medium findings from the original freeze are fixed; additional R2-03 below is also corrected. Root verified the reported code paths and failing-before/passing-after evidence; independent R2 correction review additionally found no new High/Medium in persistence/retry scope.
 
 | ID | Disposition and regression evidence |
 | --- | --- |
@@ -330,3 +330,9 @@ Changed only HttpEarnRepository.ts, repository.test.ts and pending-command.ts du
 The deterministic regression injects the enrollment change at the exact boundary after a real ApiClient GET has completed; it is not a device timing rehearsal. No full suite, real backend, real device or provider checks were run by this reviewer. The original durable retry and atomic local confirmation corrections remain separately reviewed in phone-correction-r2.md. Production database and money-ledger responsibilities remain outside this phone correction.
 
 Root full mobile verification after the fix: **553/553**,65 suites,35.604s; TypeScript and whole lint passed. This is the sixth confirmed Medium, corrected with a failing-before/passing-after actual transport regression. No confirmed High; no uncorrected Medium remains in reviewed client scope.
+
+## 2026-10-28 — Earn phone final close
+
+Final corrected code `f01d76a1e355df41af990cab9e7e2619ddfaa436`:553/553 mobile tests (65 suites), TypeScript/lint passed. Unchanged development-server76/shared78 checks remain passing. After R2-03, actual-enrollment fake-HTTP360/1280 journeys passed again with no page/render errors, overflow or microphone calls. Fresh release export/static fixture refusal passed before seed reads; normal legacy enrollment still worked. Evidence refreshed in docs/earn-client/BROWSER.md. Browser normal flow checks compatibility; the focused actual-transport regression verifies the hostile enrollment interleaving. Only owned QA servers were stopped and ports4510/4512/4513 verified clear.
+
+Six confirmed Medium findings and all reported Lows are corrected, no confirmed High. Audit remains failed on the documented Expo toolchain path; no native/device/provider/payment acceptance was run. Final shared handover and both draft PR links above are authoritative; neither PR is merged.
