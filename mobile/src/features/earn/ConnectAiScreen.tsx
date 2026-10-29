@@ -105,7 +105,7 @@ export function ConnectAiScreen({ origin }: { origin?: string }) {
       <Heading>Connect your AI</Heading>
       <Text>
         Your AI writes Task Cards with you and sends them to DutyGraph. They
-        arrive under From your AI. You still check and confirm each one.
+        arrive in My work. You still check and confirm each one.
       </Text>
       <SectionLabel>Copy this link and go</SectionLabel>
       <Card>

@@ -5,6 +5,7 @@ import { CompanionApiError } from "@/types/domain";
 import type { EarnRepository } from "./repository";
 import type {
   DraftConfirmation,
+  DiscoveryList,
   DraftCreation,
   DraftList,
   DraftState,
@@ -74,6 +75,16 @@ export class HttpEarnRepository implements EarnRepository {
     return this.read<DraftList>(
       "/earn/drafts" + (state ? "?state=" + encodeURIComponent(state) : ""),
     );
+  }
+  async listDiscoveries() {
+    try {
+      return await this.read<DiscoveryList>("/earn/discoveries");
+    } catch (error) {
+      // A server without discovery sessions: nothing is with the AI yet.
+      if ((error as { status?: number }).status === 404)
+        return { discoveries: [], connected: [] };
+      throw error;
+    }
   }
   getDraft(id: string) {
     return this.read<TaskCardDraft>("/earn/drafts/" + encodeURIComponent(id));

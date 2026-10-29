@@ -7,6 +7,7 @@ import type {
   TaskCardDraftInput,
 } from "@/api/earn/types";
 import { useColors } from "@/theme";
+import { WorkBand, WorkChip } from "./Gallery";
 import { draftReason, SLOT_KEYS, SLOT_LABELS, slotMissing } from "./logic";
 export function EarnTaskCardView({
   card,
@@ -27,6 +28,10 @@ export function EarnTaskCardView({
     [ticks, setTicks] = useState<Record<number, boolean>>({});
   return (
     <View style={{ gap: 12 }}>
+      <View style={{ borderRadius: 4, overflow: "hidden" }}>
+        <WorkBand type={card.workType} height={7} />
+      </View>
+      <WorkChip type={card.workType} long />
       <Text variant="title" accessibilityRole="header">
         {card.title}
       </Text>

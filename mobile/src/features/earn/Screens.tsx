@@ -39,6 +39,19 @@ import {
   teamRows,
 } from "./logic";
 import { EarnTaskCardView } from "./TaskCardView";
+import {
+  AiProgressRow,
+  CardTile,
+  ConnectedLine,
+  GalleryFilters,
+} from "./Gallery";
+import {
+  cardStatus,
+  galleryCards,
+  tileFooter,
+  withAiRows,
+  type GalleryFilter,
+} from "./gallery-logic";
 import { VoiceField } from "./VoiceField";
 import { EARN_PROMPTS, FIND_MORE_QUESTIONS } from "./prompts";
 
@@ -93,8 +106,8 @@ export function EarnEntry() {
     <View>
       <SectionLabel>Your work</SectionLabel>
       <Row
-        label="From your AI"
-        detail="Check the Task Card drafts sent for you"
+        label="My work"
+        detail="Your Task Cards, and what your AI is asking you"
         onPress={() => nav("/earn/drafts")}
       />
       <Row
@@ -138,7 +151,7 @@ export function EarnHomeScreen({
   const summary = useEarnResource(useCallback(() => repo.getSummary(), [repo]));
   return (
     <Frame repo={repo} title="Your work">
-      <Row label="From your AI" onPress={() => nav("/earn/drafts")} />
+      <Row label="My work" onPress={() => nav("/earn/drafts")} />
       <Row label="Connect your AI" onPress={() => nav("/earn/connect")} />
       <Row label="Find the gaps" onPress={() => nav("/earn/gaps")} />
       {summary.data?.settings.enabled && (
@@ -317,45 +330,89 @@ export function EarnDraftsScreen({
   const confirmed = useEarnResource(
     useCallback(() => repo.listDrafts("confirmed"), [repo]),
   );
+  const discoveries = useEarnResource(
+    useCallback(
+      () =>
+        repo.listDiscoveries?.() ??
+        Promise.resolve({ discoveries: [], connected: [] }),
+      [repo],
+    ),
+  );
+  const summary = useEarnResource(useCallback(() => repo.getSummary(), [repo]));
+  const [filter, setFilter] = useState<GalleryFilter>("all");
+  const cards = galleryCards(
+    waiting.data?.drafts ?? [],
+    confirmed.data?.drafts ?? [],
+  );
+  const claims = new Map(
+    (summary.data?.claims ?? []).map((claim) => [claim.draftId, claim]),
+  );
+  const counts = {
+    all: cards.length,
+    manual: cards.filter((d) => d.card.workType === "manual").length,
+    digital: cards.filter((d) => d.card.workType === "digital").length,
+    mixed: cards.filter((d) => d.card.workType === "mixed").length,
+  };
+  const shown = cards.filter(
+    (d) => filter === "all" || d.card.workType === filter,
+  );
+  const rows = withAiRows(discoveries.data, cards);
+  const connected = discoveries.data?.connected?.[0]?.app;
+  const loading = !waiting.data && !waiting.error;
   return (
-    <Frame repo={repo} title="From your AI">
-      <Text>Your AI's words stay drafts until you confirm them.</Text>
-      <SectionLabel>Waiting drafts</SectionLabel>
-      {waiting.error ? (
-        <EarnError error={waiting.error} retry={waiting.reload} />
-      ) : !waiting.data ? (
-        <LoadingState label="Loading your drafts…" />
-      ) : waiting.data.drafts.length === 0 ? (
+    <Frame repo={repo} title="My work">
+      <Text color="muted">Your AI's words stay drafts until you confirm them.</Text>
+      {rows.length > 0 && (
+        <>
+          <SectionLabel>With your AI now · {rows.length}</SectionLabel>
+          <View style={{ gap: 10 }}>
+            {rows.map((row) => (
+              <AiProgressRow key={row.key} row={row} />
+            ))}
+          </View>
+        </>
+      )}
+      <SectionLabel>Your Task Cards · {cards.length}</SectionLabel>
+      {!!waiting.error && <EarnError error={waiting.error} retry={waiting.reload} />}
+      {!!confirmed.error && (
+        <EarnError error={confirmed.error} retry={confirmed.reload} />
+      )}
+      {loading ? (
+        <LoadingState label="Loading your cards…" />
+      ) : cards.length === 0 && !waiting.error && !confirmed.error ? (
         <Text>
-          No drafts waiting. You can send more from your AI or the web app.
+          No cards yet. Connect your AI, or say a task out loud.
         </Text>
       ) : (
-        waiting.data.drafts.map((draft) => (
-          <Row
-            key={draft.id}
-            label={draft.card.title}
-            detail={`${draft.via === "mcp" ? "Your AI" : draft.via === "upload" ? "Your file" : "Typed here"} · ${slotMissing(draft.card, "howOften") ? "Not stated" : draft.card.slots.howOften.value} · ${slotMissing(draft.card, "howLong") ? "Not stated" : draft.card.slots.howLong.value} · ${draft.checks.readyToHandOff ? "Ready to hand off" : `${draft.checks.emptySlots.length} slots to fill`}`}
-            onPress={() => nav(`/earn/drafts/${encodeURIComponent(draft.id)}`)}
-          />
-        ))
+        <View style={{ gap: 12 }}>
+          <GalleryFilters value={filter} counts={counts} onChange={setFilter} />
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
+            {shown.map((draft) => (
+              <CardTile
+                key={draft.id}
+                type={draft.card.workType}
+                title={draft.card.title}
+                footer={tileFooter(draft)}
+                status={cardStatus(draft, claims.get(draft.id))}
+                onPress={() =>
+                  nav(`/earn/drafts/${encodeURIComponent(draft.id)}`)
+                }
+              />
+            ))}
+          </View>
+        </View>
       )}
-      <SectionLabel>Confirmed cards</SectionLabel>
-      {confirmed.error ? (
-        <EarnError error={confirmed.error} retry={confirmed.reload} />
-      ) : !confirmed.data ? (
-        <LoadingState label="Loading confirmed cards…" />
-      ) : confirmed.data.drafts.length === 0 ? (
-        <Text>No cards confirmed here yet.</Text>
+      <SectionLabel>Send more cards</SectionLabel>
+      {connected ? (
+        <ConnectedLine app={connected} onShowSteps={() => nav("/earn/connect")} />
       ) : (
-        confirmed.data.drafts.map((draft) => (
-          <Row
-            key={draft.id}
-            label={draft.card.title}
-            detail="Confirmed"
-            onPress={() => nav(`/earn/drafts/${encodeURIComponent(draft.id)}`)}
-          />
-        ))
+        <Row
+          label="Connect your AI"
+          detail="Copy one link so ChatGPT or Claude sends your Task Cards"
+          onPress={() => nav("/earn/connect")}
+        />
       )}
+      <Row label="Say a task out loud" onPress={() => nav("/earn/say")} />
     </Frame>
   );
 }

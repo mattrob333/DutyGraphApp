@@ -373,7 +373,7 @@ describe("Earn phone core screens", () => {
     });
     await show(<EarnEntry />);
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /^From your AI/ })).toBeTruthy(),
+      expect(screen.getByRole("button", { name: /^My work/ })).toBeTruthy(),
     );
     expect(screen.queryByRole("button", { name: "Scoreboard" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Earn" })).toBeNull();
@@ -419,15 +419,18 @@ describe("Earn phone core screens", () => {
     await waitFor(() =>
       expect(screen.getByText("Confirmed connection failed.")).toBeTruthy(),
     );
-    expect(screen.queryByText("No cards confirmed here yet.")).toBeNull();
+    expect(screen.queryByText(/^No cards yet/)).toBeNull();
     expect(
       screen.getByRole("button", { name: /^Restock the service van/ }),
     ).toBeTruthy();
     failed = false;
     await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
     await waitFor(() =>
-      expect(screen.getByText("No cards confirmed here yet.")).toBeTruthy(),
+      expect(screen.queryByText("Confirmed connection failed.")).toBeNull(),
     );
+    expect(
+      screen.getByRole("button", { name: /^Restock the service van/ }),
+    ).toBeTruthy();
   });
   it("waits for confirmation acknowledgement, pins version and retains retry key on a network failure", async () => {
     const calls: { id: string; version: number; key: string }[] = [];

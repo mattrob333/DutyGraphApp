@@ -97,7 +97,7 @@ export function VoiceTaskScreen() {
           phone questions still work.
         </Text>
         <Button
-          label="Back to From your AI"
+          label="Back to My work"
           onPress={() => router.replace("/earn/drafts")}
         />
       </Screen>
@@ -107,11 +107,11 @@ export function VoiceTaskScreen() {
       <Screen>
         <Heading>Draft saved</Heading>
         <Text>
-          Your Task Card is still a draft. Open From your AI to check it before
+          Your Task Card is still a draft. Open My work to check it before
           you confirm it.
         </Text>
         <Button
-          label="Open From your AI"
+          label="Open My work"
           kind="primary"
           onPress={() => router.replace("/earn/drafts")}
         />

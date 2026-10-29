@@ -1,5 +1,6 @@
 import type {
   DraftConfirmation,
+  DiscoveryList,
   DraftCreation,
   DraftList,
   DraftState,
@@ -27,6 +28,8 @@ export interface EarnRepository {
     key: string,
   ): Promise<TaskCardDraft>;
   getTeamBoard(): Promise<TeamBoard>;
+  /** Optional: older servers and test doubles have no discovery sessions. */
+  listDiscoveries?(): Promise<DiscoveryList>;
   getGaps(): Promise<{ gaps: Gap[] }>;
   createFix(
     input: FixInput,

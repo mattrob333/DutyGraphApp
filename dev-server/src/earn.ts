@@ -542,6 +542,23 @@ export function earnRoutes(store: Store, options: { enabled?: boolean } = {}) {
     team.rows.sort((a, b) => a.name.localeCompare(b.name));
     res.json(team);
   });
+  // Fictional "With your AI now" task and a connected AI app, like DutyGraphV2 GET /api/mobile/v1/earn/discoveries.
+  router.get("/discoveries", (_req, res) => {
+    getState(store, principal(res), enabled);
+    res.json({
+      discoveries: [
+        {
+          discoveryId: "00000000-0000-4000-8000-0000000000d1",
+          synthetic: true,
+          updatedAt: new Date().toISOString(),
+          candidates: [
+            { candidateId: "c1", title: "Check tyre pressure on the service van", state: "asking", answers: 3, requiredDone: 6, requiredOf: 10, readyForReview: false },
+          ],
+        },
+      ],
+      connected: [{ app: "ChatGPT", lastUsedAt: new Date().toISOString() }],
+    });
+  });
   router.get("/gaps", (_req, res) => {
     const state = getState(store, principal(res), enabled);
     res.json({

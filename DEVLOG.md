@@ -1,3 +1,15 @@
+# October 29, 2026 — My work matches the web: Task Card gallery, With your AI now, Connected
+
+matt approved the Task Card gallery design and wants the web and phone to match. The phone now follows the shared spec (/mnt/project-files/app-ux/task-card-gallery-spec.md, mockup https://claude.ai/artifact/KE5oV3e6mDpAivrwzWWXmz).
+
+- **My work** (`/earn/drafts`, was "From your AI"): "With your AI now" shows one row per task with a 10-part meter and a pill (Your AI is asking, Check it in the chat, ✓ Card ready). A task leaves once a card has the same title. "Your Task Cards" is one gallery of waiting and confirmed cards, two tiles per row, with All / Manual / AI help / Mixed chips and counts. Tiles have a work-type band (Mixed is half amber, half blue), a chip, a status (New for 15 minutes with a mint ring, Check it, Confirmed or the claim state), the title and how often · how long. "Send more cards" folds to "✓ Connected to <app>" once an AI app has used the connector.
+- **Open card**: the same band and chip ("Mixed: hands-on and AI help") above the title.
+- **Tokens**: `blue`/`blueBg` (AI help) and `lilac`/`lilacBg` (Mixed) in dark and light themes.
+- **Data**: `listDiscoveries()` reads DutyGraphV2 `GET /api/mobile/v1/earn/discoveries` (DutyGraphV2 #210); a 404 means no rows. The dev server serves a fictional row and a connected ChatGPT.
+- `scripts/e2e-earn.mjs` follows the new labels and saves a `my-work-gallery` screenshot.
+
+Checks: mobile typecheck, lint and Jest (77 suites, 650 tests); dev-server typecheck, lint and tests (79); fake-HTTP browser journey at 360 px passed with no page errors, overflow or microphone use. No device or hosted backend.
+
 # October 29, 2026 — One client app: Connect your AI and company Files on the phone
 
 This branch (`claude/voice-client-app`) joins the Earn phone work (#4) and the live backend work (#3), then adds the two client screens the phone was missing, so the voice interviews, Earn and the MCP flow sit in one app.

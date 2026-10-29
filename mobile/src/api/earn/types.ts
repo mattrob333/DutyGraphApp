@@ -43,3 +43,23 @@ export type FixKind = Fix["kind"];
 export type FixState = Fix["state"];
 export type GapKind = Gap["kind"];
 export type DraftVia = TaskCardDraft["via"];
+/** GET /api/mobile/v1/earn/discoveries: tasks still with the person's AI, and connected AI apps. */
+export type DiscoveryCandidate = {
+  candidateId: string;
+  title: string;
+  state: string;
+  answers: number;
+  requiredDone: number;
+  requiredOf: number;
+  readyForReview: boolean;
+  draftId?: string;
+};
+export type DiscoveryList = {
+  discoveries: {
+    discoveryId: string;
+    synthetic: boolean;
+    candidates: DiscoveryCandidate[];
+    updatedAt: string;
+  }[];
+  connected?: { app: string; lastUsedAt: string }[];
+};
