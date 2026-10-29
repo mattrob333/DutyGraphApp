@@ -29,6 +29,7 @@ const STATE_LABELS: Record<string, string> = {
   slot: "Nothing captured yet",
 };
 export const stateLabel = (state: string) => STATE_LABELS[state] ?? state;
+const count = (n: number) => `${n} ${n === 1 ? "file" : "files"}`;
 const leaf = (folder: string) => folder.slice(folder.lastIndexOf("/") + 1);
 const label = (folder: string) =>
   leaf(folder).replace(/[-_]+/g, " ").replace(/^\w/, (c) => c.toUpperCase());
@@ -126,7 +127,11 @@ export function FilesScreen({ repository }: { repository?: FilesRepository }) {
             <Row
               key={f}
               label={`${label(f)}/`}
-              detail={`${tree.data!.files.filter((x) => x.folder === f || x.folder.startsWith(f + "/")).length} files`}
+              detail={count(
+                tree.data!.files.filter(
+                  (x) => x.folder === f || x.folder.startsWith(f + "/"),
+                ).length,
+              )}
               onPress={() => setFolder(f)}
             />
           ))}
