@@ -80,3 +80,5 @@ The HTTP browser suite starts a fresh credential-free fake server for each flow.
 The [native build workflow](.github/workflows/native-build.yml) builds an installable Android APK (JavaScript bundled, debug-signed for sideloading) and, when run by hand, an unsigned iOS simulator app. Add the `build-android` label to a pull request, or run the workflow by hand and choose mock or http data. Download the `dutygraph-android-apk` artifact from the run and open it on an Android phone. iPhone builds need an Apple Developer account and EAS.
 
 Rehearse with real providers (paid, never in CI): start the dev server with `OPENAI_API_KEY` and `OPENAI_TEXT_MODEL` set, then run `npx tsx scripts/real-provider-rehearsal.ts` in `dev-server/` (needs ffmpeg).
+
+Earn phone B2 adds a generated contract adapter and a separate fictional development server; [details](docs/earn-client/README.md). Review/verification is in progress; not released or device-tested.

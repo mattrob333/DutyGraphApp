@@ -94,6 +94,11 @@ export class ApiClient {
     this.skewMs = opts.refreshSkewMs ?? 60_000;
   }
 
+  /** Public endpoint metadata for extensions; carries no session credential. */
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   async request<T>(
     method: string,
     path: string,

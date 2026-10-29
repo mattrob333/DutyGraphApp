@@ -64,3 +64,15 @@ The standalone Expo app now implements participant and advisor workflows against
 - Native/provider speech runs and hook callbacks are fenced by session. Recovering multiple clips preserves earlier words and manual edits; spoken prompts are excluded from backups.
 - Raw PCM backups use the same capture engine, bounded rolling WAV files and private OS-backup-excluded storage. Native file-protection behavior remains unverified on devices.
 - Extraction and facilitator replies recheck consent/state after provider waits; malformed model output cannot publish partial proposals. Withdrawal removes escaped-text caches and derived follow-ups.
+
+## 2026-10-28 — Earn phone B2.0: contract and development adapter
+
+Branch `codex/earn-phone` starts from origin/main8827048d; web counterpart codex/earn-client has completed its web review and2774-test regression. [Shared final handover](https://github.com/mattrob333/DutyGraphV2/blob/codex/earn-client/docs/earn-client/PROGRESS.md).
+
+Pinned Agent A749f3318 mobile OpenAPI (8 canonical operations) and generated separate Earn types. Added authenticated fictional development routes, optional local capability discovery and development-only new app-draft creation. Real A reads/confirm/Not mine/fix routes remain contractual; missing production POST/drafts is not invented. Release builds refuse a development fixture backend; legacy mock mode has no new Earn seed/network fallback. The new adapter shares the actual participant client/context for one refresh single-flight and logout fences, with additive nested-error handling.
+
+Checks: mobile and dev-server TypeScript passed;67 focused new/legacy transport and phone tests passed;7 development HTTP tests passed. Initial voice screen tests lacked the provider after transport-context sharing; the test harness was corrected to use the real provider and all67 passed. Full suites, browser/export and five fresh phone reviews follow.
+
+Dependency audit: root/dev-server audits pass with0 vulnerabilities. Mobile safe non-breaking fixes removed node-forge/source-map high findings. Remaining mobile audit is20 advisories (14low,3moderate,3high) through Expo57 CLI's Zod3 build-tool path; audit proposes a breaking Expo51 downgrade. No forced SDK downgrade or untested cross-major override is applied. This is an open tooling limitation, not a passing audit claim. Clipboard was installed through Expo's compatible SDK57 manifest in offline mode after official metadata/docs fetches returned403; installed Clipboard API types/documentation were read. No native/device or paid provider test.
+
+Needs from Agent A: a real mobile draft-creation route for standalone spoken tasks; current confirmation already supports optional reviewed card edits. Contract mismatch notes remain in the linked web handover. No DutyGraphV2 server/shared source or migrations were changed by this phone work.

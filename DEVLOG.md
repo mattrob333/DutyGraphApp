@@ -36,3 +36,7 @@ Expanded the root README with a repository map, verified build status and links 
 - Real-provider rehearsal script; fixed finish sending .m4a recordings as `audio/aac` (OpenAI rejected every real recording). Results in PROGRESS.md.
 - Native build workflow now produces an installable release APK, triggered by the `build-android` PR label or by hand.
 - Verified: 488 mobile, 78 shared and 60 API tests; typechecks and lint; all 12 HTTP browser flows.
+
+## 2026-10-28 — Earn phone B2.0 foundation
+
+Added separate generated Earn types and adapter, authenticated scoped fixture routes and production fixture refusal, sharing the existing participant transport/refresh lifecycle. Seven dev HTTP and67 focused phone/transport checks and both TypeScript checks passed. Added SDK-compatible clipboard support and non-breaking dependency fixes; remaining Expo CLI/Zod3 audit findings are recorded without a forced SDK downgrade. Phone screens and final reviews follow; no real provider, money, device, hosting or DutyGraphV2 server/schema changes.
