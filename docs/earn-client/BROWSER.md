@@ -63,3 +63,11 @@ The Copy-negative browser stub was corrected to throw from both modern clipboard
 The deliberate HTTP503/error and enabled=false/off response interceptions are browser-controlled tests, not claims that a real company changed settings. Clipboard success/failure, Share and browser speech availability are also explicitly stubbed. Native recording, device privacy, OS share sheets, hosted backend/provider acceptance and live money were not run.
 
 An early production-export attempt was intentionally stopped before completion to leave CPU free for the parent's unchanged timed-test rerun. The final export above completed after that pause; the interrupted attempt is not counted as passed.
+
+## Post-review repeat
+
+After the five phone reviews and their source corrections, the complete development journey was run again against fresh managed fake HTTP servers at both 360px and 1280px. Both passed with zero page exceptions, React render warnings, document horizontal overflow or microphone calls. Enrollment populated the actual participant session, including the new client session identity, and writes used the actual pending-command helper without authentication or storage stubs. This browser result does not verify native SecureStore encryption or OS backup behavior; those remain outside browser coverage.
+
+The first repeat stopped on the runner's stale exact Scoreboard accessible name. Rows now expose their description as part of the accessible name. The runner now uses narrow title prefixes for these rows and draft/gap entries; no product change or runtime error was involved. The subsequent full runs passed. Existing missing-slot Add, local detail and explicit Confirm still passed after the slot UI corrections.
+
+A fresh production HTTP export then completed successfully. Its actual static release bundle again enrolled through the legacy flow and refused new Earn development fixtures before any draft or summary seed requests. The exported JavaScript scan again found zero matches for the three named Earn seed strings. All 19 screenshots and both results JSON files were refreshed from these post-review runs. Node syntax and owned-file whitespace checks passed. No real phone, native microphone or live provider was tested.
