@@ -54,7 +54,7 @@ test('OpenAI extraction supports all seven proposal bodies, strict schema and th
     { kind: 'decision', decision: 'Delay launch', decidedByPersonKey: null, rationale: 'Credentials pending', alternatives: ['Keep Monday'], deferred: false },
     { kind: 'action', what: 'Check credentials', ownerPersonKey: null, due: null, dependsOn: [], doneWhen: 'Credentials checked', status: 'proposed' },
     { kind: 'open_question', question: 'Who approves the new date?', askPersonKey: null },
-    { kind: 'task_card_delta', taskCardId: input.taskCards[0]!.id, field: 'trigger', from: null, to: 'Credentials are ready' },
+    { kind: 'task_card_delta', taskCardId: input.taskCards[0]!.id, personKey: input.attendees[0]!.personKey, field: 'trigger', from: null, to: 'Credentials are ready' },
     { kind: 'responsibility_delta', personKey: input.attendees[0]!.personKey, duty: 'Check credentials', change: 'add' },
     { kind: 'contradiction', claimA: { text: first.quote, source: first }, claimB: { text: second.quote, source: second } },
     { kind: 'claim', fieldPath: 'meeting.launchDate', value: 'Tuesday' },

@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Platform } from "react-native";
+import { loadNativePcmModule } from "../live/nativePcm";
 import {
   MeetingRecorder,
   type MeetingRecorderPorts,
@@ -7,6 +8,22 @@ import {
 } from "./recorder";
 
 const activeRecorders = new Set<MeetingRecorder>();
+
+/**
+ * iOS must never persist meeting evidence in Documents, which iCloud backs up.
+ * If a native build does not expose this location, recording is unavailable.
+ */
+async function privateMeetingDirectory(): Promise<string> {
+  const native = loadNativePcmModule();
+  if (!native?.meetingRecordingDirectoryAsync)
+    throw new Error("Recording requires a current native build");
+  return native.meetingRecordingDirectoryAsync();
+}
+
+function privateRecordingAvailable(): boolean {
+  return Platform.OS !== "ios" || !!loadNativePcmModule()?.meetingRecordingDirectoryAsync;
+}
+
 
 export async function clearMeetingRecordingData() {
   await Promise.all(
@@ -52,10 +69,20 @@ export async function clearMeetingRecordingData() {
         }
       }
     }
-    if (Platform.OS !== "web")
-      for (const item of new Directory(Paths.document).list())
-        if (item instanceof File && item.name.startsWith("meeting-"))
-          removeFile(item.uri);
+    if (Platform.OS !== "web") {
+      const directories = [new Directory(Paths.document)];
+      if (Platform.OS === "ios") {
+        try {
+          directories.push(new Directory(await privateMeetingDirectory()));
+        } catch {
+          /* Older native builds still allow removing known journal paths. */
+        }
+      }
+      for (const directory of directories)
+        for (const item of directory.list())
+          if (item instanceof File && item.name.startsWith("meeting-"))
+            removeFile(item.uri);
+    }
   } catch {
     /* Web and older development builds have no native recording files. */
   } finally {
@@ -84,7 +111,8 @@ export function createNativeMeetingRecorder(
   const journalKey = `dg.meeting-recording-active.${sessionId}`;
   const options = {
     ...audio.RecordingPresets.HIGH_QUALITY,
-    directory: "document" as const,
+    // Raw clips use Cache (not backed up); sealed evidence goes into private Application Support on iOS.
+    directory: "cache" as const,
     numberOfChannels: 1,
     sampleRate: 24000,
     bitRate: 32000,
@@ -109,7 +137,7 @@ export function createNativeMeetingRecorder(
   };
   const instance = new MeetingRecorder(sessionId, {
     recorder: {
-      available: Platform.OS !== "web",
+      available: Platform.OS !== "web" && privateRecordingAvailable(),
       simulated: false,
       async start() {
         if (!(await audio.requestRecordingPermissionsAsync()).granted)
@@ -195,8 +223,12 @@ export function createNativeMeetingRecorder(
     files: {
       async persist(uri, id) {
         const source = new File(uri);
+        const directory =
+          Platform.OS === "ios"
+            ? await privateMeetingDirectory()
+            : Paths.document;
         const target = new File(
-          Paths.document,
+          directory,
           `meeting-${id.replace(/[^a-z0-9-]/gi, "_")}.m4a`,
         );
         if (source.uri !== target.uri && !target.exists) source.copy(target);
@@ -248,6 +280,35 @@ export function createNativeMeetingRecorder(
           if (interrupted.originalUri !== interrupted.uri) {
             const original = new File(interrupted.originalUri);
             if (original.exists) original.delete();
+          }
+        }
+        // Upgrade old installs before reopening their saved evidence. A crash
+        // after copying is safe: the source stays until the new manifest is saved.
+        if (Platform.OS === "ios") {
+          const destination = await privateMeetingDirectory();
+          const documentPrefix = Paths.document.uri.replace(/\/+$/, "") + "/";
+          let changed = false;
+          const legacySources: Array<{ exists: boolean; delete(): void }> = [];
+          for (const segment of manifest.segments) {
+            if (!segment.uri.startsWith(documentPrefix)) continue;
+            const original = new File(segment.uri);
+            if (!original.exists) continue;
+            const target = new File(
+              destination,
+              `meeting-${segment.id.replace(/[^a-z0-9-]/gi, "_")}.m4a`,
+            );
+            if (!target.exists) original.copy(target);
+            segment.uri = target.uri;
+            legacySources.push(original);
+            changed = true;
+          }
+          if (changed) {
+            await AsyncStorage.setItem(
+              `dg.meeting-recording.${id}`,
+              JSON.stringify(manifest),
+            );
+            for (const file of legacySources)
+              if (file.exists) file.delete();
           }
         }
         return manifest;

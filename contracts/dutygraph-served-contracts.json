@@ -1,0 +1,17 @@
+{
+  "source": "DutyGraphV2 served OpenAPI",
+  "origin": "http://127.0.0.1:4321",
+  "generator": "openapi-typescript@7.13.0",
+  "contracts": {
+    "advisor": {
+      "path": "/api/mobile/meetings/v1/openapi.json",
+      "sha256": "7cd6ee107c4e9beb2cb7409a6023092912072943fb6c2743348962c4915d3479",
+      "version": "0.1.0"
+    },
+    "participantExtras": {
+      "path": "/api/mobile/v1x/openapi.json",
+      "sha256": "9ad9bc3e037ff8908e7b30d706c7d60686616b4a4e94e895d96d5c82365a4203",
+      "version": "0.1.0"
+    }
+  }
+}

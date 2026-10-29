@@ -7,6 +7,7 @@ import type { HandsFreeQuestion } from "../hands-free/types.ts";
 
 type TaskCardView = {
   data: {
+    ownerId?: string;
     duty?: string;
     purpose?: string;
     trigger?: string;
@@ -31,6 +32,7 @@ export type MeetingAttendee = {
 };
 
 export type MeetingDefinition = {
+  previousMeetingId?: string;
   id: string;
   companyId: string;
   version: number;
@@ -235,6 +237,7 @@ export type MeetingProposal = {
     | {
         kind: "task_card_delta";
         taskCardId: string | null;
+        personKey?: string | null;
         field: keyof TaskCardView["data"] | "title";
         from: string | null;
         to: string;
@@ -254,6 +257,15 @@ export type MeetingProposal = {
   decidedBy: string | null;
   decidedAt: string | null;
   editNote?: string;
+  draftRecordId?: string | null;
+};
+
+export type ClosingOutcomeReview = {
+  outcomeId: string;
+  status: "met" | "partly_met" | "deferred" | "dropped";
+  ownerPersonKey: string | null;
+  dueAt: string | null;
+  note?: string;
 };
 
 export type ClosingItem = {
@@ -261,6 +273,8 @@ export type ClosingItem = {
   ownerPersonKey: string | null;
   confirmation: "pending" | "confirmed" | "changed" | "not_mine";
   note?: string;
+  expectedVersion?: number;
+  contentHash?: string;
 };
 
 export type Pulse = {
@@ -296,6 +310,8 @@ export type KickoffNote = {
   speakerPersonId: string | null;
   text: string;
   at: string;
+  version?: number;
+  hash?: string;
 };
 export type ClaimProposal = {
   fieldPath: string;
@@ -357,6 +373,15 @@ export type MeetingCreateInput = {
   agenda?: AgendaTopic[];
 };
 export type SessionSnapshot = MeetingSession & {
+  closing?: ClosingItem[];
+  outcomeReviews?: ClosingOutcomeReview[];
+  followUpPlan?: string;
+  closingReadiness?: {
+    complete: boolean;
+    partial: boolean;
+    missingOutcomes: number;
+    unconfirmedActions: number;
+  };
   transcript: TranscriptSegment[];
   parked: ParkedItem[];
   speakerMap: SpeakerMap;

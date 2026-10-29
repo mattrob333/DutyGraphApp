@@ -2,9 +2,13 @@
 
 Expo SDK 57 app and a standalone development API for participant information gathering and advisor Meeting OS. Includes spoken/typed question decks, Task Card review, Pulse, POWER/Gate planning, consent, capture, Facilitator controls, source-linked proposals, speaker mapping, kickoff and setup. [PROGRESS.md](PROGRESS.md) records verification and remaining device/provider checks.
 
+The October 28 day-run adds a structured closing review and explicit server-acknowledged completion. Deferred outcomes can seed a linked follow-up meeting. Queued finish jobs keep the original retry key while the app checks server progress; stopping local checks does not stop the server job. The meeting gate can show an optional AI suggestion beside its rules result; the company setting stays off by default. See the dated entry in [PROGRESS.md](PROGRESS.md) for checks on this change; earlier suite counts below are historical.
+
+Task Card proposal review now includes the linked source and saved draft, attendee/card/owner adjustments, and an explicit way to reject stale proposals while preserving their existing draft. Current checks and limits are in [PROGRESS.md](PROGRESS.md).
+
 ## Build status
 
-The standalone app implements participant and advisor workflows with mock data and the local development API. The latest local verification passes **626 tests** (488 mobile, 78 shared, 60 API), **12 HTTP end-to-end flows**, typechecks, lint and web export. Native prebuild and module autolinking pass; native compilation, physical-device QA and real-provider testing remain outstanding. This repository has not been deployed to the production DutyGraph backend or released to app stores.
+The app supports mock/development workflows and opt-in actual DutyGraphV2 integration. Current local checks pass **538 mobile tests**, **78 shared tests**, **64 development API tests**, typechecks/lint, web export and **all twelve PostgreSQL browser paths against the actual V2 application** (219 schema-validated exchanges). Handsfree/meeting line coverage is **94.37%**. Native prebuild/autolinking evidence is from the prior run; native compilation and physical-device QA remain outstanding. The continuation used injected providers; no deployment or app-store release occurred. See [PROGRESS.md](PROGRESS.md) for current versus historical provider evidence.
 
 ## Repository map
 
@@ -106,3 +110,16 @@ A final independent transport probe reproduced R2-03: capability discovery and t
 Final corrected code `f01d76a1e355df41af990cab9e7e2619ddfaa436`:553/553 mobile tests (65 suites), TypeScript/lint passed. Unchanged development-server76/shared78 checks remain passing. After R2-03, actual-enrollment fake-HTTP360/1280 journeys passed again with no page/render errors, overflow or microphone calls. Fresh release export/static fixture refusal passed before seed reads; normal legacy enrollment still worked. Evidence refreshed in docs/earn-client/BROWSER.md. Browser normal flow checks compatibility; the focused actual-transport regression verifies the hostile enrollment interleaving. Only owned QA servers were stopped and ports4510/4512/4513 verified clear.
 
 Six confirmed Medium findings and all reported Lows are corrected, no confirmed High. Audit remains failed on the documented Expo toolchain path; no native/device/provider/payment acceptance was run. Final shared handover and both draft PR links above are authoritative; neither PR is merged.
+The `codex/live-backend` draft branch now integrates with the separately implemented V2 mobile backend in local PostgreSQL tests. Hosted deployment and physical-device acceptance remain separate.
+
+- **Backend profiles (draft PR):** `codex/live-backend` adds opt-in explicit mock/dev-server/local/preview/production origins. It does not deploy the new meeting API.
+
+- **iOS recording privacy (draft PR):** meeting evidence now targets an iCloud-backup-excluded native directory; requires rebuilding the app and real-device QA before release.
+
+- Draft iOS recording storage includes a source-review correction for legacy-path normalization; native and device verification is still pending.
+
+- **HTTPS invitations (draft branch):** production-profile app links target dutygraph.com; real iOS Universal Link acceptance and release signing remain pending. See `docs/EAS-RELEASE.md`.
+
+- CI follow-up corrections to test imports and the Expo File annotation are now covered by the passing local mobile suite. Hosted CI on the final commit remains a separate check.
+
+The `codex/live-backend` continuation now includes actual DutyGraphV2 served-contract generation and a PostgreSQL browser runner: `npm --prefix mobile run test:e2e:dutygraph`. It starts the actual V2 app with injected test providers and fresh fictional tenants, and validates observed API traffic against the served contracts. See [DUTYGRAPH-INTEGRATION.md](docs/DUTYGRAPH-INTEGRATION.md) for prerequisites, private fixture handling and the separate mock/dev-server workflow. Current run evidence belongs in [PROGRESS.md](PROGRESS.md); no deployment, signing or device acceptance is implied.

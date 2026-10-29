@@ -29,6 +29,12 @@ export interface CardBackup {
 let generation = 0;
 const PCM_CONTEXT = "dg.pcm-backup-context.";
 const queues = new Map<string, RecordedBackupQueue>();
+const metadataWrites = new Set<Promise<void>>();
+async function saveBackupIndex(key: string, value: string): Promise<void> {
+  const operation = AsyncStorage.setItem(key, value);
+  metadataWrites.add(operation);
+  try { await operation; } finally { metadataWrites.delete(operation); }
+}
 export interface PcmBackupRecovery {
   recover(finalizeGroups?: string[]): Promise<SpeechBackupFile[]>;
   clear(): Promise<void>;
@@ -45,6 +51,19 @@ const nativePcmRecovery: PcmBackupRecovery = {
     return native.clearNativePcmBackups();
   },
 };
+async function privateBackupDirectory(): Promise<string> {
+  const { loadNativePcmModule } =
+    require("./live/nativePcm") as typeof import("./live/nativePcm");
+  const native = loadNativePcmModule();
+  if (!native?.meetingRecordingDirectoryAsync)
+    throw new Error("Recording backup requires a current native build");
+  return native.meetingRecordingDirectoryAsync();
+}
+function privateBackupFile(directory: string, id: string) {
+  const { File } =
+    require("expo-file-system") as typeof import("expo-file-system");
+  return new File(directory, `card-backup-${id.replace(/[^a-z0-9-]/gi, "_")}.m4a`);
+}
 async function deleteFile(uri: string) {
   try {
     const { File } =
@@ -62,6 +81,8 @@ export async function clearCardBackupCache() {
   );
   queues.clear();
   await Promise.all(pendingApplies);
+  // Any write already issued must settle before the logout scan removes its files/index.
+  await Promise.allSettled([...metadataWrites]);
   await nativePcmRecovery.clear();
   const contextKeys = (await AsyncStorage.getAllKeys()).filter((key) =>
     key.startsWith(PCM_CONTEXT),
@@ -97,11 +118,34 @@ export function createCardBackup(
     queue = new RecordedBackupQueue({
       async load() {
         const raw = await AsyncStorage.getItem(key);
-        return raw ? JSON.parse(raw) : [];
+        const clips: BackupClip[] = raw ? JSON.parse(raw) : [];
+        if (Platform.OS === "ios" && clips.some(clip => clip.mimeType === "audio/m4a")) {
+          const { File, Paths } =
+            require("expo-file-system") as typeof import("expo-file-system");
+          const prefix = Paths.document.uri.replace(/\/+$/, "") + "/";
+          const legacy = clips.filter(clip => clip.mimeType === "audio/m4a" && clip.uri.startsWith(prefix));
+          if (legacy.length) {
+            const directory = await privateBackupDirectory();
+            if (generation !== ownerGeneration) return [];
+            const originals = [];
+            for (const clip of legacy) {
+              const original = new File(clip.uri);
+              if (!original.exists) continue;
+              const target = privateBackupFile(directory, clip.id);
+              if (!target.exists) original.copy(target);
+              clip.uri = target.uri;
+              originals.push(original);
+            }
+            // Commit recovery pointers before removing any legacy evidence.
+            await saveBackupIndex(key, JSON.stringify(clips));
+            for (const original of originals) original.delete();
+          }
+        }
+        return clips;
       },
       async save(clips) {
         if (generation === ownerGeneration)
-          await AsyncStorage.setItem(key, JSON.stringify(clips));
+          await saveBackupIndex(key, JSON.stringify(clips));
       },
       transcribe,
       removeFile: deleteFile,
@@ -113,6 +157,7 @@ export function createCardBackup(
     recorder: import("expo-audio").AudioRecorder;
     questionKey: string;
     session: number;
+    privateDirectory?: string;
   } | null = null;
   const recover = async (finalize: boolean) => {
     const keys = (await AsyncStorage.getAllKeys()).filter((key) =>
@@ -198,7 +243,9 @@ export function createCardBackup(
             ? undefined
             : await hashBackupText(input.before),
       };
-      await AsyncStorage.setItem(PCM_CONTEXT + id, JSON.stringify(context));
+      if (generation !== ownerGeneration) return;
+      await saveBackupIndex(PCM_CONTEXT + id, JSON.stringify(context));
+      if (generation !== ownerGeneration) return;
       await speech.beginBackup(id, async ({ files, failed }) => {
         const raw = input.getText?.() ?? "";
         const replaceLength =
@@ -237,16 +284,27 @@ export function createCardBackup(
       const audio = require("expo-audio") as typeof import("expo-audio");
       const permission = await audio.getRecordingPermissionsAsync();
       if (!permission.granted) return;
+      let privateDirectory: string | undefined;
+      if (Platform.OS === "ios") {
+        try {
+          privateDirectory = await privateBackupDirectory();
+        } catch {
+          // Device speech and typing remain available; never fall back to Documents.
+          return;
+        }
+      }
+      if (generation !== ownerGeneration) return;
       const recorder = new audio.AudioModule.AudioRecorder({
         ...audio.RecordingPresets.HIGH_QUALITY,
-        directory: "document",
+        directory: Platform.OS === "ios" ? "cache" : "document",
         numberOfChannels: 1,
         bitRate: 32000,
       });
       try {
         await recorder.prepareToRecordAsync();
+        if (generation !== ownerGeneration) { recorder.release(); return; }
         recorder.record();
-        capture = { recorder, ...input };
+        capture = { recorder, ...input, privateDirectory };
       } catch {
         recorder.release();
       }
@@ -265,15 +323,26 @@ export function createCardBackup(
           durationMs >= 300 &&
           generation === ownerGeneration
         ) {
+          const id = `${requestId}-${current.session}-${Date.now()}`;
+          let retainedUri = uri;
+          if (current.privateDirectory) {
+            const { File } =
+              require("expo-file-system") as typeof import("expo-file-system");
+            const target = privateBackupFile(current.privateDirectory, id);
+            new File(uri).copy(target);
+            retainedUri = target.uri;
+          }
           await capturedQueue.add({
-            id: `${requestId}-${current.session}-${Date.now()}`,
+            id,
             requestId,
             questionKey: current.questionKey,
             session: current.session,
-            uri,
+            uri: retainedUri,
             mimeType: "audio/m4a",
             durationMs,
           });
+          if (generation !== ownerGeneration) await deleteFile(retainedUri);
+          if (retainedUri !== uri) await deleteFile(uri);
         } else if (uri) {
           const { File } =
             require("expo-file-system") as typeof import("expo-file-system");

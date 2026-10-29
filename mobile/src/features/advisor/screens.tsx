@@ -1,4 +1,13 @@
 import { saveLiveNote } from "./saveLiveNote";
+import {
+  TaskCardChangeFields,
+  type TaskCardChange,
+} from "@/components/advisor/TaskCardChangeFields";
+import { MeetingGateSuggestion } from "@/components/advisor/MeetingGateSuggestion";
+import { ClosingRitual } from "@/components/advisor/ClosingRitual";
+import { ClosingResponse } from "@/components/advisor/ClosingResponse";
+import { CompanionApiError } from "@/api/http/errors";
+import { SIMULATED_VOICE_NOTICE } from "@/features/voice/out";
 import React, { useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
@@ -51,6 +60,7 @@ import {
   useAdvisorPeople,
   useAdvisorPulse,
   useAdvisorSession,
+  useAdvisorTaskCards,
 } from "@/hooks/advisor";
 import { useAdvisorStore } from "@/state/advisor";
 import {
@@ -306,6 +316,9 @@ type BuilderDraft = {
   cardAnswers?: (CardAnswer | null)[];
 };
 export function BuilderScreen() {
+  const { previousMeetingId } = useLocalSearchParams<{
+    previousMeetingId?: string;
+  }>();
   const [draft, setDraft] = useState<BuilderDraft>({
     title: "",
     minutes: "25",
@@ -330,6 +343,7 @@ export function BuilderScreen() {
     const texts = answers.map((a) => a?.raw ?? "");
     const input: CreateMeeting = {
       title: draft.title.trim(),
+      ...(previousMeetingId ? { previousMeetingId } : {}),
       startsAt: draft.startsAt
         ? new Date(parseLocalDate(draft.startsAt)).toISOString()
         : null,
@@ -365,6 +379,11 @@ export function BuilderScreen() {
         <Text variant="small" color="faint">
           Carson Tate’s POWER framework · Work Simply
         </Text>
+        {previousMeetingId ? (
+          <Notice>
+            Deferred work from the completed meeting will be added to this plan.
+          </Notice>
+        ) : null}
         {draft.shown < 0 ? (
           <>
             <Field
@@ -581,9 +600,17 @@ export function AttendeesScreen() {
         loading={cmd.busy}
         onPress={async () => {
           const saved = await cmd.run(
-            ["attendees", id, attendees, q.data.version],
+            ["attendees", id, attendees, q.data.version, q.data.hash],
             (r, k) =>
-              r.patch(id, { attendees, expectedVersion: q.data.version }, k),
+              r.patch(
+                id,
+                {
+                  attendees,
+                  expectedVersion: q.data.version,
+                  contentHash: q.data.hash,
+                },
+                k,
+              ),
           );
           if (saved) {
             const planned = await cmd.run(["plan", id, saved.version], (r, k) =>
@@ -700,13 +727,14 @@ export function PlanScreen() {
               )}
               onPress={async () => {
                 const result = await cmd.run(
-                  ["agenda", id, m.version, agenda],
+                  ["agenda", id, m.version, m.hash, agenda],
                   (r, k) =>
                     r.patch(
                       id,
                       {
                         agenda: agenda ?? m.agenda,
                         expectedVersion: m.version,
+                        contentHash: m.hash,
                       },
                       k,
                     ),
@@ -747,6 +775,17 @@ export function PlanScreen() {
               </Text>
             ) : null}
           </Card>
+          {!editingAgenda ? (
+            <MeetingGateSuggestion
+              key={`${m.id}:${m.version}:${m.hash}`}
+              busy={cmd.busy}
+              onRequest={() =>
+                cmd.run(["gate-suggestion", id, m.version, m.hash], (r, k) =>
+                  r.gateSuggestion(id, k),
+                )
+              }
+            />
+          ) : null}
           <Text variant="meta" color="muted">
             You choose the route. This proposal changes nothing until you
             approve it.
@@ -765,8 +804,9 @@ export function PlanScreen() {
               loading={cmd.busy}
               style={{ marginTop: 10 }}
               onPress={async () => {
-                const result = await cmd.run(["route", id, choice], (r, k) =>
-                  r.route(id, choice, k),
+                const result = await cmd.run(
+                  ["route", id, choice, m.version, m.hash],
+                  (r, k) => r.route(id, choice, k, m),
                 );
                 if (result)
                   go(`${base(id)}/${choice === "pulse" ? "pulse" : "start"}`);
@@ -975,10 +1015,11 @@ export function StartScreen({ capture = false }: { capture?: boolean }) {
             : `${readiness.spaceMB} MB${readiness.spaceMB < 500 ? " · Free space before recording" : ""}`}
         </Notice>
         <Text variant="meta">
-          Default budget:{" "}
-          {mode === "facilitator" && voiceKind === "realtime" ? "$15" : "$2"}{" "}
-          per meeting. The server confirms this session’s limit after start.
-          Recording continues if voice reaches its limit.
+          Default estimated dispatch budget:{" "}
+          {mode === "facilitator" ? "$15" : "$2"} per meeting. The server
+          applies the company limit after start. Failed requests can use this
+          estimate; actual provider cost may differ. Recording continues at the
+          limit.
         </Text>
       </Card>
       <Notice tone="amber">
@@ -1091,6 +1132,9 @@ export function LiveScreen() {
     q = useAdvisorSession(sid),
     meeting = useAdvisorMeeting(id),
     cmd = useCommand();
+  const finishCheck = useRef<AbortController | null>(null);
+  const finishMounted = useRef(true);
+  const finishForeground = useRef(true);
   const [note, setNote] = useState(""),
     [speaker, setSpeaker] = useState(""),
     [clock, setClock] = useState(Date.now()),
@@ -1111,7 +1155,10 @@ export function LiveScreen() {
       kind: Platform.OS === "web" ? "unavailable" : "native",
     }),
   ).current;
-  const [voice] = useState(createAdvisorVoiceOut);
+  const [simulatedVoice, setSimulatedVoice] = useState(false);
+  const [voice] = useState(() =>
+    createAdvisorVoiceOut(() => setSimulatedVoice(true)),
+  );
   const realtimeSelected = q.data?.voice === "realtime";
   const realtime = useRealtimeMeetingVoice({
     session: q.data,
@@ -1312,11 +1359,14 @@ export function LiveScreen() {
     deferredLine,
   ]);
   useEffect(() => {
+    finishMounted.current = true;
     const timer = setInterval(() => {
       setClock(Date.now());
       void turns.tick();
     }, 250);
     return () => {
+      finishMounted.current = false;
+      finishCheck.current?.abort();
       clearInterval(timer);
       turns.stop();
       void realtime.voice.dispose();
@@ -1326,7 +1376,9 @@ export function LiveScreen() {
   }, []);
   useEffect(() => {
     const sub = AppState.addEventListener("change", (state) => {
+      finishForeground.current = state === "active";
       if (state !== "active") {
+        finishCheck.current?.abort();
         void speech.stop();
         setListening(false);
         turns.skip();
@@ -1383,30 +1435,49 @@ export function LiveScreen() {
       ? Math.max(0, Math.floor((clock - Date.parse(s.topicStartedAt)) / 1000))
       : 0;
   const finish = async () => {
-    turns.stop();
-    realtime.realtime.suspend();
-    setStopped(true);
-    await speech.stop();
-    setListening(false);
-    if (native.current) {
-      await native.current.stop();
-      setRecording(false);
-      try {
-        await native.current.uploadPending();
-      } catch {
-        cmd.setError(
-          new Error(
-            "The recording is saved on this phone. Upload it before finishing.",
-          ),
-        );
-        return;
+    if (cmd.busy || finishCheck.current) return;
+    const controller = new AbortController();
+    finishCheck.current = controller;
+    try {
+      turns.stop();
+      realtime.realtime.suspend();
+      setStopped(true);
+      await speech.stop();
+      setListening(false);
+      if (native.current) {
+        await native.current.stop();
+        setRecording(false);
+        try {
+          await native.current.uploadPending();
+        } catch {
+          cmd.setError(
+            new Error(
+              "The recording is saved on this phone. Upload it before finishing.",
+            ),
+          );
+          return;
+        }
       }
+      if (
+        !finishMounted.current ||
+        !finishForeground.current ||
+        controller.signal.aborted
+      )
+        return;
+      const result = await cmd.run(["finish", sid], async (r, k) => {
+        await r.finish(sid, k, { signal: controller.signal });
+        return true;
+      });
+      if (
+        result &&
+        finishMounted.current &&
+        finishForeground.current &&
+        !controller.signal.aborted
+      )
+        go(sessionRoute(id, "closing", sid));
+    } finally {
+      if (finishCheck.current === controller) finishCheck.current = null;
     }
-    const result = await cmd.run(["finish", sid], async (r, k) => {
-      await r.finish(sid, k);
-      return true;
-    });
-    if (result) go(sessionRoute(id, "closing", sid));
   };
   const addNote = async () => {
     if (!note.trim()) return;
@@ -1447,6 +1518,7 @@ export function LiveScreen() {
   return (
     <Screen>
       <Heading>{m.title}</Heading>
+      {simulatedVoice ? <Notice>{SIMULATED_VOICE_NOTICE}</Notice> : null}
       {realtimeSelected ? (
         <>
           <Notice tone={realtime.status === "ready" ? "sage" : "amber"}>
@@ -1457,8 +1529,9 @@ export function LiveScreen() {
             Native recording and realtime input run separately.
           </Notice>
           <Text variant="small" color="muted">
-            Session voice budget: ${(s.budgetCents / 100).toFixed(2)} ·
-            Server-reported use: ${(s.spentCents / 100).toFixed(2)}
+            Estimated dispatch budget: ${(s.budgetCents / 100).toFixed(2)} ·
+            Estimated reserved use: ${(s.spentCents / 100).toFixed(2)}. Actual
+            provider cost may differ; failed requests can use the estimate.
           </Text>
         </>
       ) : null}
@@ -1916,6 +1989,27 @@ export function LiveScreen() {
         disabled={!s.transcript.length}
         onPress={finish}
       />
+      {cmd.busy && finishCheck.current ? (
+        <View>
+          <Notice>
+            The server is preparing the review. You can stop checking and return
+            later.
+          </Notice>
+          <Button
+            label="Stop checking for now"
+            onPress={() => finishCheck.current?.abort()}
+          />
+        </View>
+      ) : null}
+      {cmd.error instanceof CompanionApiError &&
+      ["COMMAND_PENDING", "REQUEST_TIMEOUT", "NETWORK_OFFLINE"].includes(
+        cmd.error.code,
+      ) ? (
+        <Notice>
+          The server may still be processing. Your recording is retained. Tap
+          Review closing to check the same attempt.
+        </Notice>
+      ) : null}
       <CommandError error={cmd.error} />
     </Screen>
   );
@@ -1925,12 +2019,22 @@ export function ClosingScreen() {
   const id = useMeetingId(),
     sid = useSessionId(id),
     q = useAdvisorSession(sid),
+    meeting = useAdvisorMeeting(id),
     people = useAdvisorPeople(),
     cmd = useCommand();
   if (!sid) return <MissingSession id={id} />;
-  if (q.isPending || people.isPending) return <LoadingState />;
-  if (q.isError || people.isError)
-    return <ErrorState error={q.error ?? people.error} onRetry={q.refetch} />;
+  if (q.isPending || people.isPending || meeting.isPending)
+    return <LoadingState />;
+  if (q.isError || people.isError || meeting.isError)
+    return (
+      <ErrorState
+        error={q.error ?? people.error ?? meeting.error}
+        onRetry={() => {
+          void q.refetch();
+          void meeting.refetch();
+        }}
+      />
+    );
   const names = Object.fromEntries(people.data.map((p) => [p.id, p.name]));
   return (
     <Screen>
@@ -1978,39 +2082,38 @@ export function ClosingScreen() {
                       Due: {p.body.due ?? "Not stated"}
                     </Text>
                   ) : null}
-                  {owner ? (
-                    <View
-                      style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
-                    >
-                      {(["confirmed", "changed", "not_mine"] as const).map(
-                        (state) => (
-                          <Button
-                            key={state}
-                            label={
-                              state === "confirmed"
-                                ? "Confirm"
-                                : state === "changed"
-                                  ? "Change"
-                                  : "Not mine"
-                            }
-                            loading={cmd.busy}
-                            onPress={() =>
-                              cmd.run(["confirm", sid, p.id, state], (r, k) =>
-                                r.confirm(
-                                  sid,
-                                  {
-                                    proposalId: p.id,
-                                    ownerPersonKey: owner,
-                                    confirmation: state,
-                                  },
-                                  k,
-                                ),
-                              )
-                            }
-                          />
-                        ),
-                      )}
-                    </View>
+                  {owner && meeting.data.state !== "COMPLETE" ? (
+                    <ClosingResponse
+                      key={`${p.id}:${p.version}:${p.hash}`}
+                      busy={cmd.busy}
+                      onRespond={(state, note) =>
+                        cmd.run(
+                          [
+                            "confirm",
+                            sid,
+                            p.id,
+                            state,
+                            owner,
+                            p.version,
+                            p.hash,
+                            note,
+                          ],
+                          (r, k) =>
+                            r.confirm(
+                              sid,
+                              {
+                                proposalId: p.id,
+                                ownerPersonKey: owner,
+                                confirmation: state,
+                                expectedVersion: p.version,
+                                contentHash: p.hash,
+                                ...(note ? { note } : {}),
+                              },
+                              k,
+                            ),
+                        )
+                      }
+                    />
                   ) : null}
                   {confirmation ? (
                     <Notice tone="sage">
@@ -2030,15 +2133,42 @@ export function ClosingScreen() {
       <ParkedList
         items={q.data.parked.map((p) => ({ id: p.id, title: p.text }))}
       />
-      <Notice>
-        Missing owners, dates and unresolved questions remain proposals. Follow
-        up with the named people.
-      </Notice>
+      <ClosingRitual
+        meeting={meeting.data}
+        session={q.data}
+        busy={cmd.busy}
+        onSave={async (input) =>
+          !!(await cmd.run(["closing-outcomes", sid, input], async (r, k) => {
+            await r.saveClosing(sid, input, k);
+            return true;
+          }))
+        }
+        onComplete={() => {
+          void cmd.run(["complete", sid, q.data.version, q.data.hash], (r, k) =>
+            r.complete(
+              sid,
+              { expectedVersion: q.data.version, contentHash: q.data.hash },
+              k,
+            ),
+          );
+        }}
+      />
       <Button
-        label="Finish and review sources"
+        label="Review sources, owners and dates"
         kind="primary"
         onPress={() => go(sessionRoute(id, "speakers", sid))}
       />
+      {meeting.data.state === "COMPLETE" &&
+      q.data.outcomeReviews?.some((review) => review.status === "deferred") ? (
+        <Button
+          label="Plan follow-up meeting"
+          onPress={() =>
+            go(
+              `/advisor/meetings/new?previousMeetingId=${encodeURIComponent(id)}`,
+            )
+          }
+        />
+      ) : null}
       <CommandError error={cmd.error} />
     </Screen>
   );
@@ -2135,7 +2265,12 @@ export function ResultsScreen() {
     q = useAdvisorSession(sid),
     people = useAdvisorPeople(),
     cmd = useCommand();
+  const taskCards = useAdvisorTaskCards(
+    q.data?.proposals.some((proposal) => proposal.kind === "task_card_delta") ??
+      false,
+  );
   const playback = useSourcePlayback();
+  const [taskEdit, setTaskEdit] = useState<TaskCardChange | null>(null);
   const [editing, setEditing] = useState<MeetingProposal | null>(null),
     [edit, setEdit] = useState(""),
     [editOwner, setEditOwner] = useState(""),
@@ -2151,8 +2286,14 @@ export function ResultsScreen() {
     ...people.data.map((p) => [p.id, p.name]),
     ...q.data.consents.map((p) => [p.personKey, p.name]),
   ]);
+  const attendees = people.data.filter((person) =>
+    q.data.consents.some(
+      (consent) =>
+        consent.personKey === person.id && consent.state === "consented",
+    ),
+  );
   const saveEdit = async () => {
-    if (!editing) return;
+    if (!editing || editing.draftRecordId) return;
     const b = editing.body;
     let body: MeetingProposal["body"] =
       b.kind === "decision"
@@ -2171,7 +2312,7 @@ export function ResultsScreen() {
             : b.kind === "claim"
               ? { ...b, value: edit }
               : b.kind === "task_card_delta"
-                ? { ...b, to: edit }
+                ? (taskEdit ?? b)
                 : b.kind === "responsibility_delta"
                   ? { ...b, duty: edit }
                   : { ...b, claimA: { ...b.claimA, text: edit } };
@@ -2199,7 +2340,14 @@ export function ResultsScreen() {
         }
       : editing;
     const result = await cmd.run(
-      ["edit", editing.id, body, revised.sources],
+      [
+        "edit",
+        editing.id,
+        editing.version,
+        editing.hash,
+        body,
+        revised.sources,
+      ],
       (r, k) => r.decide(revised, "edit", k, body),
     );
     if (result) setEditing(null);
@@ -2220,6 +2368,20 @@ export function ResultsScreen() {
           No proposals yet. Keep your evidence and return after extraction.
         </Notice>
       ) : null}
+      {taskCards.isError ? (
+        <View>
+          <Notice tone="amber">
+            Task Cards could not be loaded. Reload them before accepting or
+            changing Task Card proposals.
+          </Notice>
+          <Button
+            label="Reload Task Cards"
+            onPress={() => {
+              void taskCards.refetch();
+            }}
+          />
+        </View>
+      ) : null}
       {q.data.proposals.map((p) => (
         <View key={p.id}>
           <ProposalEvidenceCard
@@ -2234,7 +2396,13 @@ export function ResultsScreen() {
               })),
             }}
             people={names}
-            busy={cmd.busy}
+            busy={
+              cmd.busy ||
+              (p.kind === "task_card_delta" &&
+                (taskCards.isPending || taskCards.isError))
+            }
+            taskCards={taskCards.data}
+            loadTaskCard={(cardId) => getAdvisorRepository().taskCard(cardId)}
             sourceTimes={Object.fromEntries(
               q.data.transcript.map((t) => [t.id, t.startMs]),
             )}
@@ -2248,13 +2416,19 @@ export function ResultsScreen() {
                 );
             }}
             onDecide={(decision) =>
-              cmd.run(["decision", p.id, p.version, decision], (r, k) =>
+              cmd.run(["decision", p.id, p.version, p.hash, decision], (r, k) =>
                 r.decide(p, decision, k),
               )
             }
             onEdit={() => {
+              if (p.draftRecordId) return;
               setEditing(p);
-              setEdit(proposalText(p));
+              setTaskEdit(
+                p.body.kind === "task_card_delta" ? { ...p.body } : null,
+              );
+              setEdit(
+                p.body.kind === "task_card_delta" ? p.body.to : proposalText(p),
+              );
               setEditOwner(
                 p.body.kind === "action" ? (p.body.ownerPersonKey ?? "") : "",
               );
@@ -2272,8 +2446,22 @@ export function ResultsScreen() {
       ))}
       {editing ? (
         <Card>
-          <Text variant="bodyStrong">Edit proposal wording</Text>
-          <Field label="Proposal wording" value={edit} onChange={setEdit} />
+          <Text variant="bodyStrong">
+            {editing.body.kind === "task_card_delta"
+              ? "Edit Task Card proposal"
+              : "Edit proposal wording"}
+          </Text>
+          {editing.body.kind === "task_card_delta" ? (
+            <TaskCardChangeFields
+              value={taskEdit ?? editing.body}
+              cards={taskCards.data ?? []}
+              people={attendees}
+              busy={cmd.busy}
+              onChange={setTaskEdit}
+            />
+          ) : (
+            <Field label="Proposal wording" value={edit} onChange={setEdit} />
+          )}
           {editing.body.kind === "action" ? (
             <>
               <SectionLabel>Action owner</SectionLabel>
@@ -2314,10 +2502,23 @@ export function ResultsScreen() {
             onPress={() => setSourcesChecked(!sourcesChecked)}
           />
           <Button
-            label="Save proposed wording"
+            label={
+              editing.body.kind === "task_card_delta"
+                ? "Save Task Card proposal"
+                : "Save proposed wording"
+            }
             kind="primary"
             disabled={
-              !edit.trim() ||
+              (editing.body.kind === "task_card_delta"
+                ? !taskEdit?.to.trim() ||
+                  !attendees.some(
+                    (person) => person.id === taskEdit.personKey,
+                  ) ||
+                  (taskEdit.field === "ownerId" &&
+                    !attendees.some((person) => person.id === taskEdit.to)) ||
+                  taskCards.isPending ||
+                  taskCards.isError
+                : !edit.trim()) ||
               (editing.state === "stale" && !sourcesChecked) ||
               (!!editDue && !Number.isFinite(parseLocalDate(editDue)))
             }

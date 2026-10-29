@@ -10,6 +10,7 @@ import type {
   TranscriptSegment,
   Pulse,
   ClosingItem,
+  ClosingOutcomeReview,
 } from "./types.ts";
 import type { MeetingType } from "../companion-judgment.ts";
 export const personKey = (a: MeetingAttendee) =>
@@ -311,7 +312,7 @@ export function pulseTeamStatus(pulse: Pulse, names: Record<string, string>) {
   };
 }
 export function closingReadiness(
-  outcomes: { met: boolean }[],
+  outcomes: ({ met: boolean } | ClosingOutcomeReview)[],
   proposals: MeetingProposal[],
   items: ClosingItem[],
   followUpPlan?: string,
@@ -319,13 +320,37 @@ export function closingReadiness(
   const unconfirmed = proposals.filter(
     (p) =>
       p.body.kind === "action" &&
-      !items.some(
-        (i) => i.proposalId === p.id && i.confirmation === "confirmed",
-      ),
+      p.state !== "rejected" &&
+      (p.state !== "accepted" ||
+        !p.body.ownerPersonKey ||
+        !p.body.due ||
+        !Number.isFinite(Date.parse(p.body.due)) ||
+        !items.some(
+          (i) =>
+            i.proposalId === p.id &&
+            i.ownerPersonKey ===
+              (p.body as { ownerPersonKey: string | null }).ownerPersonKey &&
+            i.confirmation === "confirmed",
+        )),
   );
-  const missing = outcomes.filter((x) => !x.met).length;
+  const missing = outcomes.filter((x) =>
+    "met" in x
+      ? !x.met
+      : x.status === "deferred"
+        ? !x.ownerPersonKey || !x.dueAt || !Number.isFinite(Date.parse(x.dueAt))
+        : x.status === "partly_met"
+          ? !followUpPlan?.trim()
+          : !["met", "dropped"].includes(x.status),
+  ).length;
+  const reviewed = proposals.every((p) =>
+    ["accepted", "rejected"].includes(p.state),
+  );
   return {
-    complete: missing === 0 && unconfirmed.length === 0,
+    complete:
+      outcomes.length > 0 &&
+      missing === 0 &&
+      unconfirmed.length === 0 &&
+      reviewed,
     partial: !!followUpPlan?.trim(),
     missingOutcomes: missing,
     unconfirmedActions: unconfirmed.length,

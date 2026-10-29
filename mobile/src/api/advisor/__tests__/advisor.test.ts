@@ -1,4 +1,11 @@
-import { beforeEach, describe, expect, it, jest } from "@jest/globals";
+import {
+  beforeEach,
+  afterEach,
+  describe,
+  expect,
+  it,
+  jest,
+} from "@jest/globals";
 jest.mock("@/features/voice/out", () => ({
   clearVoiceAudioCache: jest.fn(async () => {}),
 }));
@@ -272,6 +279,91 @@ describe("advisor transport and secure drafts", () => {
     expect(useAdvisorStore.getState().identity).toBeNull();
     expect(await advisorTokens.get()).toBeNull();
   });
+  it.each([200, 401])(
+    "does not restore or clear a new identity after a late refresh (%s)",
+    async (status) => {
+      await useAdvisorStore.getState().setSession(session("old", 1000));
+      let finish!: (value: Response) => void;
+      const fetcher = jest.spyOn(global, "fetch").mockImplementation(
+        () =>
+          new Promise<Response>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const pending = new HttpAdvisorRepository("http://localhost").people();
+      const rejected = expect(pending).rejects.toMatchObject({
+        code: "SESSION_ENDED",
+      });
+      while (!finish) await new Promise((resolve) => setTimeout(resolve, 0));
+      await useAdvisorStore.getState().clear();
+      const next = {
+        ...session("new"),
+        advisor: { id: "another-advisor", name: "Alex Rivera" },
+      };
+      await useAdvisorStore.getState().setSession(next);
+      finish(
+        response(
+          status,
+          status === 200 ? session("stale") : { code: "REFRESH_REPLAY" },
+        ),
+      );
+      await rejected;
+      expect((await advisorTokens.get())?.accessToken).toBe("new");
+      expect(useAdvisorStore.getState().identity?.advisor.id).toBe(
+        "another-advisor",
+      );
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
+  it("rejects an old in-flight company response after logout", async () => {
+    await advisorTokens.set(session());
+    let finish!: (value: Response) => void;
+    jest.spyOn(global, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = new HttpAdvisorRepository("http://localhost").people();
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: "SESSION_ENDED",
+    });
+    while (!finish) await new Promise((resolve) => setTimeout(resolve, 0));
+    await useAdvisorStore.getState().clear();
+    finish(
+      response(200, {
+        people: [{ id: "old-company-person", name: "Private name" }],
+      }),
+    );
+    await rejected;
+    expect(await advisorTokens.get()).toBeNull();
+  });
+  it("clears advisor access and private drafts before remote logout acknowledges", async () => {
+    await useAdvisorStore.getState().setSession(session("old"));
+    await saveAdvisorDraft("kickoff", { text: "Fictional private note" });
+    let finish!: (value: Response) => void;
+    const fetcher = jest.spyOn(global, "fetch").mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = new HttpAdvisorRepository("http://localhost").logout(
+      "logout-key",
+    );
+    while (!finish) await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(useAdvisorStore.getState().identity).toBeNull();
+    expect(await advisorTokens.get()).toBeNull();
+    expect(await loadAdvisorDraft("kickoff")).toBeNull();
+    await useAdvisorStore.getState().setSession(session("new"));
+    finish(response(204, null));
+    await pending;
+    expect((await advisorTokens.get())?.accessToken).toBe("new");
+    expect(
+      (fetcher.mock.calls[0][1]!.headers as Record<string, string>)
+        .Authorization,
+    ).toBe("Bearer old");
+  });
   it("uses the exact transcript command shape and keeps the caller key", async () => {
     await advisorTokens.set(session());
     const fetcher = jest
@@ -302,6 +394,122 @@ describe("advisor transport and secure drafts", () => {
       "sessionId",
     );
   });
+  it("requires reviewed bindings for real meeting edits and routing without fetching a newer version", async () => {
+    await advisorTokens.set(session());
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(response(200, {}));
+    const r = new HttpAdvisorRepository("http://localhost", true);
+    await expect(
+      r.route("meeting", "as_planned", "route"),
+    ).rejects.toMatchObject({ code: "VERSION_REQUIRED" });
+    await expect(
+      r.patch("meeting", { expectedVersion: 3, minutes: 20 }, "patch"),
+    ).rejects.toMatchObject({ code: "VERSION_REQUIRED" });
+    expect(fetcher).not.toHaveBeenCalled();
+    await r.route("meeting", "as_planned", "route", {
+      version: 3,
+      hash: "a".repeat(64),
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(fetcher.mock.calls[0][1]!.body as string)).toEqual({
+      choice: "as_planned",
+      expectedVersion: 3,
+      contentHash: "a".repeat(64),
+    });
+  });
+  it("waits for the bounded batch finish instead of aborting at the ordinary 20-second limit", async () => {
+    await advisorTokens.set(session());
+    jest.useFakeTimers();
+    try {
+      jest.spyOn(global, "fetch").mockImplementation(
+        (_url, options) =>
+          new Promise<Response>((resolve, reject) => {
+            const provider = setTimeout(
+              () => resolve(response(200, {})),
+              180000,
+            );
+            options?.signal?.addEventListener("abort", () => {
+              clearTimeout(provider);
+              reject(new Error("aborted"));
+            });
+          }),
+      );
+      let settled = false;
+      const pending = new HttpAdvisorRepository("http://localhost")
+        .finish("session", "same-key")
+        .then(() => {
+          settled = true;
+        });
+      await jest.advanceTimersByTimeAsync(21000);
+      expect(settled).toBe(false);
+      await jest.advanceTimersByTimeAsync(180000);
+      await pending;
+      expect(settled).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it("reports an ordinary transport timeout without claiming the phone is offline", async () => {
+    await advisorTokens.set(session());
+    jest.useFakeTimers();
+    try {
+      jest.spyOn(global, "fetch").mockImplementation(
+        (_url, options) =>
+          new Promise<Response>((_resolve, reject) => {
+            options?.signal?.addEventListener("abort", () =>
+              reject(new Error("aborted")),
+            );
+          }),
+      );
+      const pending = expect(
+        new HttpAdvisorRepository("http://localhost").people(),
+      ).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
+      await jest.advanceTimersByTimeAsync(20000);
+      await pending;
+      expect(await advisorTokens.get()).not.toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it("keeps acknowledged kickoff revisions for the next edit and requires a bound closing review", async () => {
+    await advisorTokens.set(session());
+    const note = {
+      id: "note",
+      meetingId: "meeting",
+      topicId: "business" as const,
+      speakerPersonId: "person",
+      text: "Fictional note",
+      at: new Date().toISOString(),
+      version: 2,
+      hash: "a".repeat(64),
+    };
+    const next = { ...note, version: 3, hash: "b".repeat(64) };
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(response(200, { notes: [next] }));
+    const r = new HttpAdvisorRepository("http://localhost", true);
+    await expect(r.notes("meeting", [note], "notes")).resolves.toEqual([next]);
+    const body = JSON.parse(fetcher.mock.calls[0][1]!.body as string);
+    expect(body.notes[0]).toMatchObject({
+      expectedVersion: 2,
+      contentHash: note.hash,
+    });
+    expect(body.notes[0]).not.toHaveProperty("version");
+    expect(body.notes[0]).not.toHaveProperty("hash");
+    await expect(
+      r.confirm(
+        "meeting",
+        {
+          proposalId: "proposal",
+          ownerPersonKey: "person",
+          confirmation: "confirmed",
+        },
+        "confirm",
+      ),
+    ).rejects.toMatchObject({ code: "VERSION_REQUIRED" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it("rejects missing future API configuration without a network call", async () => {
     const fetcher = jest.spyOn(global, "fetch");
     await expect(
@@ -331,14 +539,587 @@ it("locates source playback using actual completed segment durations after inter
 });
 it("does not guess a recording offset when duration metadata is missing or the time is out of bounds", async () => {
   await advisorTokens.set(session());
-  jest
-    .spyOn(global, "fetch")
-    .mockResolvedValue(
-      response(200, {
-        segments: [{ segmentIndex: 0, complete: true, durationMs: 0 }],
-      }),
-    );
+  jest.spyOn(global, "fetch").mockResolvedValue(
+    response(200, {
+      segments: [{ segmentIndex: 0, complete: true, durationMs: 0 }],
+    }),
+  );
   const repo = new HttpAdvisorRepository("https://api.example.test");
   expect(await repo.audioSource("meeting-session", 1500)).toBeNull();
   expect(await repo.audioSource("meeting-session", -1)).toBeNull();
+});
+
+describe("structured closing ritual", () => {
+  async function fixture() {
+    const r = new MockAdvisorRepository();
+    const m = await r.create(input, "closing-create");
+    await r.plan(m.id, "closing-plan");
+    const s = await r.start(m.id, "capture", "closing-start");
+    await r.consent(
+      s.id,
+      s.consents.map((person) => ({
+        ...person,
+        state: "consented",
+        at: new Date().toISOString(),
+      })),
+      "closing-consent",
+    );
+    await r.transcript(
+      s.id,
+      [
+        {
+          id: "closing-source",
+          sessionId: s.id,
+          revision: 1,
+          startMs: 0,
+          endMs: 1000,
+          text: "Follow up on Tuesday.",
+          speakerCluster: "S1",
+          source: "live",
+          committed: true,
+        },
+      ],
+      "closing-text",
+    );
+    await r.finish(s.id, "closing-finish");
+    await r.decide(
+      (await r.session(s.id)).proposals[0],
+      "reject",
+      "closing-reject",
+    );
+    return { r, m, s };
+  }
+  it("guards incomplete and stale review, validates deferral, replays complete once and carries deferred work", async () => {
+    const { r, m, s } = await fixture();
+    let reviewed = await r.session(s.id);
+    await expect(
+      r.complete(
+        s.id,
+        { expectedVersion: reviewed.version, contentHash: reviewed.hash },
+        "incomplete",
+      ),
+    ).rejects.toThrow("Review outcomes");
+    await expect(
+      r.saveClosing(
+        s.id,
+        {
+          expectedVersion: reviewed.version,
+          contentHash: reviewed.hash,
+          outcomes: [
+            {
+              outcomeId: "outcome-1",
+              status: "deferred",
+              ownerPersonKey: "unknown",
+              dueAt: "2026-11-03T19:00:00Z",
+            },
+          ],
+        },
+        "invalid-owner",
+      ),
+    ).rejects.toThrow("attendee owner");
+    const outcomes = [
+      {
+        outcomeId: "outcome-1",
+        status: "deferred" as const,
+        ownerPersonKey: "dana",
+        dueAt: "2026-11-03T19:00:00Z",
+      },
+    ];
+    await r.saveClosing(
+      s.id,
+      {
+        outcomes,
+        expectedVersion: reviewed.version,
+        contentHash: reviewed.hash,
+      },
+      "save-closing",
+    );
+    await expect(
+      r.saveClosing(
+        s.id,
+        {
+          outcomes,
+          expectedVersion: reviewed.version,
+          contentHash: reviewed.hash,
+        },
+        "stale-outcome-save",
+      ),
+    ).rejects.toThrow("changed");
+    await expect(
+      r.complete(
+        s.id,
+        { expectedVersion: reviewed.version, contentHash: reviewed.hash },
+        "stale-closing",
+      ),
+    ).rejects.toThrow("changed");
+    reviewed = await r.session(s.id);
+    expect(reviewed.closingReadiness?.complete).toBe(true);
+    const command = {
+      expectedVersion: reviewed.version,
+      contentHash: reviewed.hash,
+    };
+    const complete = await r.complete(s.id, command, "complete");
+    expect(complete.state).toBe("COMPLETE");
+    expect(await r.complete(s.id, command, "complete")).toEqual(complete);
+    expect((await r.meeting(m.id)).version).toBe(complete.version);
+    const next = await r.create(
+      { ...input, previousMeetingId: m.id },
+      "next-meeting",
+    );
+    expect(next.power.outcomes).toEqual(["A launch date", "A launch date"]);
+    expect(next.agenda[0].forPersonIds).toEqual(["dana"]);
+    await expect(
+      r.saveClosing(
+        s.id,
+        {
+          outcomes,
+          expectedVersion: reviewed.version,
+          contentHash: reviewed.hash,
+        },
+        "after-complete",
+      ),
+    ).rejects.toThrow("complete");
+  });
+  it("posts outcome drafts and completion versions through the HTTP adapter", async () => {
+    await advisorTokens.set(session());
+    const calls: { url: string; body: unknown; key?: string }[] = [];
+    jest.spyOn(global, "fetch").mockImplementation(async (url, options) => {
+      calls.push({
+        url: String(url),
+        body: JSON.parse(String(options?.body)),
+        key: (options?.headers as Record<string, string>)["Idempotency-Key"],
+      });
+      return response(200, { state: "COMPLETE" });
+    });
+    const r = new HttpAdvisorRepository("http://localhost", true);
+    const input = {
+      expectedVersion: 3,
+      contentHash: "current-hash",
+      outcomes: [
+        {
+          outcomeId: "outcome-1",
+          status: "met" as const,
+          ownerPersonKey: null,
+          dueAt: null,
+        },
+      ],
+      followUpPlan: "",
+    };
+    await r.saveClosing("session-1", input, "save-key");
+    await r.complete(
+      "session-1",
+      { expectedVersion: 3, contentHash: "current-hash" },
+      "complete-key",
+    );
+    expect(calls).toEqual([
+      {
+        url: "http://localhost/api/mobile/meetings/v1/sessions/session-1/closing",
+        body: input,
+        key: "save-key",
+      },
+      {
+        url: "http://localhost/api/mobile/meetings/v1/sessions/session-1/complete",
+        body: { expectedVersion: 3, contentHash: "current-hash" },
+        key: "complete-key",
+      },
+    ]);
+  });
+});
+
+describe("resumable finish polling", () => {
+  beforeEach(async () => {
+    await advisorTokens.set(session());
+    jest.useFakeTimers();
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+  const job = (state: string, id = "job-one") => ({
+    job: {
+      id,
+      state,
+      stage: "extract",
+      completedSegments: 1,
+      failureCode: null,
+      simulated: true,
+    },
+  });
+  const done = () => ({
+    session: { endedAt: "2026-10-28T20:00:00Z" },
+    proposals: [],
+  });
+  it("keeps 202 pending, polls to complete, then requires the same command receipt", async () => {
+    const replies = [
+      response(202, job("queued")),
+      response(200, job("running")),
+      response(200, job("complete")),
+      response(200, done()),
+    ];
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async () => replies.shift()!);
+    let settled = false;
+    const pending = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key")
+      .then(() => {
+        settled = true;
+      });
+    await jest.advanceTimersByTimeAsync(0);
+    expect(settled).toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(settled).toBe(false);
+    await jest.advanceTimersByTimeAsync(1000);
+    await pending;
+    expect(settled).toBe(true);
+    expect(
+      fetcher.mock.calls.map(([url]) => String(url).split("/").at(-1)),
+    ).toEqual(["finish", "finish-job", "finish-job", "finish"]);
+    for (const [, init] of fetcher.mock.calls.filter(
+      ([, init]) => init?.method === "POST",
+    ))
+      expect((init!.headers as Record<string, string>)["Idempotency-Key"]).toBe(
+        "same-key",
+      );
+  });
+  it("bounds pending checks and resumes with the same key instead of starting another job", async () => {
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async () => response(202, job("queued")));
+    const repo = new HttpAdvisorRepository("http://localhost", true);
+    const error = repo
+      .finish("session-one", "same-key")
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(61000);
+    expect((await error).code).toBe("COMMAND_PENDING");
+    expect(
+      fetcher.mock.calls.filter(([, init]) => init?.method === "POST"),
+    ).toHaveLength(1);
+    fetcher.mockResolvedValueOnce(response(200, done()));
+    await repo.finish("session-one", "same-key");
+    expect(
+      (fetcher.mock.calls.at(-1)![1]!.headers as Record<string, string>)[
+        "Idempotency-Key"
+      ],
+    ).toBe("same-key");
+  });
+  it.each([
+    ["needs_review", "FINISH_REVIEW_REQUIRED"],
+    ["failed", "COMMAND_FAILED"],
+  ])("reports %s without automatic resubmission", async (state, code) => {
+    const replies = [response(202, job("queued")), response(200, job(state))];
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async () => replies.shift()!);
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key")
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect((await error).code).toBe(code);
+    expect(fetcher.mock.calls).toHaveLength(2);
+  });
+  it("stops checking on cancellation and retains the pending attempt", async () => {
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(response(202, job("queued")));
+    const controller = new AbortController();
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key", { signal: controller.signal })
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(0);
+    controller.abort();
+    expect((await error).code).toBe("COMMAND_PENDING");
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it("does not read another company after logout while polling", async () => {
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(response(202, job("queued")));
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key")
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(0);
+    await clearAdvisorData();
+    await jest.advanceTimersByTimeAsync(1000);
+    expect((await error).code).toBe("SESSION_ENDED");
+    expect(fetcher.mock.calls).toHaveLength(1);
+  });
+  it("times out a status request without falsely finishing or resubmitting", async () => {
+    let calls = 0;
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async (_url, init) => {
+        if (++calls === 1) return response(202, job("queued"));
+        return new Promise<Response>((_resolve, reject) =>
+          init!.signal!.addEventListener("abort", () =>
+            reject(new Error("aborted")),
+          ),
+        );
+      });
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key")
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(22000);
+    expect((await error).code).toBe("REQUEST_TIMEOUT");
+    expect(fetcher.mock.calls).toHaveLength(2);
+  });
+  it("cannot use another job's complete status as this command's completion", async () => {
+    let get = false;
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async (_url, init) => {
+        if (init?.method === "GET") {
+          get = true;
+          return response(200, job("complete", "another-job"));
+        }
+        return response(202, job("queued"));
+      });
+    const controller = new AbortController();
+    let settled = false;
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key", { signal: controller.signal })
+      .then(() => {
+        settled = true;
+      })
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(get).toBe(true);
+    expect(settled).toBe(false);
+    expect(fetcher.mock.calls).toHaveLength(3);
+    controller.abort();
+    expect((await error).code).toBe("COMMAND_PENDING");
+  });
+  it("cancels an in-flight status request without accepting its eventual response", async () => {
+    let calls = 0;
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async (_url, init) => {
+        if (++calls === 1) return response(202, job("queued"));
+        return new Promise<Response>((_resolve, reject) =>
+          init!.signal!.addEventListener("abort", () =>
+            reject(new Error("aborted")),
+          ),
+        );
+      });
+    const controller = new AbortController();
+    const error = new HttpAdvisorRepository("http://localhost", true)
+      .finish("session-one", "same-key", { signal: controller.signal })
+      .catch((error) => error);
+    await jest.advanceTimersByTimeAsync(1000);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    controller.abort();
+    expect((await error).code).toBe("COMMAND_PENDING");
+  });
+  it.each([200, 202])(
+    "refuses an unacknowledged empty finish response (%s)",
+    async (status) => {
+      jest.spyOn(global, "fetch").mockResolvedValue(response(status, {}));
+      await expect(
+        new HttpAdvisorRepository("http://localhost", true).finish(
+          "session-one",
+          "same-key",
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    },
+  );
+  it.each(["cancel", "timeout"])(
+    "keeps %s active while a status response body is still loading",
+    async (mode) => {
+      let calls = 0;
+      jest.spyOn(global, "fetch").mockImplementation(async (_url, init) => {
+        if (++calls === 1) return response(202, job("queued"));
+        return {
+          status: 200,
+          ok: true,
+          text: () =>
+            new Promise<string>((_resolve, reject) =>
+              init!.signal!.addEventListener("abort", () =>
+                reject(new Error("body aborted")),
+              ),
+            ),
+        } as Response;
+      });
+      const controller = new AbortController();
+      const error = new HttpAdvisorRepository("http://localhost", true)
+        .finish("session-one", "same-key", { signal: controller.signal })
+        .catch((error) => error);
+      await jest.advanceTimersByTimeAsync(1000);
+      if (mode === "cancel") controller.abort();
+      else await jest.advanceTimersByTimeAsync(21000);
+      expect((await error).code).toBe(
+        mode === "cancel" ? "COMMAND_PENDING" : "REQUEST_TIMEOUT",
+      );
+      expect(calls).toBe(2);
+    },
+  );
+  it("keeps an ambiguous dispatch review code from the command replay", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue(
+      response(409, {
+        code: "FINISH_REVIEW_REQUIRED",
+        message: "Review required",
+        retryable: false,
+      }),
+    );
+    await expect(
+      new HttpAdvisorRepository("http://localhost", true).finish(
+        "session-one",
+        "same-key",
+      ),
+    ).rejects.toMatchObject({
+      code: "FINISH_REVIEW_REQUIRED",
+      retryable: false,
+    });
+  });
+});
+
+describe("optional meeting gate suggestion", () => {
+  it("keeps the mock off and never changes the rules or meeting route", async () => {
+    const repo = new MockAdvisorRepository();
+    const meeting = await repo.create(input, "suggestion-create");
+    const planned = await repo.plan(meeting.id, "suggestion-plan");
+    const before = await repo.meeting(meeting.id);
+    const result = await repo.gateSuggestion(meeting.id, "suggestion-key");
+    expect(result.status).toBe("off");
+    expect(result.suggestion).toBeNull();
+    expect(result.deterministic).toEqual(planned.gate);
+    expect(await repo.meeting(meeting.id)).toEqual(before);
+  });
+  it("sends an explicit authenticated idempotent request without applying its suggestion", async () => {
+    await advisorTokens.set(session());
+    const result = {
+      deterministic: { mode: "LIVE", reason: "Rules still apply" },
+      suggestion: { suggestion: "shorten", reason: "One issue remains" },
+      status: "suggestion",
+      simulated: true,
+    };
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(response(200, result));
+    const repo = new HttpAdvisorRepository("http://localhost", true);
+    expect(await repo.gateSuggestion("meeting-one", "gate-key")).toEqual(
+      result,
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe(
+      "http://localhost/api/mobile/meetings/v1/meetings/meeting-one/gate-suggestion",
+    );
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({});
+    expect((init?.headers as Record<string, string>)["Idempotency-Key"]).toBe(
+      "gate-key",
+    );
+    expect((init?.headers as Record<string, string>).Authorization).toBe(
+      "Bearer one",
+    );
+  });
+});
+
+describe("scoped Task Card meeting review", () => {
+  it("reads cards without mutation and pins an accepted proposal to one immutable draft", async () => {
+    const repo = new MockAdvisorRepository();
+    const meeting = await repo.create(input, "task-create");
+    await repo.plan(meeting.id, "task-plan");
+    const started = await repo.start(meeting.id, "capture", "task-start");
+    await repo.consent(
+      started.id,
+      started.consents.map((person) => ({
+        ...person,
+        state: "consented",
+        at: new Date().toISOString(),
+      })),
+      "task-consent",
+    );
+    await repo.transcript(
+      started.id,
+      [
+        {
+          id: "task-source",
+          sessionId: started.id,
+          revision: 1,
+          startMs: 0,
+          endMs: 1000,
+          text: "Dana will own the shipping-date check.",
+          source: "live",
+          speakerCluster: null,
+          personKey: "dana",
+          committed: true,
+        },
+      ],
+      "task-words",
+    );
+    await repo.finish(started.id, "task-finish");
+    const target = (await repo.taskCards())[0];
+    // A fictional provider fixture in this isolated mock, before the advisor reviews it.
+    const records = Reflect.get(repo, "sessions") as Map<
+      string,
+      import("../types").SessionDetail
+    >;
+    const proposal = records.get(started.id)!.proposals[0];
+    proposal.kind = "task_card_delta";
+    proposal.body = {
+      kind: "task_card_delta",
+      taskCardId: target.id,
+      personKey: "dana",
+      field: "ownerId",
+      from: target.data.ownerId,
+      to: "dana",
+    };
+    const reviewed = (await repo.session(started.id)).proposals[0];
+    const accepted = await repo.decide(reviewed, "accept", "task-accept");
+    expect(accepted.draftRecordId).toBeTruthy();
+    expect((await repo.taskCard(accepted.draftRecordId!)).data.ownerId).toBe(
+      "dana",
+    );
+    expect(await repo.taskCard(target.id)).toEqual(target);
+    expect(await repo.decide(reviewed, "accept", "task-accept")).toEqual(
+      accepted,
+    );
+    await expect(
+      repo.decide(accepted, "reject", "task-reject-after-draft"),
+    ).rejects.toThrow("saved draft");
+    await expect(
+      repo.decide(accepted, "edit", "task-edit-after-draft", {
+        ...(accepted.body as Extract<
+          import("../types").MeetingProposal["body"],
+          { kind: "task_card_delta" }
+        >),
+        to: "priya",
+      }),
+    ).rejects.toThrow("saved draft");
+    const preserved = await repo.taskCard(accepted.draftRecordId!);
+    proposal.state = "stale";
+    proposal.version++;
+    proposal.hash = "mock-stale-source";
+    const stale = (await repo.session(started.id)).proposals[0];
+    await expect(
+      repo.decide(stale, "accept", "stale-reaccept"),
+    ).rejects.toThrow("saved draft");
+    const rejected = await repo.decide(stale, "reject", "stale-reject");
+    expect(rejected.state).toBe("rejected");
+    expect(await repo.taskCard(accepted.draftRecordId!)).toEqual(preserved);
+    expect(await repo.decide(stale, "reject", "stale-reject")).toEqual(
+      rejected,
+    );
+    await expect(repo.taskCard("foreign-or-missing")).rejects.toThrow(
+      "not found",
+    );
+  });
+  it("loads scoped list/detail through authenticated GETs without writing", async () => {
+    await advisorTokens.set(session());
+    const card = (await new MockAdvisorRepository().taskCards())[0];
+    const replies = [response(200, { taskCards: [card] }), response(200, card)];
+    const fetcher = jest
+      .spyOn(global, "fetch")
+      .mockImplementation(async () => replies.shift()!);
+    const repo = new HttpAdvisorRepository("http://localhost", true);
+    expect(await repo.taskCards()).toEqual([card]);
+    expect(await repo.taskCard(card.id)).toEqual(card);
+    expect(fetcher.mock.calls.map(([url]) => String(url))).toEqual([
+      "http://localhost/api/mobile/meetings/v1/task-cards",
+      `http://localhost/api/mobile/meetings/v1/task-cards/${card.id}`,
+    ]);
+    for (const [, init] of fetcher.mock.calls) expect(init?.method).toBe("GET");
+  });
 });

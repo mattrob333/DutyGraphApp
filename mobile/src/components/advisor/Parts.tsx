@@ -1,8 +1,10 @@
 import React from "react";
+import { TaskCardInspection } from "./TaskCardInspection";
 import { Pressable, TextInput, View } from "react-native";
 import { Button, Card, Text, errorMessage } from "@/components/common";
 import { radius, typography, useColors } from "@/theme";
-import type { MeetingProposal } from "@/api/advisor";
+import type { MeetingProposal, MeetingTaskCardWire } from "@/api/advisor";
+import { hasInstructionLikeQuote } from "./proposalQuoteWarning";
 export function Field({
   label,
   value,
@@ -10,6 +12,7 @@ export function Field({
   multiline = true,
   placeholder,
   maxLength = 4000,
+  editable = true,
 }: {
   label: string;
   value: string;
@@ -17,6 +20,7 @@ export function Field({
   multiline?: boolean;
   placeholder?: string;
   maxLength?: number;
+  editable?: boolean;
 }) {
   const c = useColors();
   return (
@@ -27,6 +31,7 @@ export function Field({
       <TextInput
         accessibilityLabel={label}
         value={value}
+        editable={editable}
         onChangeText={onChange}
         multiline={multiline}
         placeholder={placeholder}
@@ -163,6 +168,8 @@ export function ProposalEvidenceCard({
   busy,
   sourceTimes,
   onSource,
+  taskCards,
+  loadTaskCard,
 }: {
   proposal: MeetingProposal;
   people: Record<string, string>;
@@ -171,10 +178,14 @@ export function ProposalEvidenceCard({
   busy?: boolean;
   sourceTimes?: Record<string, number>;
   onSource?: (segmentId: string) => void;
+  taskCards?: MeetingTaskCardWire[];
+  loadTaskCard?(id: string): Promise<MeetingTaskCardWire>;
 }) {
   const p = proposal,
     accepted = p.state === "accepted",
     stale = p.state === "stale";
+  const linkedTaskCardId =
+    p.body.kind === "task_card_delta" ? p.body.taskCardId : null;
   return (
     <Card tone={accepted ? "sage" : stale ? "amber" : "violet"}>
       <Text variant="label" color="muted">
@@ -198,6 +209,45 @@ export function ProposalEvidenceCard({
             ? (people[p.body.ownerPersonKey] ?? "Unknown")
             : "Not stated"}{" "}
           · Due: {p.body.due ?? "Not stated"} · {p.body.status}
+        </Notice>
+      ) : null}
+      {p.body.kind === "task_card_delta" ? (
+        <Notice>
+          For{" "}
+          {p.body.personKey
+            ? (people[p.body.personKey] ?? "the named person")
+            : "an unconfirmed owner"}
+          .
+          {p.body.taskCardId
+            ? " Linked to an existing Task Card."
+            : " Proposes a new Task Card."}
+          {p.draftRecordId
+            ? " Saved as an advisor draft."
+            : " Review the source before accepting."}
+        </Notice>
+      ) : null}
+      {linkedTaskCardId ? (
+        <TaskCardInspection
+          key={linkedTaskCardId}
+          id={linkedTaskCardId}
+          title={taskCards?.find((card) => card.id === linkedTaskCardId)?.title}
+          people={people}
+          load={loadTaskCard}
+        />
+      ) : null}
+      {p.draftRecordId ? (
+        <TaskCardInspection
+          key={p.draftRecordId}
+          id={p.draftRecordId}
+          title={taskCards?.find((card) => card.id === p.draftRecordId)?.title}
+          draft
+          people={people}
+          load={loadTaskCard}
+        />
+      ) : null}
+      {p.sources.some((s) => hasInstructionLikeQuote(s.quote)) ? (
+        <Notice tone="amber">
+          This quote looks like an instruction. Check before accepting.
         </Notice>
       ) : null}
       {p.sources.map((s, i) => (
@@ -227,26 +277,47 @@ export function ProposalEvidenceCard({
       {stale ? (
         <Notice tone="amber">The transcript changed. Check this again.</Notice>
       ) : null}
-      <View
-        style={{
-          flexDirection: "row",
-          flexWrap: "wrap",
-          gap: 8,
-          marginTop: 16,
-        }}
-      >
-        <Button
-          label="Accept"
-          disabled={busy || stale || !p.sources.some((s) => s.personKey)}
-          onPress={() => onDecide("accept")}
-        />
-        <Button label="Edit" disabled={busy} onPress={onEdit} />
-        <Button
-          label="Reject"
-          disabled={busy}
-          onPress={() => onDecide("reject")}
-        />
-      </View>
+      {!p.draftRecordId ? (
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: 8,
+            marginTop: 16,
+          }}
+        >
+          <Button
+            label="Accept"
+            disabled={busy || stale || !p.sources.some((s) => s.personKey)}
+            onPress={() => onDecide("accept")}
+          />
+          <Button label="Edit" disabled={busy} onPress={onEdit} />
+          <Button
+            label="Reject"
+            disabled={busy}
+            onPress={() => onDecide("reject")}
+          />
+        </View>
+      ) : stale ? (
+        <View>
+          <Notice tone="amber">
+            The source changed. You can reject this stale proposal. The
+            previously created draft remains unchanged and needs a separate
+            review.
+          </Notice>
+          <Button
+            label="Reject"
+            disabled={busy}
+            onPress={() => onDecide("reject")}
+          />
+        </View>
+      ) : (
+        <Notice>
+          {p.state === "rejected"
+            ? "Rejecting this proposal did not remove the existing draft. Review that draft separately."
+            : "This proposal already created a saved draft. Inspect the draft to review further changes."}
+        </Notice>
+      )}
     </Card>
   );
 }

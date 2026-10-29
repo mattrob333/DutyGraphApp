@@ -32,7 +32,9 @@ export function EmptyState({ children }: { children: React.ReactNode }) {
 export function errorMessage(error: unknown): string {
   if (error instanceof CompanionApiError) {
     if (error.code === 'NOT_AVAILABLE') return "This part of DutyGraph isn't available on your account yet.";
-    if (error.status === 0) return "You're offline. We'll try again when you're back.";
+    if (error.code === 'REQUEST_TIMEOUT') return 'That took too long. It may still have been received. Try the same action again to check.';
+    if (error.code === 'SESSION_ENDED') return error.message;
+    if (error.status === 0) return "Couldn't connect. Check your connection and try again.";
     return error.message;
   }
   return 'Something went wrong. Please try again.';

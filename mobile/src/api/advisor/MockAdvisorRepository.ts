@@ -4,6 +4,7 @@ import {
   inferMeetingType,
   canAccept,
   staleFromSegment,
+  closingReadiness,
 } from "../../../../shared/meetings/rules";
 import { newId } from "@/utils/id";
 import type {
@@ -19,6 +20,9 @@ import type {
   Coach,
   Trigger,
   ClosingItem,
+  SaveClosing,
+  MeetingGateSuggestionWire,
+  MeetingTaskCardWire,
 } from "./types";
 import type {
   SpeakerMap,
@@ -57,10 +61,35 @@ export class MockAdvisorRepository implements AdvisorRepository {
   private commands = new Map<string, { body: string; result: unknown }>();
   private pulses = new Map<string, PulseStatus>();
   private noteRecords = new Map<string, KickoffNote[]>();
+  private taskCardRecords = new Map<string, MeetingTaskCardWire>();
   constructor() {
     this.seed();
   }
   private seed() {
+    const title = "Confirm the shipping date";
+    this.taskCardRecords.set("task-demo-shipping", {
+      id: "task-demo-shipping",
+      title,
+      version: 1,
+      hash: "mock-task-demo-shipping-1",
+      state: "active",
+      data: {
+        title,
+        duty: "Coordinate shipping",
+        ownerId: "priya",
+        performerId: "priya",
+        purpose: "Confirm when the order can ship",
+        trigger: "Order ready",
+        inputs: "Order details",
+        instructions: "Check the carrier schedule",
+        output: "Confirmed shipping date",
+        systems: ["Dispatch board"],
+        humanGate: "Dana approves",
+        destination: "Warehouse",
+        mode: "human",
+      },
+    });
+
     const meeting = this.make(
       {
         title: "Weekly operations review",
@@ -107,6 +136,9 @@ export class MockAdvisorRepository implements AdvisorRepository {
       version: 1,
       hash: `mock-${id}-1`,
       title: input.title,
+      ...(input.previousMeetingId
+        ? { previousMeetingId: input.previousMeetingId }
+        : {}),
       startsAt: input.startsAt,
       minutes: input.minutes,
       power: {
@@ -155,6 +187,14 @@ export class MockAdvisorRepository implements AdvisorRepository {
   async people() {
     return copy(DEMO_PEOPLE);
   }
+  async taskCards() {
+    return copy([...this.taskCardRecords.values()]);
+  }
+  async taskCard(id: string) {
+    return copy(
+      this.taskCardRecords.get(id) ?? problem("Task Card was not found."),
+    );
+  }
   async meetings() {
     return copy([...this.records.values()]);
   }
@@ -163,7 +203,46 @@ export class MockAdvisorRepository implements AdvisorRepository {
   }
   async create(input: CreateMeeting, key: string) {
     return this.run(key, input, () => {
-      const m = this.make(input);
+      let next = input;
+      if (input.previousMeetingId) {
+        const previous = this.get(input.previousMeetingId);
+        if (previous.state !== "COMPLETE")
+          return problem(
+            "Complete the previous meeting before carrying deferred work.",
+          );
+        const previousSession = [...this.sessions.values()].find(
+          (session) => session.meetingId === previous.id,
+        );
+        const carried = (previousSession?.outcomeReviews ?? [])
+          .filter((review) => review.status === "deferred")
+          .map((review) => ({
+            review,
+            title:
+              previous.power.outcomes[
+                Number(review.outcomeId.replace("outcome-", "")) - 1
+              ],
+          }))
+          .filter((item) => !!item.title);
+        next = {
+          ...input,
+          outcomes: [...input.outcomes, ...carried.map((item) => item.title)],
+          agenda: [
+            ...(input.agenda ?? []),
+            ...carried.map((item, index) => ({
+              id: `deferred-${previous.id}-${index + 1}`,
+              title: item.title,
+              minutes: 5,
+              forPersonIds: item.review.ownerPersonKey
+                ? [item.review.ownerPersonKey]
+                : [],
+              questions: [`Follow up by ${item.review.dueAt}`],
+              outcomeIds: [`outcome-${input.outcomes.length + index + 1}`],
+              async: false,
+            })),
+          ],
+        };
+      }
+      const m = this.make(next);
       this.records.set(m.id, m);
       return m;
     });
@@ -206,6 +285,16 @@ export class MockAdvisorRepository implements AdvisorRepository {
     });
   }
 
+  async gateSuggestion(
+    id: string,
+    key: string,
+  ): Promise<MeetingGateSuggestionWire> {
+    return this.run(key, { id, operation: "gate-suggestion" }, () => ({
+      deterministic: gateMeeting(this.get(id)),
+      suggestion: null,
+      status: "off",
+    }));
+  }
   async route(
     id: string,
     choice: "pulse" | "shorter" | "as_planned",
@@ -304,8 +393,28 @@ export class MockAdvisorRepository implements AdvisorRepository {
   > {
     return { available: false, reason: "DEMO_USES_SPOKEN_LINES" };
   }
+  private readiness(s: SessionDetail) {
+    const meeting = this.get(s.meetingId);
+    const reviews = meeting.power.outcomes.map(
+      (_, index) =>
+        s.outcomeReviews?.find(
+          (review) => review.outcomeId === `outcome-${index + 1}`,
+        ) ?? { met: false },
+    );
+    return closingReadiness(
+      reviews,
+      s.proposals,
+      s.closing ?? [],
+      s.followUpPlan,
+    );
+  }
+  private reviseSession(s: SessionDetail) {
+    s.version++;
+    s.hash = `mock-${s.id}-${s.version}`;
+  }
   async session(id: string) {
-    return copy(this.live(id));
+    const s = this.live(id);
+    return copy({ ...s, closingReadiness: this.readiness(s) });
   }
   async consent(
     id: string,
@@ -407,6 +516,8 @@ export class MockAdvisorRepository implements AdvisorRepository {
   async state(id: string, to: string, key: string) {
     this.run(key, { id, to }, () => {
       const s = this.live(id);
+      if (to === "COMPLETE" && this.get(s.meetingId).state !== "COMPLETE")
+        return problem("Complete the closing review first.");
       s.log.push({ at: now(), actor: "leader", kind: to });
       if (to === "NEXT_TOPIC") {
         const agenda = this.get(s.meetingId).agenda;
@@ -533,6 +644,12 @@ export class MockAdvisorRepository implements AdvisorRepository {
         p =
           s.proposals.find((v) => v.id === proposal.id) ??
           problem("Proposal was not found.");
+      if (p.draftRecordId && !(p.state === "stale" && decision === "reject"))
+        return problem(
+          "This proposal already created a saved draft. Review the draft record for further changes.",
+        );
+      if (this.get(s.meetingId).state === "COMPLETE")
+        return problem("This meeting is complete.");
       if (p.version !== proposal.version)
         return problem("This proposal changed. Reload it.");
       if (decision === "accept") {
@@ -541,6 +658,64 @@ export class MockAdvisorRepository implements AdvisorRepository {
           return problem(
             allowed.reason ?? "Check the source before accepting.",
           );
+        if (p.body.kind === "task_card_delta") {
+          const change = p.body,
+            meeting = this.get(s.meetingId);
+          if (
+            !change.personKey ||
+            !meeting.attendees.some(
+              (person) => person.personId === change.personKey,
+            )
+          )
+            return problem("Choose a named attendee whose work changes.");
+          if (
+            change.field === "ownerId" &&
+            !meeting.attendees.some((person) => person.personId === change.to)
+          )
+            return problem("Choose a named attendee as owner.");
+          const target = change.taskCardId
+            ? (this.taskCardRecords.get(change.taskCardId) ??
+              problem("Task Card was not found."))
+            : null;
+          const draftId = newId(),
+            title =
+              change.field === "title"
+                ? change.to
+                : (target?.title ?? "Proposed Task Card change");
+          const data = target
+            ? copy(target.data)
+            : {
+                title,
+                duty: "",
+                ownerId: change.personKey,
+                performerId: change.personKey,
+                purpose: "",
+                trigger: "",
+                inputs: "",
+                instructions: "",
+                output: "",
+                systems: [] as string[],
+                humanGate: "",
+                destination: "",
+                mode: "human",
+              };
+          if (change.field === "systems")
+            data.systems = change.to
+              .split("\n")
+              .map((value) => value.trim())
+              .filter(Boolean);
+          else Object.assign(data, { [change.field]: change.to });
+          data.title = title;
+          this.taskCardRecords.set(draftId, {
+            id: draftId,
+            title,
+            version: 1,
+            hash: `mock-${draftId}-1`,
+            state: "proposed",
+            data,
+          });
+          p.draftRecordId = draftId;
+        }
         p.sources = p.sources.map((ref) => ({
           ...ref,
           personKey:
@@ -551,6 +726,24 @@ export class MockAdvisorRepository implements AdvisorRepository {
         }));
       }
       if (decision === "edit") {
+        if (body?.kind === "task_card_delta") {
+          const meeting = this.get(s.meetingId);
+          if (
+            !body.personKey ||
+            !meeting.attendees.some(
+              (person) => person.personId === body.personKey,
+            )
+          )
+            return problem("Choose a named attendee whose work changes.");
+          if (body.taskCardId && !this.taskCardRecords.has(body.taskCardId))
+            return problem("Task Card was not found.");
+          if (
+            body.field === "ownerId" &&
+            !meeting.attendees.some((person) => person.personId === body.to)
+          )
+            return problem("Choose a named attendee as owner.");
+        }
+
         if (
           !proposal.sources.length ||
           proposal.sources.some((ref) => {
@@ -574,6 +767,8 @@ export class MockAdvisorRepository implements AdvisorRepository {
         p.sources = copy(proposal.sources);
         if (body) p.body = body;
       }
+      s.closing = (s.closing ?? []).filter((item) => item.proposalId !== p.id);
+      this.reviseSession(s);
       p.state =
         decision === "accept"
           ? "accepted"
@@ -590,6 +785,16 @@ export class MockAdvisorRepository implements AdvisorRepository {
   async confirm(id: string, item: ClosingItem, key: string) {
     this.run(key, { id, item }, () => {
       const s = this.live(id);
+      if (this.get(s.meetingId).state === "COMPLETE")
+        return problem("This meeting is complete.");
+      const current = s.proposals.find((p) => p.id === item.proposalId);
+      if (
+        !current ||
+        (item.expectedVersion !== undefined &&
+          item.expectedVersion !== current.version) ||
+        (item.contentHash !== undefined && item.contentHash !== current.hash)
+      )
+        return problem("The proposal changed. Reload it.");
       s.closing = [
         ...(s.closing ?? []).filter((i) => i.proposalId !== item.proposalId),
         item,
@@ -601,6 +806,69 @@ export class MockAdvisorRepository implements AdvisorRepository {
         item.ownerPersonKey === p.body.ownerPersonKey
       )
         p.body.status = "assigned";
+      this.reviseSession(s);
+    });
+  }
+  async saveClosing(id: string, input: SaveClosing, key: string) {
+    this.run(key, { id, input }, () => {
+      const s = this.live(id),
+        meeting = this.get(s.meetingId);
+      if (meeting.state === "COMPLETE")
+        return problem("This meeting is complete.");
+      if (s.version !== input.expectedVersion || s.hash !== input.contentHash)
+        return problem("The closing review changed. Reload it.");
+      const allowed = new Set(
+        meeting.power.outcomes.map((_, index) => `outcome-${index + 1}`),
+      );
+      const seen = new Set<string>();
+      for (const review of input.outcomes) {
+        if (!allowed.has(review.outcomeId) || seen.has(review.outcomeId))
+          return problem("Review each current outcome once.");
+        seen.add(review.outcomeId);
+        if (
+          !["met", "partly_met", "deferred", "dropped"].includes(review.status)
+        )
+          return problem("Choose an outcome status.");
+        if (
+          review.status === "deferred" &&
+          (!s.consents.some(
+            (person) =>
+              person.personKey === review.ownerPersonKey &&
+              person.state === "consented",
+          ) ||
+            !Number.isFinite(Date.parse(review.dueAt ?? "")))
+        )
+          return problem("Deferred work needs an attendee owner and date.");
+        if (review.status === "partly_met" && !input.followUpPlan?.trim())
+          return problem("Add a follow-up plan for partly met outcomes.");
+      }
+      s.outcomeReviews = copy(input.outcomes);
+      s.followUpPlan = input.followUpPlan;
+      this.reviseSession(s);
+    });
+  }
+  async complete(
+    id: string,
+    reviewed: { expectedVersion: number; contentHash: string },
+    key: string,
+  ) {
+    return this.run(key, { id, reviewed }, () => {
+      const s = this.live(id),
+        meeting = this.get(s.meetingId);
+      if (meeting.state === "COMPLETE") return meeting;
+      if (
+        s.version !== reviewed.expectedVersion ||
+        s.hash !== reviewed.contentHash
+      )
+        return problem("The closing review changed. Reload it.");
+      if (!s.endedAt || !this.readiness(s).complete)
+        return problem(
+          "Review outcomes, proposals, action owners, dates and confirmations before completing.",
+        );
+      meeting.state = "COMPLETE";
+      this.revise(meeting);
+      this.reviseSession(s);
+      return meeting;
     });
   }
   async followUp(id: string, personId: string, key: string) {

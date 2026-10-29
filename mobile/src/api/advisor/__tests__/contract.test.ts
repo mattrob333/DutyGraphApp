@@ -237,6 +237,12 @@ const cases: {
       }),
   },
   {
+    name: "optional gate suggestion",
+    path: "/meetings/{id}/gate-suggestion",
+    method: "post",
+    execute: (repository) => repository.gateSuggestion(meetingId, "key"),
+  },
+  {
     name: "closing",
     path: "/sessions/{id}/closing",
     method: "post",

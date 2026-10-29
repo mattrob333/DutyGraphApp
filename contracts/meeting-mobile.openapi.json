@@ -380,6 +380,91 @@
         }
       }
     },
+    "/api/mobile/meetings/v1/task-cards": {
+      "get": {
+        "operationId": "get_api_mobile_meetings_v1_task_cards",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acknowledged by the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "taskCards": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AdvisorTaskCard"
+                      }
+                    }
+                  },
+                  "required": [
+                    "taskCards"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/meetings/v1/task-cards/{id}": {
+      "get": {
+        "operationId": "get_api_mobile_meetings_v1_task_cards_id",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acknowledged by the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdvisorTaskCard"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
     "/api/mobile/meetings/v1/meetings": {
       "get": {
         "operationId": "get_api_mobile_meetings_v1_meetings",
@@ -634,6 +719,10 @@
                     },
                     "maxItems": 30
                   },
+                  "previousMeetingId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
                   "expectedVersion": {
                     "type": "integer",
                     "minimum": 1
@@ -646,6 +735,87 @@
                 "required": [
                   "expectedVersion"
                 ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/meetings/v1/meetings/{id}/gate-suggestion": {
+      "post": {
+        "operationId": "post_api_mobile_meetings_v1_meetings_id_gate_suggestion",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acknowledged by the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deterministic": {
+                      "$ref": "#/components/schemas/Gate"
+                    },
+                    "suggestion": {
+                      "type": "null"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "deterministic",
+                    "suggestion",
+                    "status"
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "required": [],
                 "additionalProperties": false
               }
             }
@@ -2716,11 +2886,103 @@
                     "items": {
                       "$ref": "#/components/schemas/ClosingItem"
                     }
+                  },
+                  "outcomes": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ClosingOutcomeReview"
+                    }
+                  },
+                  "followUpPlan": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "contentHash": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/meetings/v1/sessions/{id}/complete": {
+      "post": {
+        "operationId": "post_api_mobile_meetings_v1_sessions_id_complete",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Acknowledged by the server.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Meeting"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Request failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "contentHash": {
+                    "type": "string"
                   }
                 },
                 "required": [
-                  "items"
-                ]
+                  "expectedVersion",
+                  "contentHash"
+                ],
+                "additionalProperties": false
               }
             }
           }
@@ -4541,6 +4803,10 @@
               "$ref": "#/components/schemas/Topic"
             },
             "maxItems": 30
+          },
+          "previousMeetingId": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
@@ -4694,6 +4960,10 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "previousMeetingId": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
@@ -5321,6 +5591,78 @@
           "confirmation"
         ]
       },
+      "ClosingOutcomeReview": {
+        "type": "object",
+        "properties": {
+          "outcomeId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "met",
+              "partly_met",
+              "deferred",
+              "dropped"
+            ]
+          },
+          "ownerPersonKey": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dueAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "outcomeId",
+          "status",
+          "ownerPersonKey",
+          "dueAt"
+        ],
+        "additionalProperties": false
+      },
+      "ClosingReadiness": {
+        "type": "object",
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "partial": {
+            "type": "boolean"
+          },
+          "missingOutcomes": {
+            "type": "integer"
+          },
+          "unconfirmedActions": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "complete",
+          "partial",
+          "missingOutcomes",
+          "unconfirmedActions"
+        ]
+      },
       "SessionSnapshot": {
         "allOf": [
           {
@@ -5355,6 +5697,18 @@
                 "items": {
                   "$ref": "#/components/schemas/ClosingItem"
                 }
+              },
+              "outcomeReviews": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ClosingOutcomeReview"
+                }
+              },
+              "followUpPlan": {
+                "type": "string"
+              },
+              "closingReadiness": {
+                "$ref": "#/components/schemas/ClosingReadiness"
               }
             },
             "required": [
@@ -5362,9 +5716,105 @@
               "parked",
               "speakerMap",
               "proposals",
-              "closing"
+              "closing",
+              "outcomeReviews",
+              "followUpPlan",
+              "closingReadiness"
             ]
           }
+        ]
+      },
+      "AdvisorTaskCard": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "state": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "duty": {
+                "type": "string"
+              },
+              "ownerId": {
+                "type": "string"
+              },
+              "performerId": {
+                "type": "string"
+              },
+              "purpose": {
+                "type": "string"
+              },
+              "trigger": {
+                "type": "string"
+              },
+              "inputs": {
+                "type": "string"
+              },
+              "instructions": {
+                "type": "string"
+              },
+              "output": {
+                "type": "string"
+              },
+              "humanGate": {
+                "type": "string"
+              },
+              "destination": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "systems": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "title",
+              "duty",
+              "ownerId",
+              "performerId",
+              "purpose",
+              "trigger",
+              "inputs",
+              "instructions",
+              "output",
+              "humanGate",
+              "destination",
+              "mode",
+              "systems"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "version",
+          "hash",
+          "state",
+          "data"
         ]
       },
       "QuestionHint": {

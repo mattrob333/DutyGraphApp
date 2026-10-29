@@ -1,6 +1,8 @@
 import { config } from "@/api/config";
 /** Audio-only caches contain hashes and audio; question text is held in memory only. */
 export type VoiceLine = { id: string; text: string };
+export const SIMULATED_VOICE_NOTICE =
+  "Server speech is simulated. Device speech is used when available; otherwise, read the words on screen.";
 export type VoiceEvent = { type: "start" | "end" | "error"; lineId: string };
 export interface VoiceOut {
   readonly kind: "server" | "device" | "silent";
@@ -17,7 +19,14 @@ export interface VoiceLinesRepository {
     lines: VoiceLine[];
     speed?: number;
   }): Promise<{
-    lines: { id: string; url: string; hash: string; durationMs: number }[];
+    lines: {
+      id: string;
+      url: string;
+      hash: string;
+      durationMs: number;
+      mimeType?: "audio/mpeg" | "audio/wav";
+      simulated?: boolean;
+    }[];
   }>;
 }
 export interface VoicePlaybackPort {
@@ -25,7 +34,11 @@ export interface VoicePlaybackPort {
   stop(): void;
 }
 export interface VoiceCachePort {
-  cache(url: string, hash: string): Promise<string>;
+  cache(
+    url: string,
+    hash: string,
+    mimeType?: "audio/mpeg" | "audio/wav",
+  ): Promise<string>;
 }
 export interface DeviceSpeechPort {
   speak(text: string, speed: number): Promise<void>;
@@ -41,6 +54,7 @@ export interface VoiceOutOptions {
   playback?: VoicePlaybackPort;
   cache?: VoiceCachePort;
   device?: DeviceSpeechPort | null;
+  onSimulation?: () => void;
 }
 
 const activeOutputs = new Set<VoiceOut>();
@@ -55,6 +69,7 @@ class Output implements VoiceOut {
   private listeners = new Set<(event: VoiceEvent) => void>();
   private generation = 0;
   private sequence = 0;
+  private reportedSimulation = false;
   readonly kind: VoiceOut["kind"];
   constructor(private options: VoiceOutOptions) {
     activeOutputs.add(this);
@@ -99,9 +114,21 @@ class Output implements VoiceOut {
         });
         await Promise.all(
           result.lines.map(async (line) => {
+            if (this.disposed) return;
+            if (line.simulated) {
+              if (!this.reportedSimulation) {
+                this.reportedSimulation = true;
+                this.options.onSimulation?.();
+              }
+              return;
+            }
             if (!/^[a-f0-9]{64}$/i.test(line.hash)) return;
             try {
-              const uri = await this.options.cache!.cache(line.url, line.hash);
+              const uri = await this.options.cache!.cache(
+                line.url,
+                line.hash,
+                line.mimeType,
+              );
               if (this.disposed) return;
               this.audio.set(line.id, uri);
               const text = this.lines.get(line.id);
@@ -257,22 +284,38 @@ function cachePort(
   allowedOrigin?: string,
 ): VoiceCachePort {
   return {
-    cache: async (url, hash) => {
+    cache: async (url, hash, mimeType) => {
       const origin = new URL(
         allowedOrigin ?? (config.meetingsApiBaseUrl || config.apiBaseUrl),
       ).origin;
       const resource = new URL(url, origin);
       if (
         resource.origin !== origin ||
-        !/^\/api\/mobile\/v1x\/voice\/audio\/[a-f0-9]{64}\.mp3$/i.test(
+        resource.username ||
+        resource.password ||
+        resource.search ||
+        resource.hash ||
+        !/^\/api\/mobile\/v1x\/voice\/audio\/[a-f0-9]{64}(?:\.(?:mp3|wav))?$/i.test(
           resource.pathname,
         )
       )
         throw new Error("Untrusted voice audio URL");
+      const extension =
+        mimeType === "audio/wav"
+          ? "wav"
+          : mimeType === "audio/mpeg" || resource.pathname.endsWith(".mp3")
+            ? "mp3"
+            : undefined;
+      if (
+        !extension ||
+        (resource.pathname.endsWith(".wav") && extension !== "wav") ||
+        (resource.pathname.endsWith(".mp3") && extension !== "mp3")
+      )
+        throw new Error("Voice audio format is unavailable");
       const generation = cacheGeneration;
       const { File, Paths } =
         require("expo-file-system") as typeof import("expo-file-system");
-      const target = new File(Paths.cache, `voice-${hash}.mp3`);
+      const target = new File(Paths.cache, `voice-${hash}.${extension}`);
       if (!target.exists)
         await File.downloadFileAsync(resource.toString(), target, {
           idempotent: true,

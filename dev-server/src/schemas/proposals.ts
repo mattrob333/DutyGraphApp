@@ -52,8 +52,10 @@ export const proposalBodySchema = z.discriminatedUnion("kind", [
     .object({
       kind: z.literal("task_card_delta"),
       taskCardId: z.uuid().nullable(),
+      personKey: z.string().nullable().optional(),
       field: z.enum([
         "title",
+        "ownerId",
         "duty",
         "purpose",
         "trigger",

@@ -1,0 +1,88 @@
+name: Actual DutyGraph mobile integration
+on:
+  workflow_dispatch:
+    inputs:
+      backend_ref:
+        description: Reviewed DutyGraphV2 commit or branch
+        required: true
+        default: codex/mobile-api
+permissions:
+  contents: read
+jobs:
+  postgres-mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: dutygraph_mobile_ci
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-database-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dutygraph_mobile_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: app
+      - name: Read reviewed backend source
+        uses: actions/checkout@v4
+        with:
+          repository: mattrob333/DutyGraphV2
+          ref: ${{ inputs.backend_ref }}
+          path: backend
+          # The normal repository token may lack access to a private sibling.
+          # Reuse an existing narrowly scoped read token when configured.
+          token: ${{ secrets.DUTYGRAPH_BACKEND_READ_TOKEN || github.token }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            app/package-lock.json
+            app/mobile/package-lock.json
+            backend/package-lock.json
+      - run: npm ci --no-fund --no-audit
+        working-directory: app
+      - run: npm ci --no-fund --no-audit
+        working-directory: app/mobile
+      - run: npm ci --no-fund --no-audit
+        working-directory: backend
+      - name: Create private ephemeral database configuration
+        working-directory: backend
+        run: |
+          node --input-type=module <<'JS'
+          import { randomBytes } from 'node:crypto';
+          import { writeFileSync } from 'node:fs';
+          const password = randomBytes(24).toString('hex');
+          const values = {
+            NODE_ENV: 'test', ASK_AI_GATE: 'off',
+            APP_ORIGIN: 'http://127.0.0.1:4317',
+            MIGRATION_DATABASE_URL: 'postgres://postgres:synthetic-ci-database-only@127.0.0.1:5432/dutygraph_mobile_ci',
+            DATABASE_URL: `postgres://dutygraph_app:${password}@127.0.0.1:5432/dutygraph_mobile_ci`,
+            APP_DATABASE_PASSWORD: password,
+            PROVIDER_ENCRYPTION_KEY: randomBytes(32).toString('hex'),
+          };
+          writeFileSync('.env', Object.entries(values).map(([key, value]) => `${key}=${value}`).join('\n') + '\n', { mode: 0o600, flag: 'wx' });
+          JS
+      - run: npm run db:migrate && npm run contracts:mobile:check
+        working-directory: backend
+      - run: npm exec playwright install --with-deps chromium
+        working-directory: app
+      - run: npm run verify -- --runInBand
+        working-directory: app/mobile
+      - name: Run all twelve actual-backend paths
+        run: npm run test:e2e:dutygraph
+        working-directory: app/mobile
+        env:
+          DUTYGRAPH_BACKEND_ROOT: ${{ github.workspace }}/backend
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dutygraph-mobile-current-run
+          path: app/mobile/test-results/dutygraph-v2-e2e-*.json
+          if-no-files-found: ignore

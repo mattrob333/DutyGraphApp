@@ -6,6 +6,7 @@ import {
   advisorCommandKey,
   acknowledgeAdvisorCommand,
 } from "@/storage/advisor";
+import { CompanionApiError } from "@/api/http/errors";
 /** A retry of the same operation keeps its key. Changing the body uses a new key. */
 export function useCommand() {
   const [busy, setBusy] = useState(false),
@@ -36,6 +37,27 @@ export function useCommand() {
       await qc.invalidateQueries({ queryKey: ["advisor"] });
       return result;
     } catch (e) {
+      if (
+        Array.isArray(signature) &&
+        signature[0] === "finish" &&
+        e instanceof CompanionApiError &&
+        e.code === "COMMAND_FAILED" &&
+        pending.current
+      ) {
+        // The server has authoritatively marked this exact attempt terminal.
+        // Retire only its key; the next deliberate tap starts a new attempt.
+        await acknowledgeAdvisorCommand(signatureText, pending.current.key);
+        pending.current = null;
+        setError(
+          new CompanionApiError(
+            "COMMAND_FAILED",
+            "The previous attempt failed. Your recording is retained. Tap Review closing to start another attempt.",
+            e.status,
+            false,
+          ),
+        );
+        return undefined;
+      }
       setError(e);
       return undefined;
     } finally {

@@ -2,6 +2,8 @@
 
 Review date: 2026-10-27. This review exercised local fake providers and injected provider transports. It did not access the DutyGraph production service, use real provider credentials, apply SQL, or test a physical device.
 
+2026-10-28 continuation: actual V2/PostgreSQL browser integration passed all twelve paths with 219 schema-validated exchanges; application tests passed 538/63 suites. Confirmed app review fixes cover late advisor refresh/logout isolation, exact reviewed-command identities, finish timeout/terminal retry, Closing Change notes, accurate timeout copy, strict extensionless audio formats and simulated-speech fallback. iOS fallback M4A storage/migration and logout races are fixed in source with regression tests. Device backup exclusion, signing/App Links and live provider acceptance remain unverified. Compatible node-forge/source-map-js audit patches landed; Expo CLI's nested Zod 3 advisory remains open for an upstream-compatible fix. Hosted CI/release results are separate.
+
 ## Boundaries reviewed
 
 The review covered participant/advisor bearer sessions, local JSON persistence, request replay, company/person ownership, voice cache URLs, meeting audio ingestion, consent changes, source attribution, proposal decisions, model input/output, and mobile role switching. The development server is a single-process stand-in; the production team must supply transactional storage, retention, auth lookup roles and durable jobs as described in [PORTING-TO-DUTYGRAPH.md](PORTING-TO-DUTYGRAPH.md).
@@ -336,3 +338,27 @@ Root full mobile verification after the fix: **553/553**,65 suites,35.604s; Type
 Final corrected code `f01d76a1e355df41af990cab9e7e2619ddfaa436`:553/553 mobile tests (65 suites), TypeScript/lint passed. Unchanged development-server76/shared78 checks remain passing. After R2-03, actual-enrollment fake-HTTP360/1280 journeys passed again with no page/render errors, overflow or microphone calls. Fresh release export/static fixture refusal passed before seed reads; normal legacy enrollment still worked. Evidence refreshed in docs/earn-client/BROWSER.md. Browser normal flow checks compatibility; the focused actual-transport regression verifies the hostile enrollment interleaving. Only owned QA servers were stopped and ports4510/4512/4513 verified clear.
 
 Six confirmed Medium findings and all reported Lows are corrected, no confirmed High. Audit remains failed on the documented Expo toolchain path; no native/device/provider/payment acceptance was run. Final shared handover and both draft PR links above are authoritative; neither PR is merged.
+- **The demo APK is debug-signed** and the `dutygraph-companion://` scheme can be claimed by another app. Use HTTPS App Links and a real signing key before distribution. Current signed-link delivery and the live `apple-app-site-association` response have not been verified by this continuation; the earlier missing-file observation is historical.
+
+## 2026-10-28 follow-up (draft `codex/live-backend`)
+
+- **Injected text inside proposals — mitigated in review UI, not closed end to end.** `ProposalEvidenceCard` now labels source quotations that match explicit role/prompt markers, override instructions or the recorded budget-approval pattern: “This quote looks like an instruction. Check before accepting.” Added 11 helper test cases. This is heuristic and may miss attacks or flag ordinary speech. Manual acceptance rules stay unchanged. The 11 heuristic unit cases now pass in the complete mobile suite, and ordinary source-review browser flows pass. A device visual check and malicious-quote end-to-end rehearsal remain unrun; this heuristic does not certify prompt-injection prevention.
+- Other open findings (iCloud backup, Universal/App Links, signing) are unchanged.
+
+## 2026-10-28 iOS recording privacy mitigation (draft, unverified)
+
+- Previous finding: iPhone meeting evidence was saved to iCloud-backed Documents. Draft P4 code now uses the native module's backup-excluded Application Support directory, keeps temporary clips in Cache, migrates old Documents clips during restore and blocks iOS meeting recording when the native method is missing. Two Jest checks added. **Remains open for confirmation** until native compilation, iPhone recording/restart, and actual iCloud backup exclusion have been verified. No claim of a passing real-device test.
+
+## 2026-10-28 App Link and signing follow-up (open)
+
+- Production-mode URL builder now targets `https://dutygraph.com/mobile/enroll` and has focused source tests. Mock/dev links are unchanged. Android intent filters and iOS associated-domain declarations already exist, but the live iOS apple-app-site-association file, release signing, end-to-end delivery and physical-device behavior **have not been verified**. This is not a closed security/release finding.
+
+## 2026-10-29 — Meeting-depth review corrections
+
+Five independent meeting reviewers found no High findings. App-owned Medium findings MR3-2/MR5-01 (optional AI gate suggestion absent), MR5-02 (linked card and created draft not inspectable), and MR5-03 (affected person/card not adjustable) are corrected in this draft. The optional suggestion remains separate from the deterministic result, the company setting defaults off, and requesting advice does not route the meeting. Scoped Task Card reads support title/id and read-only data inspection; person/card/owner selections remain explicit before acceptance.
+
+MR2-1/MR3-1's linked-draft mismatch is mitigated by immutable accepted draft proposals. Follow-up MR2-2 is addressed by allowing only explicit rejection of a stale linked proposal, preserving the existing draft. Mock/development API regressions verify the preserved record and replay semantics; component tests verify the warning and action restrictions. Backend grounding MR4-1 is owned by the mobile API branch, with whitespace/name ambiguity regressions there.
+
+Final correction checks: 47 focused mobile tests and 67 development API tests passed. Earlier complete suites: mobile 572, shared 78. Phone-width browser validation is recorded separately when completed; no native/device or paid-provider result is implied. Historical security/release findings above retain their stated limits.
+
+Phone review: the fake-provider HTTP walkthrough passed at 390×844: linked-source inspection, target/person/owner adjustments, acceptance, read-only saved-draft inspection, and absence of mutation buttons after draft creation. Three screenshots are in `docs/day-run/screens/advisor-taskcard-*-light.png`. No horizontal document overflow or browser page errors were observed. The first harness attempts incorrectly waited on text in stacked question cards; waiting on the accessible current heading corrected the automation without changing gate checks.
