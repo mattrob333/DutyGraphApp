@@ -1,0 +1,45 @@
+{
+  "fakeHttp": true,
+  "productionGuardOnly": false,
+  "generatedAt": "2026-10-29T05:27:48.670Z",
+  "results": [
+    {
+      "width": 360,
+      "passed": true,
+      "pageErrors": 0,
+      "microphoneCalls": 0,
+      "flows": [
+        "real participant enrollment",
+        "Me Scoreboard and name-only team counts",
+        "hands-on details and local ticks",
+        "versioned Confirm",
+        "local missing-slot edit carried on Confirm",
+        "Copy success/refusal and stubbed Share",
+        "typed voice fallback saves waiting app draft",
+        "Not mine acknowledgement",
+        "typed fix acknowledgement",
+        "intercepted outage/retry/empty state",
+        "intercepted Earn off hidden links"
+      ]
+    },
+    {
+      "width": 1280,
+      "passed": true,
+      "pageErrors": 0,
+      "microphoneCalls": 0,
+      "flows": [
+        "real participant enrollment",
+        "Me Scoreboard and name-only team counts",
+        "hands-on details and local ticks",
+        "versioned Confirm",
+        "local missing-slot edit carried on Confirm",
+        "Copy success/refusal and stubbed Share",
+        "typed voice fallback saves waiting app draft",
+        "Not mine acknowledgement",
+        "typed fix acknowledgement",
+        "intercepted outage/retry/empty state",
+        "intercepted Earn off hidden links"
+      ]
+    }
+  ]
+}

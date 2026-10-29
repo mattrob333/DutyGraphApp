@@ -84,3 +84,7 @@ Rehearse with real providers (paid, never in CI): start the dev server with `OPE
 Earn phone B2 adds a generated contract adapter and a separate fictional development server; [details](docs/earn-client/README.md). Review/verification is in progress; not released or device-tested.
 
 Earn phone core screens and typed voice fallback now pass527 mobile tests and360/1280px local development browser journeys. Production export and independent phone review are in progress; [verification](docs/earn-client/BROWSER.md).
+
+## 2026-10-28 — Earn phone B2.2: browser and release boundary
+
+Development fake-HTTP journeys passed at360/1280; production HTTP export and actual static-release fixture refusal passed before any Earn seed request. Nineteen screenshots and two result files are linked in docs/earn-client/BROWSER.md. Exported JavaScript contained none of the three checked Earn seed strings. No physical phone, native microphone or hosted backend was tested. Five fresh-context reviews follow at this committed freeze.
