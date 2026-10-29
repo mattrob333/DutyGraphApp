@@ -98,6 +98,11 @@ export function EarnEntry() {
         onPress={() => nav("/earn/drafts")}
       />
       <Row
+        label="Connect your AI"
+        detail="Copy one link so ChatGPT or Claude sends your Task Cards"
+        onPress={() => nav("/earn/connect")}
+      />
+      <Row
         label="Find the gaps"
         detail="Suggest a fix where work waits or breaks"
         onPress={() => nav("/earn/gaps")}
@@ -129,6 +134,7 @@ export function EarnHomeScreen({
   return (
     <Frame repo={repo} title="Your work">
       <Row label="From your AI" onPress={() => nav("/earn/drafts")} />
+      <Row label="Connect your AI" onPress={() => nav("/earn/connect")} />
       <Row label="Find the gaps" onPress={() => nav("/earn/gaps")} />
       {summary.data?.settings.enabled && (
         <>
