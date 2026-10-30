@@ -1,0 +1,4613 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "DutyGraph Companion Earn API",
+    "version": "earn-contract 0.1.0",
+    "description": "Bearer participant access only. Identity comes from the session. AI-made cards remain drafts until the person confirms. No live payment calls."
+  },
+  "paths": {
+    "/api/mobile/v1/earn/summary": {
+      "get": {
+        "operationId": "earnMobileSummary",
+        "security": [
+          {
+            "mobileBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EarnSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer session is missing or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/v1/earn/drafts": {
+      "get": {
+        "operationId": "earnMobileDrafts",
+        "security": [
+          {
+            "mobileBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "drafts",
+                    "counts"
+                  ],
+                  "properties": {
+                    "drafts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TaskCardDraft"
+                      }
+                    },
+                    "counts": {
+                      "type": "object",
+                      "required": [
+                        "waiting",
+                        "confirmed",
+                        "not_mine",
+                        "expired"
+                      ],
+                      "properties": {
+                        "waiting": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "confirmed": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "not_mine": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "expired": {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer session is missing or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "waiting",
+                "confirmed",
+                "not_mine",
+                "expired"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/api/mobile/v1/earn/drafts/{draftId}": {
+      "get": {
+        "operationId": "earnMobileDraft",
+        "security": [
+          {
+            "mobileBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskCardDraft"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer session is missing or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "DRAFT_NOT_FOUND. Another person’s draft is also 404.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "draftId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ]
+      }
+    },
+    "/api/mobile/v1/earn/drafts/{draftId}/confirm": {
+      "post": {
+        "operationId": "earnMobileConfirmDraft",
+        "security": [
+          {
+            "mobileBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "draft",
+                    "taskRecordId"
+                  ],
+                  "properties": {
+                    "draft": {
+                      "$ref": "#/components/schemas/TaskCardDraft"
+                    },
+                    "taskRecordId": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "claim": {
+                      "$ref": "#/components/schemas/Claim"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query field or idempotency key is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer session is missing or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "DRAFT_NOT_FOUND. Another person’s draft is also 404.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, DRAFT_NOT_WAITING, DRAFT_LIMIT or IDEMPOTENCY_CONFLICT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "in": "path",
+            "name": "draftId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "card": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 120
+                      },
+                      "duty": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "today",
+                          "proposed"
+                        ]
+                      },
+                      "workType": {
+                        "type": "string",
+                        "enum": [
+                          "digital",
+                          "manual",
+                          "mixed"
+                        ]
+                      },
+                      "slots": {
+                        "type": "object",
+                        "properties": {
+                          "startsWhen": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "getsFrom": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "does": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "handsTo": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "howOften": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "howLong": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "onlyIKnow": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "startsWhen",
+                          "getsFrom",
+                          "does",
+                          "handsTo",
+                          "howOften",
+                          "howLong",
+                          "onlyIKnow"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "steps": {
+                        "maxItems": 40,
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 3000
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "do": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 3000
+                                },
+                                "where": {
+                                  "type": "string",
+                                  "maxLength": 3000
+                                },
+                                "tool": {
+                                  "type": "object",
+                                  "properties": {
+                                    "name": {
+                                      "type": "string",
+                                      "maxLength": 3000
+                                    },
+                                    "getFrom": {
+                                      "type": "string",
+                                      "maxLength": 3000
+                                    }
+                                  },
+                                  "required": [
+                                    "name"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "materials": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "name": {
+                                        "type": "string",
+                                        "maxLength": 3000
+                                      },
+                                      "getFrom": {
+                                        "type": "string",
+                                        "maxLength": 3000
+                                      }
+                                    },
+                                    "required": [
+                                      "name"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "minutes": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "watchFor": {
+                                  "type": "string",
+                                  "maxLength": 3000
+                                },
+                                "safety": {
+                                  "type": "string",
+                                  "maxLength": 3000
+                                }
+                              },
+                              "required": [
+                                "do"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "doneMeans": {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      "tools": {
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 3000
+                        }
+                      },
+                      "approvalsAndRules": {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      "safety": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 3000
+                        }
+                      },
+                      "whereThingsAre": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "item": {
+                              "type": "string",
+                              "maxLength": 3000
+                            },
+                            "place": {
+                              "type": "string",
+                              "maxLength": 3000
+                            }
+                          },
+                          "required": [
+                            "item",
+                            "place"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "aiIAlreadyUse": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "links": {
+                        "type": "object",
+                        "properties": {
+                          "companyPurpose": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "canvasBlock": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "departmentGoal": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "role": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "myDuty": {
+                            "type": "string",
+                            "maxLength": 3000
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "fit": {
+                        "type": "object",
+                        "properties": {
+                          "canvas": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "const": 0
+                              },
+                              {
+                                "type": "number",
+                                "const": 1
+                              },
+                              {
+                                "type": "number",
+                                "const": 2
+                              },
+                              {
+                                "type": "number",
+                                "const": 3
+                              }
+                            ]
+                          },
+                          "department": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "const": 0
+                              },
+                              {
+                                "type": "number",
+                                "const": 1
+                              },
+                              {
+                                "type": "number",
+                                "const": 2
+                              },
+                              {
+                                "type": "number",
+                                "const": 3
+                              }
+                            ]
+                          },
+                          "role": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "const": 0
+                              },
+                              {
+                                "type": "number",
+                                "const": 1
+                              },
+                              {
+                                "type": "number",
+                                "const": 2
+                              },
+                              {
+                                "type": "number",
+                                "const": 3
+                              }
+                            ]
+                          },
+                          "impact": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "const": 0
+                              },
+                              {
+                                "type": "number",
+                                "const": 1
+                              },
+                              {
+                                "type": "number",
+                                "const": 2
+                              },
+                              {
+                                "type": "number",
+                                "const": 3
+                              }
+                            ]
+                          },
+                          "reasons": {
+                            "type": "object",
+                            "properties": {
+                              "canvas": {
+                                "type": "string",
+                                "maxLength": 3000
+                              },
+                              "department": {
+                                "type": "string",
+                                "maxLength": 3000
+                              },
+                              "role": {
+                                "type": "string",
+                                "maxLength": 3000
+                              },
+                              "impact": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "canvas",
+                          "department",
+                          "role",
+                          "impact",
+                          "reasons"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "impact": {
+                        "type": "object",
+                        "properties": {
+                          "measure": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "how": {
+                            "type": "string",
+                            "maxLength": 3000
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "fixesGapId": {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      "money": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "pay_invoice",
+                              "transfer",
+                              "refund",
+                              "purchase",
+                              "collect",
+                              "other"
+                            ]
+                          },
+                          "system": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "typicalAmount": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "limit": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "approver": {
+                            "type": "string",
+                            "maxLength": 3000
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "duty",
+                      "kind",
+                      "workType",
+                      "slots",
+                      "steps"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "expectedVersion"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/v1/earn/drafts/{draftId}/not-mine": {
+      "post": {
+        "operationId": "earnMobileRejectDraft",
+        "security": [
+          {
+            "mobileBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskCardDraft"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query field or idempotency key is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer session is missing or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "DRAFT_NOT_FOUND. Another person’s draft is also 404.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, DRAFT_NOT_WAITING, DRAFT_LIMIT or IDEMPOTENCY_CONFLICT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          },
+          {
+            "in": "path",
+            "name": "draftId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "expectedVersion"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/v1/earn/team-board": {
+      "get": {
+        "operationId": "earnMobileTeamBoard",
+        "security": [
+          {
+            "mobileBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeamBoard"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer session is missing or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/v1/earn/gaps": {
+      "get": {
+        "operationId": "earnMobileGaps",
+        "security": [
+          {
+            "mobileBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "gaps"
+                  ],
+                  "properties": {
+                    "gaps": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Gap"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer session is missing or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/v1/earn/gaps/map": {
+      "get": {
+        "operationId": "earnMobileGapMap",
+        "security": [
+          {
+            "mobileBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GapMap"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer session is missing or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mobile/v1/earn/fixes": {
+      "get": {
+        "operationId": "earnMobileFixes",
+        "security": [
+          {
+            "mobileBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "fixes"
+                  ],
+                  "properties": {
+                    "fixes": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Fix"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer session is missing or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "earnMobileCreateFix",
+        "security": [
+          {
+            "mobileBearer": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The requested result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "fix"
+                  ],
+                  "properties": {
+                    "fix": {
+                      "$ref": "#/components/schemas/Fix"
+                    },
+                    "draft": {
+                      "$ref": "#/components/schemas/TaskCardDraft"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A query field or idempotency key is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "The bearer session is missing or expired.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The person is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "VERSION_CONFLICT, DRAFT_NOT_WAITING, DRAFT_LIMIT or IDEMPOTENCY_CONFLICT.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "A field is invalid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "gapId": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 3000
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "new_steps",
+                      "agent",
+                      "tool",
+                      "more_people"
+                    ]
+                  },
+                  "measureName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 3000
+                  },
+                  "measureBefore": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "hoursBefore": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "hoursAfter": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "card": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string",
+                        "minLength": 3,
+                        "maxLength": 120
+                      },
+                      "duty": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 200
+                      },
+                      "kind": {
+                        "type": "string",
+                        "enum": [
+                          "today",
+                          "proposed"
+                        ]
+                      },
+                      "workType": {
+                        "type": "string",
+                        "enum": [
+                          "digital",
+                          "manual",
+                          "mixed"
+                        ]
+                      },
+                      "slots": {
+                        "type": "object",
+                        "properties": {
+                          "startsWhen": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "getsFrom": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "does": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "handsTo": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "howOften": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "howLong": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          },
+                          "onlyIKnow": {
+                            "type": "object",
+                            "properties": {
+                              "value": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "maxLength": 3000
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "basis": {
+                                "type": "string",
+                                "enum": [
+                                  "stated",
+                                  "told_me",
+                                  "not_stated"
+                                ]
+                              },
+                              "suggestion": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "value",
+                              "basis"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "startsWhen",
+                          "getsFrom",
+                          "does",
+                          "handsTo",
+                          "howOften",
+                          "howLong",
+                          "onlyIKnow"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "steps": {
+                        "maxItems": 40,
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 3000
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "do": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 3000
+                                },
+                                "where": {
+                                  "type": "string",
+                                  "maxLength": 3000
+                                },
+                                "tool": {
+                                  "type": "object",
+                                  "properties": {
+                                    "name": {
+                                      "type": "string",
+                                      "maxLength": 3000
+                                    },
+                                    "getFrom": {
+                                      "type": "string",
+                                      "maxLength": 3000
+                                    }
+                                  },
+                                  "required": [
+                                    "name"
+                                  ],
+                                  "additionalProperties": false
+                                },
+                                "materials": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "properties": {
+                                      "name": {
+                                        "type": "string",
+                                        "maxLength": 3000
+                                      },
+                                      "getFrom": {
+                                        "type": "string",
+                                        "maxLength": 3000
+                                      }
+                                    },
+                                    "required": [
+                                      "name"
+                                    ],
+                                    "additionalProperties": false
+                                  }
+                                },
+                                "minutes": {
+                                  "type": "number",
+                                  "minimum": 0
+                                },
+                                "watchFor": {
+                                  "type": "string",
+                                  "maxLength": 3000
+                                },
+                                "safety": {
+                                  "type": "string",
+                                  "maxLength": 3000
+                                }
+                              },
+                              "required": [
+                                "do"
+                              ],
+                              "additionalProperties": false
+                            }
+                          ]
+                        }
+                      },
+                      "doneMeans": {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      "tools": {
+                        "maxItems": 30,
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 3000
+                        }
+                      },
+                      "approvalsAndRules": {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      "safety": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 3000
+                        }
+                      },
+                      "whereThingsAre": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "item": {
+                              "type": "string",
+                              "maxLength": 3000
+                            },
+                            "place": {
+                              "type": "string",
+                              "maxLength": 3000
+                            }
+                          },
+                          "required": [
+                            "item",
+                            "place"
+                          ],
+                          "additionalProperties": false
+                        }
+                      },
+                      "aiIAlreadyUse": {
+                        "type": "string",
+                        "maxLength": 20000
+                      },
+                      "links": {
+                        "type": "object",
+                        "properties": {
+                          "companyPurpose": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "canvasBlock": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "departmentGoal": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "role": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "myDuty": {
+                            "type": "string",
+                            "maxLength": 3000
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "fit": {
+                        "type": "object",
+                        "properties": {
+                          "canvas": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "const": 0
+                              },
+                              {
+                                "type": "number",
+                                "const": 1
+                              },
+                              {
+                                "type": "number",
+                                "const": 2
+                              },
+                              {
+                                "type": "number",
+                                "const": 3
+                              }
+                            ]
+                          },
+                          "department": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "const": 0
+                              },
+                              {
+                                "type": "number",
+                                "const": 1
+                              },
+                              {
+                                "type": "number",
+                                "const": 2
+                              },
+                              {
+                                "type": "number",
+                                "const": 3
+                              }
+                            ]
+                          },
+                          "role": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "const": 0
+                              },
+                              {
+                                "type": "number",
+                                "const": 1
+                              },
+                              {
+                                "type": "number",
+                                "const": 2
+                              },
+                              {
+                                "type": "number",
+                                "const": 3
+                              }
+                            ]
+                          },
+                          "impact": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "const": 0
+                              },
+                              {
+                                "type": "number",
+                                "const": 1
+                              },
+                              {
+                                "type": "number",
+                                "const": 2
+                              },
+                              {
+                                "type": "number",
+                                "const": 3
+                              }
+                            ]
+                          },
+                          "reasons": {
+                            "type": "object",
+                            "properties": {
+                              "canvas": {
+                                "type": "string",
+                                "maxLength": 3000
+                              },
+                              "department": {
+                                "type": "string",
+                                "maxLength": 3000
+                              },
+                              "role": {
+                                "type": "string",
+                                "maxLength": 3000
+                              },
+                              "impact": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "required": [
+                          "canvas",
+                          "department",
+                          "role",
+                          "impact",
+                          "reasons"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "impact": {
+                        "type": "object",
+                        "properties": {
+                          "measure": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "how": {
+                            "type": "string",
+                            "maxLength": 3000
+                          }
+                        },
+                        "additionalProperties": false
+                      },
+                      "fixesGapId": {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      "money": {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "pay_invoice",
+                              "transfer",
+                              "refund",
+                              "purchase",
+                              "collect",
+                              "other"
+                            ]
+                          },
+                          "system": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "typicalAmount": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "limit": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "approver": {
+                            "type": "string",
+                            "maxLength": 3000
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": [
+                      "title",
+                      "duty",
+                      "kind",
+                      "workType",
+                      "slots",
+                      "steps"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "text",
+                  "kind",
+                  "measureName",
+                  "hoursBefore",
+                  "hoursAfter"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "mobileBearer": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "TaskCardDraftInput": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 120
+          },
+          "duty": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "today",
+              "proposed"
+            ]
+          },
+          "workType": {
+            "type": "string",
+            "enum": [
+              "digital",
+              "manual",
+              "mixed"
+            ]
+          },
+          "slots": {
+            "type": "object",
+            "properties": {
+              "startsWhen": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "basis": {
+                    "type": "string",
+                    "enum": [
+                      "stated",
+                      "told_me",
+                      "not_stated"
+                    ]
+                  },
+                  "suggestion": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "value",
+                  "basis"
+                ],
+                "additionalProperties": false
+              },
+              "getsFrom": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "basis": {
+                    "type": "string",
+                    "enum": [
+                      "stated",
+                      "told_me",
+                      "not_stated"
+                    ]
+                  },
+                  "suggestion": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "value",
+                  "basis"
+                ],
+                "additionalProperties": false
+              },
+              "does": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "basis": {
+                    "type": "string",
+                    "enum": [
+                      "stated",
+                      "told_me",
+                      "not_stated"
+                    ]
+                  },
+                  "suggestion": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "value",
+                  "basis"
+                ],
+                "additionalProperties": false
+              },
+              "handsTo": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "basis": {
+                    "type": "string",
+                    "enum": [
+                      "stated",
+                      "told_me",
+                      "not_stated"
+                    ]
+                  },
+                  "suggestion": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "value",
+                  "basis"
+                ],
+                "additionalProperties": false
+              },
+              "howOften": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "basis": {
+                    "type": "string",
+                    "enum": [
+                      "stated",
+                      "told_me",
+                      "not_stated"
+                    ]
+                  },
+                  "suggestion": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "value",
+                  "basis"
+                ],
+                "additionalProperties": false
+              },
+              "howLong": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "basis": {
+                    "type": "string",
+                    "enum": [
+                      "stated",
+                      "told_me",
+                      "not_stated"
+                    ]
+                  },
+                  "suggestion": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "value",
+                  "basis"
+                ],
+                "additionalProperties": false
+              },
+              "onlyIKnow": {
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "basis": {
+                    "type": "string",
+                    "enum": [
+                      "stated",
+                      "told_me",
+                      "not_stated"
+                    ]
+                  },
+                  "suggestion": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "value",
+                  "basis"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "startsWhen",
+              "getsFrom",
+              "does",
+              "handsTo",
+              "howOften",
+              "howLong",
+              "onlyIKnow"
+            ],
+            "additionalProperties": false
+          },
+          "steps": {
+            "maxItems": 40,
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "do": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 3000
+                    },
+                    "where": {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    "tool": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "maxLength": 3000
+                        },
+                        "getFrom": {
+                          "type": "string",
+                          "maxLength": 3000
+                        }
+                      },
+                      "required": [
+                        "name"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "materials": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          "getFrom": {
+                            "type": "string",
+                            "maxLength": 3000
+                          }
+                        },
+                        "required": [
+                          "name"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "minutes": {
+                      "type": "number",
+                      "minimum": 0
+                    },
+                    "watchFor": {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    "safety": {
+                      "type": "string",
+                      "maxLength": 3000
+                    }
+                  },
+                  "required": [
+                    "do"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          },
+          "doneMeans": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "tools": {
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 3000
+            }
+          },
+          "approvalsAndRules": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "safety": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 3000
+            }
+          },
+          "whereThingsAre": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "item": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "place": {
+                  "type": "string",
+                  "maxLength": 3000
+                }
+              },
+              "required": [
+                "item",
+                "place"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "aiIAlreadyUse": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "links": {
+            "type": "object",
+            "properties": {
+              "companyPurpose": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "canvasBlock": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "departmentGoal": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "role": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "myDuty": {
+                "type": "string",
+                "maxLength": 3000
+              }
+            },
+            "additionalProperties": false
+          },
+          "fit": {
+            "type": "object",
+            "properties": {
+              "canvas": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 0
+                  },
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
+                ]
+              },
+              "department": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 0
+                  },
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
+                ]
+              },
+              "role": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 0
+                  },
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
+                ]
+              },
+              "impact": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 0
+                  },
+                  {
+                    "type": "number",
+                    "const": 1
+                  },
+                  {
+                    "type": "number",
+                    "const": 2
+                  },
+                  {
+                    "type": "number",
+                    "const": 3
+                  }
+                ]
+              },
+              "reasons": {
+                "type": "object",
+                "properties": {
+                  "canvas": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "department": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "role": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "impact": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "canvas",
+              "department",
+              "role",
+              "impact",
+              "reasons"
+            ],
+            "additionalProperties": false
+          },
+          "impact": {
+            "type": "object",
+            "properties": {
+              "measure": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "how": {
+                "type": "string",
+                "maxLength": 3000
+              }
+            },
+            "additionalProperties": false
+          },
+          "fixesGapId": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "money": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "pay_invoice",
+                  "transfer",
+                  "refund",
+                  "purchase",
+                  "collect",
+                  "other"
+                ]
+              },
+              "system": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "typicalAmount": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "limit": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "approver": {
+                "type": "string",
+                "maxLength": 3000
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "title",
+          "duty",
+          "kind",
+          "workType",
+          "slots",
+          "steps"
+        ],
+        "additionalProperties": false
+      },
+      "TaskCardDraft": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "via": {
+            "type": "string",
+            "enum": [
+              "mcp",
+              "upload",
+              "app"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "waiting",
+              "confirmed",
+              "not_mine",
+              "expired"
+            ]
+          },
+          "sourceNote": {
+            "type": "string",
+            "enum": [
+              "past_chats",
+              "told_me",
+              "mixed",
+              "file",
+              "app"
+            ]
+          },
+          "card": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 120
+              },
+              "duty": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "today",
+                  "proposed"
+                ]
+              },
+              "workType": {
+                "type": "string",
+                "enum": [
+                  "digital",
+                  "manual",
+                  "mixed"
+                ]
+              },
+              "slots": {
+                "type": "object",
+                "properties": {
+                  "startsWhen": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "basis": {
+                        "type": "string",
+                        "enum": [
+                          "stated",
+                          "told_me",
+                          "not_stated"
+                        ]
+                      },
+                      "suggestion": {
+                        "type": "string",
+                        "maxLength": 3000
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "basis"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "getsFrom": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "basis": {
+                        "type": "string",
+                        "enum": [
+                          "stated",
+                          "told_me",
+                          "not_stated"
+                        ]
+                      },
+                      "suggestion": {
+                        "type": "string",
+                        "maxLength": 3000
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "basis"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "does": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "basis": {
+                        "type": "string",
+                        "enum": [
+                          "stated",
+                          "told_me",
+                          "not_stated"
+                        ]
+                      },
+                      "suggestion": {
+                        "type": "string",
+                        "maxLength": 3000
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "basis"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "handsTo": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "basis": {
+                        "type": "string",
+                        "enum": [
+                          "stated",
+                          "told_me",
+                          "not_stated"
+                        ]
+                      },
+                      "suggestion": {
+                        "type": "string",
+                        "maxLength": 3000
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "basis"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "howOften": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "basis": {
+                        "type": "string",
+                        "enum": [
+                          "stated",
+                          "told_me",
+                          "not_stated"
+                        ]
+                      },
+                      "suggestion": {
+                        "type": "string",
+                        "maxLength": 3000
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "basis"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "howLong": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "basis": {
+                        "type": "string",
+                        "enum": [
+                          "stated",
+                          "told_me",
+                          "not_stated"
+                        ]
+                      },
+                      "suggestion": {
+                        "type": "string",
+                        "maxLength": 3000
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "basis"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "onlyIKnow": {
+                    "type": "object",
+                    "properties": {
+                      "value": {
+                        "anyOf": [
+                          {
+                            "type": "string",
+                            "maxLength": 3000
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "basis": {
+                        "type": "string",
+                        "enum": [
+                          "stated",
+                          "told_me",
+                          "not_stated"
+                        ]
+                      },
+                      "suggestion": {
+                        "type": "string",
+                        "maxLength": 3000
+                      }
+                    },
+                    "required": [
+                      "value",
+                      "basis"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "startsWhen",
+                  "getsFrom",
+                  "does",
+                  "handsTo",
+                  "howOften",
+                  "howLong",
+                  "onlyIKnow"
+                ],
+                "additionalProperties": false
+              },
+              "steps": {
+                "maxItems": 40,
+                "type": "array",
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "do": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 3000
+                        },
+                        "where": {
+                          "type": "string",
+                          "maxLength": 3000
+                        },
+                        "tool": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "maxLength": 3000
+                            },
+                            "getFrom": {
+                              "type": "string",
+                              "maxLength": 3000
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ],
+                          "additionalProperties": false
+                        },
+                        "materials": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "name": {
+                                "type": "string",
+                                "maxLength": 3000
+                              },
+                              "getFrom": {
+                                "type": "string",
+                                "maxLength": 3000
+                              }
+                            },
+                            "required": [
+                              "name"
+                            ],
+                            "additionalProperties": false
+                          }
+                        },
+                        "minutes": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "watchFor": {
+                          "type": "string",
+                          "maxLength": 3000
+                        },
+                        "safety": {
+                          "type": "string",
+                          "maxLength": 3000
+                        }
+                      },
+                      "required": [
+                        "do"
+                      ],
+                      "additionalProperties": false
+                    }
+                  ]
+                }
+              },
+              "doneMeans": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "tools": {
+                "maxItems": 30,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 3000
+                }
+              },
+              "approvalsAndRules": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "safety": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 3000
+                }
+              },
+              "whereThingsAre": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "item": {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    "place": {
+                      "type": "string",
+                      "maxLength": 3000
+                    }
+                  },
+                  "required": [
+                    "item",
+                    "place"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "aiIAlreadyUse": {
+                "type": "string",
+                "maxLength": 20000
+              },
+              "links": {
+                "type": "object",
+                "properties": {
+                  "companyPurpose": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "canvasBlock": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "departmentGoal": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "role": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "myDuty": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "additionalProperties": false
+              },
+              "fit": {
+                "type": "object",
+                "properties": {
+                  "canvas": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 0
+                      },
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  },
+                  "department": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 0
+                      },
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  },
+                  "role": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 0
+                      },
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  },
+                  "impact": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 0
+                      },
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  },
+                  "reasons": {
+                    "type": "object",
+                    "properties": {
+                      "canvas": {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      "department": {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      "role": {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      "impact": {
+                        "type": "string",
+                        "maxLength": 3000
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "required": [
+                  "canvas",
+                  "department",
+                  "role",
+                  "impact",
+                  "reasons"
+                ],
+                "additionalProperties": false
+              },
+              "impact": {
+                "type": "object",
+                "properties": {
+                  "measure": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "how": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "additionalProperties": false
+              },
+              "fixesGapId": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "money": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "pay_invoice",
+                      "transfer",
+                      "refund",
+                      "purchase",
+                      "collect",
+                      "other"
+                    ]
+                  },
+                  "system": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "typicalAmount": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "limit": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "approver": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "title",
+              "duty",
+              "kind",
+              "workType",
+              "slots",
+              "steps"
+            ],
+            "additionalProperties": false
+          },
+          "checks": {
+            "type": "object",
+            "properties": {
+              "filledSlots": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 7
+              },
+              "emptySlots": {
+                "maxItems": 7,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "startsWhen",
+                    "getsFrom",
+                    "does",
+                    "handsTo",
+                    "howOften",
+                    "howLong",
+                    "onlyIKnow"
+                  ]
+                }
+              },
+              "stepCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 40
+              },
+              "hasDoneMeans": {
+                "type": "boolean"
+              },
+              "hasNamedHandoff": {
+                "type": "boolean"
+              },
+              "readyToHandOff": {
+                "type": "boolean"
+              },
+              "secretsRemoved": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "generic": {
+                "type": "object",
+                "properties": {
+                  "flagged": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "maxLength": 3000
+                  }
+                },
+                "required": [
+                  "flagged"
+                ],
+                "additionalProperties": false
+              },
+              "possibleDuplicates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "enum": [
+                        "card",
+                        "draft"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    "title": {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    "ownerName": {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    "score": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "id",
+                    "title",
+                    "ownerName",
+                    "score"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "earnHint": {
+                "type": "string",
+                "enum": [
+                  "likely",
+                  "not_yet",
+                  "off"
+                ]
+              },
+              "earnHintReasons": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "too_generic",
+                    "not_linked",
+                    "already_mapped",
+                    "too_small",
+                    "not_ready",
+                    "cap_reached",
+                    "pool_empty",
+                    "manager_declined"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "filledSlots",
+              "emptySlots",
+              "stepCount",
+              "hasDoneMeans",
+              "hasNamedHandoff",
+              "readyToHandOff",
+              "secretsRemoved",
+              "generic",
+              "possibleDuplicates",
+              "earnHint",
+              "earnHintReasons"
+            ],
+            "additionalProperties": false
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "stateChangedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "taskRecordId": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "claimId": {
+            "type": "string",
+            "maxLength": 3000
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "via",
+          "state",
+          "sourceNote",
+          "card",
+          "checks",
+          "createdAt",
+          "expiresAt",
+          "stateChangedAt"
+        ],
+        "additionalProperties": false
+      },
+      "DraftChecks": {
+        "type": "object",
+        "properties": {
+          "filledSlots": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 7
+          },
+          "emptySlots": {
+            "maxItems": 7,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "startsWhen",
+                "getsFrom",
+                "does",
+                "handsTo",
+                "howOften",
+                "howLong",
+                "onlyIKnow"
+              ]
+            }
+          },
+          "stepCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 40
+          },
+          "hasDoneMeans": {
+            "type": "boolean"
+          },
+          "hasNamedHandoff": {
+            "type": "boolean"
+          },
+          "readyToHandOff": {
+            "type": "boolean"
+          },
+          "secretsRemoved": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "generic": {
+            "type": "object",
+            "properties": {
+              "flagged": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 3000
+              }
+            },
+            "required": [
+              "flagged"
+            ],
+            "additionalProperties": false
+          },
+          "possibleDuplicates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "card",
+                    "draft"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "ownerName": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "score": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "required": [
+                "kind",
+                "id",
+                "title",
+                "ownerName",
+                "score"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "earnHint": {
+            "type": "string",
+            "enum": [
+              "likely",
+              "not_yet",
+              "off"
+            ]
+          },
+          "earnHintReasons": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "too_generic",
+                "not_linked",
+                "already_mapped",
+                "too_small",
+                "not_ready",
+                "cap_reached",
+                "pool_empty",
+                "manager_declined"
+              ]
+            }
+          }
+        },
+        "required": [
+          "filledSlots",
+          "emptySlots",
+          "stepCount",
+          "hasDoneMeans",
+          "hasNamedHandoff",
+          "readyToHandOff",
+          "secretsRemoved",
+          "generic",
+          "possibleDuplicates",
+          "earnHint",
+          "earnHintReasons"
+        ],
+        "additionalProperties": false
+      },
+      "Claim": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "draftId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "taskRecordId": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "manager_checking",
+              "approved",
+              "paid",
+              "not_paid",
+              "merged"
+            ]
+          },
+          "amountCents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "too_generic",
+              "not_linked",
+              "already_mapped",
+              "too_small",
+              "not_ready",
+              "cap_reached",
+              "pool_empty",
+              "manager_declined"
+            ]
+          },
+          "reasonText": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "askAgainNote": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "decidedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "id",
+          "draftId",
+          "taskRecordId",
+          "title",
+          "state",
+          "amountCents",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "Fix": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "id": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "gapId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "new_steps",
+              "agent",
+              "tool",
+              "more_people"
+            ]
+          },
+          "measureName": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "measureBefore": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "measureAfter": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "hoursBefore": {
+            "type": "number",
+            "minimum": 0
+          },
+          "hoursAfter": {
+            "type": "number",
+            "minimum": 0
+          },
+          "hoursAfterChecked": {
+            "type": "number",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "try_it",
+              "checking",
+              "paid",
+              "not_paid"
+            ]
+          },
+          "checkDueAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          },
+          "bonusCents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "draftId": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+          }
+        },
+        "required": [
+          "id",
+          "gapId",
+          "text",
+          "kind",
+          "measureName",
+          "hoursBefore",
+          "hoursAfter",
+          "state",
+          "createdAt"
+        ],
+        "additionalProperties": false
+      },
+      "Gap": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "bottleneck",
+              "break",
+              "one_person",
+              "empty"
+            ]
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 3000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "whatHappens": {
+            "type": "string",
+            "maxLength": 3000
+          },
+          "measure": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 3000
+              },
+              "today": {
+                "type": "string",
+                "maxLength": 3000
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          },
+          "waiting": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "days": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": false
+          },
+          "rewardRangeCents": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "max": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "min",
+              "max"
+            ],
+            "additionalProperties": false
+          },
+          "peopleWorkingOnIt": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "myFixIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 3000
+            }
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "department",
+          "stage",
+          "title",
+          "whatHappens",
+          "peopleWorkingOnIt",
+          "myFixIds"
+        ],
+        "additionalProperties": false
+      },
+      "GapMap": {
+        "type": "object",
+        "properties": {
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 3000
+            }
+          },
+          "departments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "cells": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "stage": {
+                        "type": "string",
+                        "maxLength": 3000
+                      },
+                      "cards": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "gapIds": {
+                        "type": "array",
+                        "items": {
+                          "type": "string",
+                          "maxLength": 3000
+                        }
+                      }
+                    },
+                    "required": [
+                      "stage",
+                      "cards",
+                      "gapIds"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "cells"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "handoffs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "fromDepartment": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "toDepartment": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "gapId": {
+                  "type": "string",
+                  "maxLength": 3000
+                }
+              },
+              "required": [
+                "fromDepartment",
+                "toDepartment"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "stages",
+          "departments",
+          "handoffs"
+        ],
+        "additionalProperties": false
+      },
+      "EarnSummary": {
+        "type": "object",
+        "properties": {
+          "settings": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "perCardCents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxPaidCardsPerPerson": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "engagementFeeCents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "poolCents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "dutygraphKeepsCents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "poolCommittedCents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "poolLeftCents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "bonusRateBp": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10000
+              },
+              "loadedHourlyRateCents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "weeksPerYear": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "bonusCapCents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "checkDays": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "payRulesNote": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 3000
+              },
+              "showTitlesToPeers": {
+                "type": "boolean"
+              },
+              "payoutMode": {
+                "type": "string",
+                "enum": [
+                  "payroll_csv",
+                  "stripe_test"
+                ]
+              },
+              "poolFunding": {
+                "type": "object",
+                "properties": {
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "not_invoiced",
+                      "invoiced",
+                      "funded",
+                      "failed"
+                    ]
+                  },
+                  "invoiceUrl": {
+                    "type": "string",
+                    "maxLength": 3000
+                  },
+                  "fundedAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                  }
+                },
+                "required": [
+                  "state"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "enabled",
+              "perCardCents",
+              "maxPaidCardsPerPerson",
+              "engagementFeeCents",
+              "poolCents",
+              "dutygraphKeepsCents",
+              "poolCommittedCents",
+              "poolLeftCents",
+              "bonusRateBp",
+              "loadedHourlyRateCents",
+              "weeksPerYear",
+              "bonusCapCents",
+              "checkDays",
+              "payRulesNote",
+              "showTitlesToPeers",
+              "payoutMode",
+              "poolFunding"
+            ],
+            "additionalProperties": false
+          },
+          "me": {
+            "type": "object",
+            "properties": {
+              "paidCards": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxPaidCards": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "earnedPaidCents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "earnedWaitingCents": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "hoursSavedPerWeek": {
+                "type": "number",
+                "minimum": 0
+              },
+              "confirmedCards": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "draftsWaiting": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "paidCards",
+              "maxPaidCards",
+              "earnedPaidCents",
+              "earnedWaitingCents",
+              "hoursSavedPerWeek",
+              "confirmedCards",
+              "draftsWaiting"
+            ],
+            "additionalProperties": false
+          },
+          "claims": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "id": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "draftId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "taskRecordId": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "manager_checking",
+                    "approved",
+                    "paid",
+                    "not_paid",
+                    "merged"
+                  ]
+                },
+                "amountCents": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "reason": {
+                  "type": "string",
+                  "enum": [
+                    "too_generic",
+                    "not_linked",
+                    "already_mapped",
+                    "too_small",
+                    "not_ready",
+                    "cap_reached",
+                    "pool_empty",
+                    "manager_declined"
+                  ]
+                },
+                "reasonText": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "askAgainNote": {
+                  "type": "string",
+                  "maxLength": 500
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "decidedAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "paidAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                }
+              },
+              "required": [
+                "id",
+                "draftId",
+                "taskRecordId",
+                "title",
+                "state",
+                "amountCents",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "fixes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "version": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "id": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "gapId": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "text": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "new_steps",
+                    "agent",
+                    "tool",
+                    "more_people"
+                  ]
+                },
+                "measureName": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "measureBefore": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "measureAfter": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "hoursBefore": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "hoursAfter": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "hoursAfterChecked": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "sent",
+                    "try_it",
+                    "checking",
+                    "paid",
+                    "not_paid"
+                  ]
+                },
+                "checkDueAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                },
+                "bonusCents": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "reason": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "draftId": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                }
+              },
+              "required": [
+                "id",
+                "gapId",
+                "text",
+                "kind",
+                "measureName",
+                "hoursBefore",
+                "hoursAfter",
+                "state",
+                "createdAt"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "settings",
+          "me",
+          "claims",
+          "fixes"
+        ],
+        "additionalProperties": false
+      },
+      "TeamBoard": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "pod",
+              "company"
+            ]
+          },
+          "teamTotalCards": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "personId": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "name": {
+                  "type": "string",
+                  "maxLength": 3000
+                },
+                "role": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 3000
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "confirmedCards": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "fixes": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "personId",
+                "name",
+                "role",
+                "confirmedCards",
+                "fixes"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "scope",
+          "teamTotalCards",
+          "rows"
+        ],
+        "additionalProperties": false
+      },
+      "Error": {
+        "type": "object",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "object",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {}
+            }
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

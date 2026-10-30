@@ -26,7 +26,13 @@ export function errorFromResponse(status: number, raw: string, headerRequestId?:
   let env: Envelope | null = null;
   try {
     const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed && typeof parsed === 'object') env = parsed as Envelope;
+    if (parsed && typeof parsed === 'object') {
+      // Earn permits a nested envelope; existing participant flat errors stay unchanged.
+      const nested = (parsed as { error?: unknown }).error;
+      env = nested && typeof nested === 'object' && !Array.isArray(nested)
+        ? { ...parsed, ...nested } as Envelope
+        : parsed as Envelope;
+    }
   } catch {
     env = null;
   }

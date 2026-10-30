@@ -1,4 +1,12 @@
 import type {
+  MeetingGateSuggestionWire,
+  MeetingTaskCardWire,
+} from "../dutygraphWire";
+export type {
+  MeetingGateSuggestionWire,
+  MeetingTaskCardWire,
+} from "../dutygraphWire";
+import type {
   AdvisorSession,
   MeetingDefinition,
   MeetingSession,
@@ -11,6 +19,7 @@ import type {
   SetupProposal,
   PulseTeamStatus,
   ClosingItem,
+  ClosingOutcomeReview,
 } from "../../../../shared/meetings/types";
 export type {
   AdvisorSession,
@@ -22,6 +31,7 @@ export type {
   KickoffNote,
   SetupProposal,
   ClosingItem,
+  ClosingOutcomeReview,
 };
 /** Explicit attribution is an input instruction, never inferred from a speaker cluster. */
 export type TranscriptInput = TranscriptSegment & { personKey?: string };
@@ -32,6 +42,7 @@ export type Person = {
   department: string;
 };
 export type CreateMeeting = {
+  previousMeetingId?: string;
   title: string;
   startsAt: string | null;
   minutes: number;
@@ -42,12 +53,27 @@ export type CreateMeeting = {
   agenda?: MeetingDefinition["agenda"];
   meetingType?: NonNullable<MeetingDefinition["meetingType"]>;
 };
+export type ClosingReadiness = {
+  complete: boolean;
+  partial: boolean;
+  missingOutcomes: number;
+  unconfirmedActions: number;
+};
+export type SaveClosing = {
+  expectedVersion: number;
+  contentHash: string;
+  outcomes: ClosingOutcomeReview[];
+  followUpPlan?: string;
+};
 export type SessionDetail = MeetingSession & {
   transcript: TranscriptSegment[];
   parked: ParkedItem[];
   speakerMap: SpeakerMap;
   proposals: MeetingProposal[];
   closing?: ClosingItem[];
+  outcomeReviews?: ClosingOutcomeReview[];
+  followUpPlan?: string;
+  closingReadiness?: ClosingReadiness;
 };
 export type Coach = {
   nextQuestion: string;
@@ -73,24 +99,38 @@ export interface AdvisorRepository {
     input: { lines: { id: string; text: string }[]; speed?: number },
     key: string,
   ): Promise<{
-    lines: { id: string; url: string; hash: string; durationMs: number }[];
+    lines: {
+      id: string;
+      url: string;
+      hash: string;
+      durationMs: number;
+      mimeType?: "audio/mpeg" | "audio/wav";
+      simulated?: boolean;
+    }[];
   }>;
   pair(code: string, key: string): Promise<AdvisorSession>;
   logout(key: string): Promise<void>;
   people(): Promise<Person[]>;
+  taskCards(): Promise<MeetingTaskCardWire[]>;
+  taskCard(id: string): Promise<MeetingTaskCardWire>;
   meetings(): Promise<MeetingDefinition[]>;
   meeting(id: string): Promise<MeetingDefinition>;
   create(input: CreateMeeting, key: string): Promise<MeetingDefinition>;
   patch(
     id: string,
-    patch: Partial<CreateMeeting> & { expectedVersion: number },
+    patch: Partial<CreateMeeting> & {
+      expectedVersion: number;
+      contentHash?: string;
+    },
     key: string,
   ): Promise<MeetingDefinition>;
   plan(id: string, key: string): Promise<MeetingDefinition>;
+  gateSuggestion(id: string, key: string): Promise<MeetingGateSuggestionWire>;
   route(
     id: string,
     choice: "pulse" | "shorter" | "as_planned",
     key: string,
+    reviewed?: Pick<MeetingDefinition, "version" | "hash">,
   ): Promise<MeetingDefinition>;
   pulse(id: string, create?: boolean, key?: string): Promise<PulseStatus>;
   start(
@@ -136,7 +176,11 @@ export interface AdvisorRepository {
     bytes: Uint8Array;
     final: boolean;
   }): Promise<{ uploadedBytes: number }>;
-  finish(id: string, key: string): Promise<void>;
+  finish(
+    id: string,
+    key: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<void>;
   speakers(id: string, map: SpeakerMap, key: string): Promise<SpeakerMap>;
   decide(
     proposal: MeetingProposal,
@@ -145,6 +189,16 @@ export interface AdvisorRepository {
     body?: MeetingProposal["body"],
   ): Promise<MeetingProposal>;
   confirm(sessionId: string, item: ClosingItem, key: string): Promise<void>;
+  saveClosing(
+    sessionId: string,
+    input: SaveClosing,
+    key: string,
+  ): Promise<void>;
+  complete(
+    sessionId: string,
+    reviewed: { expectedVersion: number; contentHash: string },
+    key: string,
+  ): Promise<MeetingDefinition>;
   followUp(proposalId: string, personId: string, key: string): Promise<void>;
   export(id: string): Promise<{ markdown: string; json: unknown }>;
   audioSource(
@@ -155,7 +209,11 @@ export interface AdvisorRepository {
     headers: Record<string, string>;
     offsetSeconds: number;
   } | null>;
-  notes(meetingId: string, notes: KickoffNote[], key: string): Promise<void>;
+  notes(
+    meetingId: string,
+    notes: KickoffNote[],
+    key: string,
+  ): Promise<KickoffNote[] | void>;
   setup(key: string): Promise<{ id: string }>;
   understandSetup(
     id: string,

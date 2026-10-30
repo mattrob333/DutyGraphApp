@@ -11,6 +11,7 @@
     "expo-audio": "~57.0.5",
     "expo-battery": "~57.0.3",
     "expo-camera": "~57.0.5",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.19",
     "expo-crypto": "~57.0.3",
     "expo-dev-client": "~57.0.19",
@@ -63,7 +64,9 @@
     "doctor": "npx expo-doctor",
     "lint": "eslint src",
     "test:coverage:handsfree": "jest --runInBand --coverage --coverageDirectory=coverage/voice-handsfree --coverageReporters=json-summary --coverageReporters=text-summary --collectCoverageFrom='src/features/handsfree/**/*.{ts,tsx}' --collectCoverageFrom='src/features/meetings/**/*.{ts,tsx}' --collectCoverageFrom='!**/__tests__/**' --collectCoverageFrom='!**/__fixtures__/**' --coverageThreshold='{\"global\":{\"lines\":90}}' src/features/handsfree src/features/voice src/features/meetings",
-    "test:e2e:http": "node scripts/e2e-http-suite.mjs"
+    "test:e2e:http": "node scripts/e2e-http-suite.mjs",
+    "contract:dutygraph": "node scripts/generate-dutygraph-contracts.mjs",
+    "test:e2e:dutygraph": "node scripts/e2e-dutygraph-suite.mjs"
   },
   "private": true,
   "jest": {

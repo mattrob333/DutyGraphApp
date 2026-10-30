@@ -26,6 +26,15 @@ public class DutyGraphPcmMicModule: Module {
       return try self.backups.collect(id)
     }
     AsyncFunction("recoverBackupsAsync") { () throws -> [[String: Any]] in try self.backups.collect() }
+    AsyncFunction("meetingRecordingDirectoryAsync") { () throws -> String in
+      let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+      var directory = support.appendingPathComponent("dutygraph-meeting-recordings", isDirectory: true)
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication])
+      var values = URLResourceValues()
+      values.isExcludedFromBackup = true
+      try directory.setResourceValues(values)
+      return directory.absoluteString
+    }
     AsyncFunction("clearBackupsAsync") { () throws in self.stopCapture(); try self.backups.clear() }.runOnQueue(.main)
     OnAppEntersBackground { self.stopCapture() }
     OnDestroy { DispatchQueue.main.async { self.stopCapture() } }

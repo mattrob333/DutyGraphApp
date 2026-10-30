@@ -1,9 +1,16 @@
 import { beforeEach, expect, jest, test } from "@jest/globals";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 import {
   createNativeMeetingRecorder,
   clearMeetingRecordingData,
 } from "../meeting/nativeRecorder";
+jest.mock("../live/nativePcm", () => ({
+  loadNativePcmModule: () => ({
+    meetingRecordingDirectoryAsync: async () =>
+      "file:///app-support/dutygraph-meeting-recordings",
+  }),
+}));
 const mockFiles = new Map<string, Uint8Array>();
 let mockNumber = 0;
 jest.mock("expo-audio", () => ({
@@ -35,8 +42,8 @@ jest.mock("expo-crypto", () => ({
 jest.mock("expo-file-system", () => {
   class File {
     uri: string;
-    constructor(...parts: string[]) {
-      this.uri = parts.join("/");
+    constructor(...parts: (string | { uri: string })[]) {
+      this.uri = parts.map((part) => typeof part === "string" ? part : part.uri).join("/");
     }
     get exists() {
       return mockFiles.has(this.uri);
@@ -64,7 +71,7 @@ jest.mock("expo-file-system", () => {
         return [...mockFiles.keys()].map((uri) => new File(uri));
       }
     },
-    Paths: { document: "file:///document" },
+    Paths: { document: { uri: "file:///document" }, cache: { uri: "file:///cache" } },
   };
 });
 beforeEach(async () => {
@@ -105,4 +112,41 @@ test("a fresh recorder recovers interrupted bytes with stable upload index befor
       key.startsWith("dg.meeting-recording"),
     ),
   ).toBe(false);
+});
+
+test("sealed iOS meeting recordings are stored outside iCloud-backed Documents", async () => {
+  if (Platform.OS !== "ios") return;
+  const recorder = createNativeMeetingRecorder(
+    "private-session",
+    async ({ bytes, offset }) => ({ uploadedBytes: offset + bytes.length }),
+  );
+  await recorder.start();
+  await recorder.stop();
+  const segment = recorder.segments[0];
+  expect(segment.uri).toContain("/app-support/dutygraph-meeting-recordings/");
+  expect(segment.uri).not.toContain("/document/");
+  await clearMeetingRecordingData();
+  expect(mockFiles.has(segment.uri)).toBe(false);
+});
+
+test("legacy iOS recordings migrate to backup-excluded storage on recovery", async () => {
+  if (Platform.OS !== "ios") return;
+  const legacyUri = "file:///document/meeting-legacy.m4a";
+  mockFiles.set(legacyUri, new Uint8Array([1, 2, 3]));
+  await AsyncStorage.setItem("dg.meeting-recording.migrate", JSON.stringify({
+    sessionId: "migrate",
+    segments: [{
+      id: "legacy", uri: legacyUri, hash: "a".repeat(64),
+      bytes: 3, durationMs: 1000, uploadedBytes: 0,
+    }],
+  }));
+  const recorder = createNativeMeetingRecorder(
+    "migrate",
+    async ({ bytes, offset }) => ({ uploadedBytes: offset + bytes.length }),
+  );
+  const segments = await recorder.restore();
+  expect(segments[0].uri).toContain("/app-support/");
+  expect(mockFiles.has(legacyUri)).toBe(false);
+  expect(mockFiles.has(segments[0].uri)).toBe(true);
+  await clearMeetingRecordingData();
 });

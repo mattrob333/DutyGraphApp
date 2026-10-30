@@ -47,8 +47,12 @@ export interface RequestOptions {
 export const DEFAULT_TIMEOUT_MS = 30_000;
 export const TRANSCRIBE_TIMEOUT_MS = 120_000;
 
-export function toStoredSession(s: ParticipantMobileSession): StoredSession {
+export function toStoredSession(
+  s: ParticipantMobileSession,
+  localSessionId = newIdempotencyKey(),
+): StoredSession {
   return {
+    localSessionId,
     accessToken: s.accessToken,
     refreshToken: s.refreshToken,
     accessExpiresAt: s.accessTokenExpiresAt,
@@ -92,6 +96,11 @@ export class ApiClient {
     this.newKey = opts.newKey ?? newIdempotencyKey;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     this.skewMs = opts.refreshSkewMs ?? 60_000;
+  }
+
+  /** Public endpoint metadata for extensions; carries no session credential. */
+  getBaseUrl(): string {
+    return this.baseUrl;
   }
 
   async request<T>(
@@ -149,7 +158,7 @@ export class ApiClient {
     participantGeneration++;
     this.refreshing = null;
     this.refreshKey = null;
-    return this.tokens.set(toStoredSession(s));
+    return this.tokens.set(toStoredSession(s, this.newKey()));
   }
 
   /** Clear local credentials first; a delayed logout can only revoke its captured bearer. */
@@ -213,7 +222,14 @@ export class ApiClient {
       throw sessionEnded();
     }
     const body = await this.parse<ParticipantMobileSession>(res);
-    const stored = toStoredSession(body);
+    const latest = await this.tokens.get();
+    assertParticipantGeneration(owner);
+    if (!latest || latest.refreshToken !== session.refreshToken)
+      throw sessionEnded();
+    const stored = toStoredSession(
+      body,
+      latest.localSessionId ?? session.localSessionId ?? this.newKey(),
+    );
     assertParticipantGeneration(owner);
     await this.tokens.set(stored);
     this.refreshKey = null;

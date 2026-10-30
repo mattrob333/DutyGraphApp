@@ -9,7 +9,9 @@ describe('enrollErrors', () => {
     expect(describeEnrollError(new Error('boom')).kind).toBe('other');
   });
   it('builds and validates urls', () => {
-    expect(buildEnrollUrl('a b')).toBe('https://respond.dutygraph.com/mobile/enroll?t=a%20b');
+    expect(buildEnrollUrl('a b', 'mock')).toBe('https://respond.dutygraph.com/mobile/enroll?t=a%20b');
+    expect(buildEnrollUrl('a b', 'dev-server')).toBe('https://respond.dutygraph.com/mobile/enroll?t=a%20b');
+    expect(buildEnrollUrl('a b', 'dutygraph-production')).toBe('https://dutygraph.com/mobile/enroll?t=a%20b');
     expect(isSafeBrowserUrl('https://respond.dutygraph.com/mobile/enroll?t=x')).toBe(true);
     expect(isSafeBrowserUrl('javascript:alert(1)')).toBe(false);
     expect(isSafeBrowserUrl('dutygraph-companion://x')).toBe(false);

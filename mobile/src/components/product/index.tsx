@@ -89,16 +89,19 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   disabled = false,
+  accessibilityLabel,
 }: {
   options: { value: T; label: string; disabled?: boolean }[];
   value: T;
   onChange: (v: T) => void;
   disabled?: boolean;
+  accessibilityLabel?: string;
 }) {
   const c = useColors();
   return (
     <View
       accessibilityRole="radiogroup"
+      accessibilityLabel={accessibilityLabel}
       style={{
         flexDirection: "row",
         flexWrap: "wrap",
@@ -296,6 +299,7 @@ export function ConsentRow({
         }
       />
       <SegmentedControl
+        accessibilityLabel={`Recording consent for ${name}`}
         options={[
           { value: "consented", label: "Consent" },
           { value: "declined", label: "Declined" },

@@ -1,5 +1,6 @@
 import { beforeEach, expect, jest, test } from "@jest/globals";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 import { mergeRecorded } from "@shared/hands-free/recorded";
 import {
   createCardBackup,
@@ -13,9 +14,28 @@ import type {
   SpeechBackupFile,
 } from "../live/types";
 const mockFiles = new Set<string>();
+let mockPrivateDirectory: string | null = "file:///private/backups";
+const mockRecorderOptions: { directory: string }[] = [];
+let mockPrepare: () => Promise<void> = async () => {};
+jest.mock("expo-audio", () => ({
+  RecordingPresets: { HIGH_QUALITY: {} },
+  getRecordingPermissionsAsync: async () => ({ granted: true }),
+  AudioModule: { AudioRecorder: class {
+    uri = "file:///cache/raw.m4a";
+    currentTime = 2;
+    constructor(options: { directory: string }) { mockRecorderOptions.push(options); }
+    async prepareToRecordAsync() { await mockPrepare(); }
+    record() { mockFiles.add(this.uri); }
+    async stop() {}
+    release() {}
+  } },
+}));
 jest.mock("../live/nativePcm", () => ({
   recoverNativePcmBackups: async () => [],
   clearNativePcmBackups: async () => {},
+  loadNativePcmModule: () => mockPrivateDirectory ? {
+    meetingRecordingDirectoryAsync: async () => mockPrivateDirectory,
+  } : null,
 }));
 jest.mock("expo-crypto", () => ({
   randomUUID: () => "fictional-id",
@@ -26,8 +46,8 @@ jest.mock("expo-crypto", () => ({
 jest.mock("expo-file-system", () => ({
   File: class {
     uri: string;
-    constructor(value: string) {
-      this.uri = value;
+    constructor(...values: string[]) {
+      this.uri = values.join("/");
     }
     get exists() {
       return mockFiles.has(this.uri);
@@ -35,12 +55,112 @@ jest.mock("expo-file-system", () => ({
     delete() {
       mockFiles.delete(this.uri);
     }
+    copy(target: { uri: string }) { mockFiles.add(target.uri); }
   },
+  Paths: { document: { uri: "file:///document" } },
 }));
 beforeEach(async () => {
   await clearCardBackupCache();
   await AsyncStorage.clear();
   mockFiles.clear();
+  mockPrivateDirectory = "file:///private/backups";
+  mockRecorderOptions.length = 0;
+  mockPrepare = async () => {};
+});
+
+test("iOS device-speech fallback retains recoverable M4A only in backup-excluded storage", async () => {
+  const os = Platform.OS;
+  Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
+  try {
+    const backup = createCardBackup("fallback", async () => ({ text: "Recovered." }))!;
+    await backup.start({ questionKey: "q", session: 1 });
+    expect(mockRecorderOptions[0].directory).toBe("cache");
+    await backup.finish(true);
+    const [clip] = await backup.pending();
+    expect(clip.uri).toMatch(/^file:\/\/\/private\/backups\/card-backup-/);
+    expect(mockFiles.has(clip.uri)).toBe(true);
+    expect(mockFiles.has("file:///cache/raw.m4a")).toBe(false);
+    const stored = JSON.parse((await AsyncStorage.getItem("dg.card-backups.fallback"))!);
+    expect(stored[0].uri).toBe(clip.uri);
+    await backup.flush(() => {}, () => true);
+    expect(mockFiles.has(clip.uri)).toBe(false);
+  } finally { Object.defineProperty(Platform, "OS", { configurable: true, value: os }); }
+});
+
+test("iOS fallback refuses capture without a backup-excluded native directory", async () => {
+  const os = Platform.OS;
+  Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
+  try {
+    mockPrivateDirectory = null;
+    const backup = createCardBackup("no-native", async () => ({ text: "" }))!;
+    await backup.start({ questionKey: "q", session: 1 });
+    expect(mockRecorderOptions).toHaveLength(0);
+    expect(await backup.pending()).toEqual([]);
+  } finally { Object.defineProperty(Platform, "OS", { configurable: true, value: os }); }
+});
+
+test("iOS legacy M4A recovery commits private pointers before deleting Documents evidence", async () => {
+  const os = Platform.OS;
+  Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
+  try {
+    const uri = "file:///document/legacy.m4a";
+    mockFiles.add(uri);
+    await AsyncStorage.setItem("dg.card-backups.legacy", JSON.stringify([
+      { id: "old", requestId: "legacy", questionKey: "q", session: 1, uri, mimeType: "audio/m4a", durationMs: 1000 },
+    ]));
+    const backup = createCardBackup("legacy", async () => ({ text: "" }))!;
+    const [clip] = await backup.pending();
+    expect(clip.uri).toBe("file:///private/backups/card-backup-old.m4a");
+    expect(mockFiles.has(clip.uri)).toBe(true);
+    expect(mockFiles.has(uri)).toBe(false);
+    expect(JSON.parse((await AsyncStorage.getItem("dg.card-backups.legacy"))!)[0].uri).toBe(clip.uri);
+  } finally { Object.defineProperty(Platform, "OS", { configurable: true, value: os }); }
+});
+
+test("logout during native preparation never starts a late fallback recording", async () => {
+  let ready!: () => void, release!: () => void;
+  const entered = new Promise<void>(resolve => { ready = resolve; });
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  mockPrepare = async () => { ready(); await waiting; };
+  const backup = createCardBackup("late-start", async () => ({ text: "" }))!;
+  const started = backup.start({ questionKey: "q", session: 1 });
+  await entered;
+  await clearCardBackupCache();
+  release();
+  await started;
+  expect(mockFiles.has("file:///cache/raw.m4a")).toBe(false);
+});
+
+test("logout waits for a migrating index write and removes its private evidence", async () => {
+  const os = Platform.OS;
+  Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
+  const uri = "file:///document/racing.m4a";
+  const key = "dg.card-backups.migrating";
+  mockFiles.add(uri);
+  await AsyncStorage.setItem(key, JSON.stringify([
+    { id: "racing", requestId: "migrating", questionKey: "q", session: 1, uri, mimeType: "audio/m4a", durationMs: 1000 },
+  ]));
+  const setMock = AsyncStorage.setItem as jest.MockedFunction<typeof AsyncStorage.setItem>;
+  const originalSet = setMock.getMockImplementation()!;
+  let ready!: () => void, release!: () => void;
+  const entered = new Promise<void>(resolve => { ready = resolve; });
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  setMock.mockImplementationOnce(async (k, value) => {
+    ready(); await waiting; await originalSet(k, value);
+  });
+  try {
+    const backup = createCardBackup("migrating", async () => ({ text: "" }))!;
+    const loading = backup.pending();
+    await entered;
+    const clearing = clearCardBackupCache();
+    release();
+    await Promise.all([loading, clearing]);
+    expect(await AsyncStorage.getItem(key)).toBeNull();
+    expect(mockFiles.size).toBe(0);
+  } finally {
+    setMock.mockImplementation(originalSet);
+    Object.defineProperty(Platform, "OS", { configurable: true, value: os });
+  }
 });
 const file = (id: string, groupId: string): SpeechBackupFile => ({
   id,

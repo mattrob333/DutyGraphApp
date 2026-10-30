@@ -1,0 +1,91 @@
+{
+  "runId": "dutygraph-v2-e2e-BzCVSO",
+  "backend": "DutyGraphV2 PostgreSQL",
+  "origin": "http://127.0.0.1:4317",
+  "startedAt": "2026-10-28T14:11:22.419Z",
+  "contracts": {
+    "advisor": "7e4e8d06293496f4944a7990ae8bb971e733a6623f379aa3ecd560f7fd556c2b",
+    "participantExtras": "8267b56ec888ab20e32ca9cf4fd8788c1b6f88d18717eeb0356d2103ea000195"
+  },
+  "flows": [
+    {
+      "flow": "participant",
+      "status": "passed",
+      "validatedExchanges": 8
+    },
+    {
+      "flow": "offline",
+      "status": "passed",
+      "validatedExchanges": 8
+    },
+    {
+      "flow": "task",
+      "status": "passed",
+      "validatedExchanges": 7
+    },
+    {
+      "flow": "hybrid",
+      "status": "passed",
+      "validatedExchanges": 18
+    },
+    {
+      "flow": "pulse",
+      "status": "passed",
+      "validatedExchanges": 14
+    },
+    {
+      "flow": "advisor",
+      "status": "passed",
+      "validatedExchanges": 32
+    },
+    {
+      "flow": "facilitator",
+      "status": "passed",
+      "validatedExchanges": 38
+    },
+    {
+      "flow": "decline",
+      "status": "passed",
+      "validatedExchanges": 32
+    },
+    {
+      "flow": "stale",
+      "status": "passed",
+      "validatedExchanges": 41
+    },
+    {
+      "flow": "wrapup",
+      "status": "passed",
+      "validatedExchanges": 8
+    },
+    {
+      "flow": "kickoff",
+      "status": "passed",
+      "validatedExchanges": 7
+    },
+    {
+      "flow": "setup",
+      "status": "passed",
+      "validatedExchanges": 6
+    }
+  ],
+  "finishedAt": "2026-10-28T14:14:48.795Z",
+  "validatedExchanges": 219,
+  "checks": {
+    "generatedTypecheck": "passed",
+    "lint": "passed",
+    "webExport": "passed",
+    "priorFullMobileTests": {
+      "passed": 538,
+      "suites": 63
+    },
+    "priorScopedLineCoverage": 94.37,
+    "signalCleanupProbe": "passed"
+  },
+  "limitations": [
+    "Providers injected in tests; no live vendor acceptance.",
+    "Typed/browser paths do not establish physical-device microphone, native realtime, backup exclusion or signing behavior.",
+    "Hosted CI/private sibling checkout authorization unverified.",
+    "Expo CLI nested Zod3 advisory and propagated entries remain open."
+  ]
+}

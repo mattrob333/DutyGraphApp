@@ -178,6 +178,11 @@ export class HttpCompanionRepository implements CompanionRepository {
     private readonly newKey: () => string = newIdempotencyKey,
   ) {}
 
+  /** Extensions share this transport so participant refresh remains single-flight. */
+  getExtensionApiClient(): ApiClient {
+    return this.api;
+  }
+
   private get extras() {
     return new HttpParticipantExtrasRepository(this.api);
   }

@@ -11,6 +11,7 @@ import type {
   Coach,
   Trigger,
   ClosingItem,
+  SaveClosing,
 } from "./types";
 import type {
   SpeakerMap,
@@ -22,22 +23,38 @@ import {
   clearAdvisorData,
   loadAdvisorDraft,
   saveAdvisorDraft,
+  advisorSessionGeneration,
 } from "@/storage/advisor";
 import {
   CompanionApiError,
   errorFromResponse,
   networkOffline,
   notAvailable,
+  requestTimeout,
 } from "@/api/http/errors";
 import { newIdempotencyKey } from "@/utils/id";
 import * as Crypto from "expo-crypto";
 import { useAdvisorStore } from "@/state/advisor";
+import { config } from "@/api/config";
+import type {
+  AdvisorSessionWire,
+  MeetingWire,
+  SessionWire,
+  PeopleWire,
+  MeetingRouteWire,
+  MobileFinishJobWire,
+  MeetingGateSuggestionWire,
+  MeetingTaskCardWire,
+} from "@/api/dutygraphWire";
 
 export class HttpAdvisorRepository implements AdvisorRepository {
   readonly kind = "http" as const;
   private refreshing: Promise<AdvisorSession> | null = null;
   private refreshKey: { token: string; key: string } | null = null;
-  constructor(private origin: string | undefined) {}
+  constructor(
+    private origin: string | undefined,
+    private versionedCommands = config.backendProfile.startsWith("dutygraph-"),
+  ) {}
   private async request<T>(
     path: string,
     method = "GET",
@@ -46,8 +63,30 @@ export class HttpAdvisorRepository implements AdvisorRepository {
     authorized = true,
     retry = true,
     namespace = "/api/mobile/meetings/v1",
+    timeoutMs = 20000,
+    callerSignal?: AbortSignal,
   ): Promise<T> {
     if (!this.origin) return notAvailable();
+    const assertNotCancelled = () => {
+      if (callerSignal?.aborted)
+        throw new CompanionApiError(
+          "COMMAND_PENDING",
+          "Checking paused. The server can continue processing. Tap Review closing to check the same attempt.",
+          0,
+          true,
+        );
+    };
+    assertNotCancelled();
+    const generation = advisorSessionGeneration();
+    const assertCurrent = () => {
+      if (generation !== advisorSessionGeneration())
+        throw new CompanionApiError(
+          "SESSION_ENDED",
+          "Pair this phone again to continue.",
+          0,
+          false,
+        );
+    };
     let session = authorized ? await advisorTokens.get() : null;
     if (authorized && !session)
       throw new CompanionApiError(
@@ -58,64 +97,93 @@ export class HttpAdvisorRepository implements AdvisorRepository {
       );
     if (session && Date.parse(session.accessExpiresAt) < Date.now() + 30000)
       session = await this.refresh();
+    assertNotCancelled();
+    assertCurrent();
     const abort = new AbortController(),
-      timer = setTimeout(() => abort.abort(), 20000);
+      timer = setTimeout(() => abort.abort(), timeoutMs),
+      cancel = () => abort.abort();
+    callerSignal?.addEventListener("abort", cancel, { once: true });
+    if (callerSignal?.aborted) abort.abort();
     let response: Response;
     try {
-      response = await fetch(
-        `${this.origin.replace(/\/+$/, "")}${namespace}${path}`,
-        {
-          method,
-          signal: abort.signal,
-          headers: {
-            Accept: "application/json",
-            ...(body === undefined
-              ? {}
-              : { "Content-Type": "application/json" }),
-            ...(session
-              ? { Authorization: `Bearer ${session.accessToken}` }
-              : {}),
-            ...(key ? { "Idempotency-Key": key } : {}),
+      try {
+        response = await fetch(
+          `${this.origin.replace(/\/+$/, "")}${namespace}${path}`,
+          {
+            method,
+            signal: abort.signal,
+            headers: {
+              Accept: "application/json",
+              ...(body === undefined
+                ? {}
+                : { "Content-Type": "application/json" }),
+              ...(session
+                ? { Authorization: `Bearer ${session.accessToken}` }
+                : {}),
+              ...(key ? { "Idempotency-Key": key } : {}),
+            },
+            body: body === undefined ? undefined : JSON.stringify(body),
           },
-          body: body === undefined ? undefined : JSON.stringify(body),
-        },
-      );
-    } catch {
-      throw networkOffline();
+        );
+      } catch {
+        assertNotCancelled();
+        throw abort.signal.aborted ? requestTimeout() : networkOffline();
+      }
+      assertNotCancelled();
+      assertCurrent();
+      const readBody = async () => {
+        try {
+          const raw = await response.text();
+          assertNotCancelled();
+          assertCurrent();
+          return raw;
+        } catch (error) {
+          assertNotCancelled();
+          if (abort.signal.aborted) throw requestTimeout();
+          if (error instanceof CompanionApiError) throw error;
+          throw networkOffline();
+        }
+      };
+      if (response.status === 401 && authorized && retry) {
+        await this.refresh();
+        return this.request(
+          path,
+          method,
+          body,
+          key,
+          authorized,
+          false,
+          namespace,
+          timeoutMs,
+          callerSignal,
+        );
+      }
+      if (response.status === 404 || response.status === 501)
+        return notAvailable();
+      if (!response.ok) {
+        const error = errorFromResponse(response.status, await readBody());
+        assertCurrent();
+        if (
+          error.code === "REFRESH_REPLAY" ||
+          (response.status === 401 &&
+            (authorized || path === "/advisor/session/refresh"))
+        )
+          await useAdvisorStore.getState().clear();
+        throw error;
+      }
+      if (response.status === 204) return undefined as T;
+      const raw = await readBody();
+      assertCurrent();
+      return raw ? (JSON.parse(raw) as T) : (undefined as T);
     } finally {
       clearTimeout(timer);
+      callerSignal?.removeEventListener("abort", cancel);
     }
-    if (response.status === 401 && authorized && retry) {
-      await this.refresh();
-      return this.request(
-        path,
-        method,
-        body,
-        key,
-        authorized,
-        false,
-        namespace,
-      );
-    }
-    if (response.status === 404 || response.status === 501)
-      return notAvailable();
-    if (!response.ok) {
-      const error = errorFromResponse(response.status, await response.text());
-      if (
-        error.code === "REFRESH_REPLAY" ||
-        (response.status === 401 &&
-          (authorized || path === "/advisor/session/refresh"))
-      )
-        await useAdvisorStore.getState().clear();
-      throw error;
-    }
-    if (response.status === 204) return undefined as T;
-    const raw = await response.text();
-    return raw ? (JSON.parse(raw) as T) : (undefined as T);
   }
   private refresh(): Promise<AdvisorSession> {
     if (!this.refreshing)
       this.refreshing = (async () => {
+        const generation = advisorSessionGeneration();
         const s = await advisorTokens.get();
         if (!s)
           throw new CompanionApiError(
@@ -132,7 +200,7 @@ export class HttpAdvisorRepository implements AdvisorRepository {
           this.refreshKey = { token: s.refreshToken, key: newIdempotencyKey() };
         await saveAdvisorDraft("refresh-key", this.refreshKey);
         try {
-          const next = await this.request<AdvisorSession>(
+          const next = await this.request<AdvisorSessionWire>(
             "/advisor/session/refresh",
             "POST",
             { refreshToken: s.refreshToken },
@@ -140,12 +208,20 @@ export class HttpAdvisorRepository implements AdvisorRepository {
             false,
             false,
           );
-          await advisorTokens.set(next);
+          if (generation !== advisorSessionGeneration())
+            throw new CompanionApiError(
+              "SESSION_ENDED",
+              "Pair this phone again to continue.",
+              0,
+              false,
+            );
+          await advisorTokens.set(next, generation);
           this.refreshKey = null;
           await saveAdvisorDraft("refresh-key", null);
           return next;
         } catch (e) {
           if (
+            generation === advisorSessionGeneration() &&
             e instanceof CompanionApiError &&
             (e.status === 401 || e.code === "REFRESH_REPLAY")
           ) {
@@ -161,7 +237,7 @@ export class HttpAdvisorRepository implements AdvisorRepository {
     return this.refreshing;
   }
   pair(pairingCode: string, key: string) {
-    return this.request<AdvisorSession>(
+    return this.request<AdvisorSessionWire>(
       "/advisor/pair",
       "POST",
       { pairingCode, deviceLabel: "DutyGraph Companion" },
@@ -174,36 +250,114 @@ export class HttpAdvisorRepository implements AdvisorRepository {
     key: string,
   ) {
     return this.request<{
-      lines: { id: string; url: string; hash: string; durationMs: number }[];
+      lines: {
+        id: string;
+        url: string;
+        hash: string;
+        durationMs: number;
+        mimeType?: "audio/mpeg" | "audio/wav";
+        simulated?: boolean;
+      }[];
     }>("/voice/lines", "POST", input, key, true, true, "/api/mobile/v1x");
   }
   async logout(key: string) {
-    await this.request("/advisor/session/logout", "POST", {}, key);
+    // End local access before waiting for an unreliable connection. Revocation
+    // uses this snapshot only; its response cannot mutate a later login.
+    const session = await advisorTokens.get();
+    await useAdvisorStore.getState().clear();
+    if (!this.origin) return notAvailable();
+    if (!session) return;
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), 20000);
+    try {
+      const response = await fetch(
+        `${this.origin.replace(/\/+$/, "")}/api/mobile/meetings/v1/advisor/session/logout`,
+        {
+          method: "POST",
+          signal: abort.signal,
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.accessToken}`,
+            "Idempotency-Key": key,
+          },
+          body: "{}",
+        },
+      );
+      if (!response.ok && response.status !== 401)
+        throw errorFromResponse(response.status, await response.text());
+    } catch (error) {
+      if (error instanceof CompanionApiError) throw error;
+      throw networkOffline();
+    } finally {
+      clearTimeout(timer);
+    }
   }
   async people() {
-    return (await this.request<{ people: Person[] }>("/people")).people;
+    return (await this.request<PeopleWire>("/people")).people.map(
+      (person): Person => {
+        if (
+          typeof person.id !== "string" ||
+          typeof person.name !== "string" ||
+          typeof person.role !== "string" ||
+          typeof person.department !== "string"
+        )
+          throw new CompanionApiError(
+            "INVALID_RESPONSE",
+            "The company people list could not be read.",
+            502,
+            false,
+          );
+        return {
+          id: person.id,
+          name: person.name,
+          role: person.role,
+          department: person.department,
+        };
+      },
+    );
+  }
+  async taskCards() {
+    return (
+      await this.request<{ taskCards: MeetingTaskCardWire[] }>("/task-cards")
+    ).taskCards;
+  }
+  taskCard(id: string) {
+    return this.request<MeetingTaskCardWire>(
+      `/task-cards/${encodeURIComponent(id)}`,
+    );
   }
   async meetings() {
     return (await this.request<{ meetings: MeetingDefinition[] }>("/meetings"))
       .meetings;
   }
   meeting(id: string) {
-    return this.request<MeetingDefinition>(
-      `/meetings/${encodeURIComponent(id)}`,
-    );
+    return this.request<MeetingWire>(`/meetings/${encodeURIComponent(id)}`);
   }
   create(input: CreateMeeting, key: string) {
     return this.request<MeetingDefinition>("/meetings", "POST", input, key);
   }
   patch(
     id: string,
-    input: Partial<CreateMeeting> & { expectedVersion: number },
+    input: Partial<CreateMeeting> & {
+      expectedVersion: number;
+      contentHash?: string;
+    },
     key: string,
   ) {
+    const { contentHash, ...legacy } = input;
+    if (this.versionedCommands && !contentHash)
+      return Promise.reject(
+        new CompanionApiError(
+          "VERSION_REQUIRED",
+          "Load the current meeting before editing.",
+          409,
+          false,
+        ),
+      );
     return this.request<MeetingDefinition>(
       `/meetings/${encodeURIComponent(id)}`,
       "PATCH",
-      input,
+      this.versionedCommands ? input : legacy,
       key,
     );
   }
@@ -217,11 +371,41 @@ export class HttpAdvisorRepository implements AdvisorRepository {
       )
     ).meeting;
   }
-  route(id: string, choice: "pulse" | "shorter" | "as_planned", key: string) {
+  gateSuggestion(id: string, key: string) {
+    return this.request<MeetingGateSuggestionWire>(
+      `/meetings/${encodeURIComponent(id)}/gate-suggestion`,
+      "POST",
+      {},
+      key,
+    );
+  }
+  route(
+    id: string,
+    choice: "pulse" | "shorter" | "as_planned",
+    key: string,
+    reviewed?: Pick<MeetingDefinition, "version" | "hash">,
+  ) {
+    if (this.versionedCommands && !reviewed)
+      return Promise.reject(
+        new CompanionApiError(
+          "VERSION_REQUIRED",
+          "Load the current meeting before choosing its route.",
+          409,
+          false,
+        ),
+      );
+    const body =
+      this.versionedCommands && reviewed
+        ? ({
+            choice,
+            expectedVersion: reviewed.version,
+            contentHash: reviewed.hash,
+          } satisfies MeetingRouteWire)
+        : { choice };
     return this.request<MeetingDefinition>(
       `/meetings/${encodeURIComponent(id)}/route`,
       "POST",
-      { choice },
+      body,
       key,
     );
   }
@@ -276,7 +460,7 @@ export class HttpAdvisorRepository implements AdvisorRepository {
     >(`/sessions/${encodeURIComponent(id)}/realtime`, "POST", input, key);
   }
   session(id: string) {
-    return this.request<SessionDetail>(`/sessions/${encodeURIComponent(id)}`);
+    return this.request<SessionWire>(`/sessions/${encodeURIComponent(id)}`);
   }
   consent(id: string, attendees: MeetingSession["consents"], key: string) {
     return this.request<MeetingSession>(
@@ -415,13 +599,144 @@ export class HttpAdvisorRepository implements AdvisorRepository {
       throw new Error("The server did not acknowledge this recording part.");
     return { uploadedBytes: input.offset + input.bytes.length };
   }
-  async finish(id: string, key: string) {
-    await this.request(
-      `/sessions/${encodeURIComponent(id)}/finish`,
-      "POST",
-      {},
-      key,
-    );
+  async finish(id: string, key: string, options?: { signal?: AbortSignal }) {
+    // A minimal projection of the generated server DTOs; no transcript content is retained here.
+    type Result = {
+      job?: MobileFinishJobWire;
+      session?: Pick<SessionWire, "endedAt">;
+    };
+    const generation = advisorSessionGeneration();
+    const assertActive = () => {
+      if (generation !== advisorSessionGeneration())
+        throw new CompanionApiError(
+          "SESSION_ENDED",
+          "Pair this phone again to continue.",
+          401,
+          false,
+        );
+      if (options?.signal?.aborted)
+        throw new CompanionApiError(
+          "COMMAND_PENDING",
+          "Checking paused. The server can continue processing. Tap Review closing to check the same attempt.",
+          0,
+          true,
+        );
+    };
+    const pending = () =>
+      new CompanionApiError(
+        "COMMAND_PENDING",
+        "The server is still preparing the review. You can leave and tap Review closing later to check the same attempt.",
+        202,
+        true,
+      );
+    const submit = async () => {
+      assertActive();
+      const result = await this.request<Result>(
+        `/sessions/${encodeURIComponent(id)}/finish`,
+        "POST",
+        {},
+        key,
+        true,
+        true,
+        "/api/mobile/meetings/v1",
+        this.versionedCommands ? 20000 : 210000,
+        options?.signal,
+      );
+      assertActive();
+      if (
+        !result ||
+        (!result.job && this.versionedCommands && !result.session?.endedAt)
+      )
+        throw new CompanionApiError(
+          "INVALID_RESPONSE",
+          "The server has not confirmed that the review is ready. Tap Review closing to check again.",
+          0,
+          true,
+        );
+      return result;
+    };
+    let result = await submit();
+    if (!result.job) return; // The synchronous development API remains supported.
+    const jobId = result.job.id;
+    if (!jobId)
+      throw new CompanionApiError(
+        "INVALID_RESPONSE",
+        "The server did not identify the finish attempt.",
+        0,
+        true,
+      );
+    const deadline = Date.now() + 60000;
+    while (true) {
+      assertActive();
+      const job = result.job;
+      if (!job) return;
+      if (job.id !== jobId) throw pending();
+      if (
+        job.state === "needs_review" ||
+        job.failureCode === "INTERRUPTED_DISPATCH"
+      )
+        throw new CompanionApiError(
+          "FINISH_REVIEW_REQUIRED",
+          "Processing needs an advisor review before another attempt. Your recording is retained.",
+          409,
+          false,
+        );
+      if (job.state === "failed")
+        throw new CompanionApiError(
+          "COMMAND_FAILED",
+          "The finish attempt failed before processing. Your recording is retained.",
+          409,
+          false,
+        );
+      if (job.state === "complete") {
+        // Bind completion to this command receipt, not merely the session's latest job.
+        result = await submit();
+        if (!result.job) return;
+        throw pending();
+      }
+      if (!["queued", "running"].includes(job.state))
+        throw new CompanionApiError(
+          "INVALID_RESPONSE",
+          "The server returned an unknown finish state.",
+          0,
+          true,
+        );
+      if (Date.now() >= deadline) throw pending();
+      await new Promise<void>((resolve, reject) => {
+        const cancel = () => {
+          clearTimeout(timer);
+          options?.signal?.removeEventListener("abort", cancel);
+          reject(pending());
+        };
+        const timer = setTimeout(() => {
+          options?.signal?.removeEventListener("abort", cancel);
+          resolve();
+        }, 1000);
+        options?.signal?.addEventListener("abort", cancel, { once: true });
+        if (options?.signal?.aborted) cancel();
+      });
+      assertActive();
+      result = await this.request<Result>(
+        `/sessions/${encodeURIComponent(id)}/finish-job`,
+        "GET",
+        undefined,
+        undefined,
+        true,
+        true,
+        "/api/mobile/meetings/v1",
+        20000,
+        options?.signal,
+      );
+      assertActive();
+      if (!result?.job)
+        throw new CompanionApiError(
+          "INVALID_RESPONSE",
+          "The server has not confirmed the finish state.",
+          0,
+          true,
+        );
+      if (result.job.id !== jobId) result = await submit();
+    }
   }
   speakers(id: string, map: SpeakerMap, key: string) {
     return this.request<SpeakerMap>(
@@ -469,10 +784,38 @@ export class HttpAdvisorRepository implements AdvisorRepository {
     );
   }
   async confirm(sessionId: string, item: ClosingItem, key: string) {
+    const { expectedVersion, contentHash, ...legacy } = item;
+    if (this.versionedCommands && (!expectedVersion || !contentHash))
+      throw new CompanionApiError(
+        "VERSION_REQUIRED",
+        "Load the current proposal before confirming.",
+        409,
+        false,
+      );
     await this.request(
       `/sessions/${encodeURIComponent(sessionId)}/closing`,
       "POST",
-      { items: [item] },
+      { items: [this.versionedCommands ? item : legacy] },
+      key,
+    );
+  }
+  async saveClosing(sessionId: string, input: SaveClosing, key: string) {
+    await this.request(
+      `/sessions/${encodeURIComponent(sessionId)}/closing`,
+      "POST",
+      input,
+      key,
+    );
+  }
+  async complete(
+    sessionId: string,
+    reviewed: { expectedVersion: number; contentHash: string },
+    key: string,
+  ): Promise<MeetingDefinition> {
+    return this.request(
+      `/sessions/${encodeURIComponent(sessionId)}/complete`,
+      "POST",
+      reviewed,
       key,
     );
   }
@@ -538,12 +881,22 @@ export class HttpAdvisorRepository implements AdvisorRepository {
     };
   }
   async notes(id: string, notes: KickoffNote[], key: string) {
-    await this.request(
+    const result = await this.request<{ notes: KickoffNote[] }>(
       `/kickoff/${encodeURIComponent(id)}/notes`,
       "POST",
-      { notes: notes.map(({ meetingId: _meetingId, ...note }) => note) },
+      {
+        notes: notes.map(
+          ({ meetingId: _meetingId, version, hash, ...note }) => ({
+            ...note,
+            ...(this.versionedCommands && version && hash
+              ? { expectedVersion: version, contentHash: hash }
+              : {}),
+          }),
+        ),
+      },
       key,
     );
+    return this.versionedCommands ? result.notes : undefined;
   }
   setup(key: string) {
     return this.request<{ id: string }>("/setup", "POST", {}, key);

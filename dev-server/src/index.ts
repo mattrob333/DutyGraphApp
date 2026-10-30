@@ -10,6 +10,7 @@ import { attachFakeRealtime } from "./fake-realtime.ts";
 import { v1xRoutes } from "./v1x.ts";
 import { meetingRoutes } from "./meetings.ts";
 import { participantRoutes } from "./participant.ts";
+import { earnRoutes } from "./earn.ts";
 export interface AppOptions {
   store?: Store;
   origin?: string;
@@ -17,6 +18,8 @@ export interface AppOptions {
   dataFile?: string;
   config?: Config;
   providers?: Providers;
+  /** Fictional Earn fixture setting; never applied to a proxied real backend. */
+  earnEnabled?: boolean;
 }
 export function createApp(options: AppOptions = {}) {
   const app = express(),
@@ -90,9 +93,13 @@ export function createApp(options: AppOptions = {}) {
       mode: origin ? "proxy" : "fake",
       fixtureAdditions: !!origin,
       providers: providers.metadata,
+      earn: { developmentFixture: !origin, draftCreation: !origin },
     }),
   );
-  if (!origin) app.use("/api/mobile/v1", participantRoutes(store));
+  if (!origin) {
+    app.use("/api/mobile/v1", participantRoutes(store));
+    app.use("/api/mobile/v1/earn", earnRoutes(store, { enabled: options.earnEnabled }));
+  }
   app.post("/dev/pairing-code", (req, res) => {
     // Behind a reverse proxy every caller arrives from loopback, so a shared server must use
     // DEV_ADMIN_TOKEN; the socket check only protects a server bound to this computer.

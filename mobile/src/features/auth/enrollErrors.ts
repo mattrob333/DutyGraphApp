@@ -1,4 +1,5 @@
 import { CompanionApiError } from '@/types/domain';
+import { config, type BackendProfile } from '@/api/config';
 
 export type EnrollFailure = { kind: 'expired' | 'useWeb' | 'other'; message: string };
 
@@ -17,8 +18,19 @@ export function describeEnrollError(e: unknown): EnrollFailure {
 
 export const ENROLL_ORIGIN = 'https://respond.dutygraph.com';
 
-export function buildEnrollUrl(token: string): string {
-  return `${ENROLL_ORIGIN}/mobile/enroll?t=${encodeURIComponent(token)}`;
+/**
+ * Production invitations use the HTTPS App Link. Development and mock builds
+ * keep the existing URL and custom-scheme fixtures. iOS still needs the
+ * production site's apple-app-site-association file before Universal Links work.
+ */
+export function buildEnrollUrl(
+  token: string,
+  profile: BackendProfile = config.backendProfile,
+): string {
+  const origin = profile === 'dutygraph-production'
+    ? 'https://dutygraph.com'
+    : ENROLL_ORIGIN;
+  return `${origin}/mobile/enroll?t=${encodeURIComponent(token)}`;
 }
 
 /** Only https DutyGraph links may be handed to the system browser. */

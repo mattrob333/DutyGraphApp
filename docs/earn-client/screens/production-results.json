@@ -1,0 +1,13 @@
+{
+  "fakeHttp": true,
+  "productionGuardOnly": true,
+  "generatedAt": "2026-10-29T06:10:30.948Z",
+  "results": [
+    {
+      "width": 360,
+      "production": true,
+      "passed": true,
+      "seedRequests": 0
+    }
+  ]
+}

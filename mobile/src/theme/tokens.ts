@@ -26,6 +26,12 @@ export interface ColorTokens {
   amberBg: string;
   violet: string;
   violetBg: string;
+  /** Task Card work type "AI help" (shared web/phone spec, app-ux/task-card-gallery-spec.md). */
+  blue: string;
+  blueBg: string;
+  /** Task Card work type "Mixed": chip text and fill; its band is half amber, half blue. */
+  lilac: string;
+  lilacBg: string;
   red: string;
   redBg: string;
   accent: string;
@@ -55,6 +61,10 @@ export const darkColors: ColorTokens = {
   amberBg: '#3b3020',
   violet: '#c6b5eb',
   violetBg: '#332b46',
+  blue: '#9dbdf0',
+  blueBg: '#18202c',
+  lilac: '#d9cdea',
+  lilacBg: '#221e2a',
   red: '#e5a09a',
   redBg: '#322423',
   accent: '#dedbd4',
@@ -83,6 +93,10 @@ export const lightColors: ColorTokens = {
   amberBg: '#f5ecdf',
   violet: '#6a4c94',
   violetBg: '#eee8f7',
+  blue: '#2f5b9a',
+  blueBg: '#e6eef9',
+  lilac: '#5e4a7e',
+  lilacBg: '#efeaf6',
   red: '#a3443e',
   redBg: '#f8e8e5',
   accent: '#494640',

@@ -5,6 +5,7 @@ import { Button, Heading, Screen, Text } from "@/components/common";
 import { CommandError, Notice } from "@/components/advisor/Parts";
 import { useAdvisorStore } from "@/state/advisor";
 import { useCommand } from "@/features/advisor/useCommand";
+import { advisorSessionGeneration } from "@/storage/advisor";
 export default function AdvisorMe() {
   const identity = useAdvisorStore((s) => s.identity),
     clear = useAdvisorStore((s) => s.clear),
@@ -47,12 +48,16 @@ export default function AdvisorMe() {
         kind="primary"
         loading={cmd.busy}
         onPress={async () => {
+          const generation = advisorSessionGeneration();
           const done = await cmd.run("advisor-logout", async (r, k) => {
             await r.logout(k);
             return true;
           });
           try {
-            await clear();
+            // HTTP logout already clears locally before awaiting revocation.
+            // The mock adapter still needs local cleanup here.
+            if (generation === advisorSessionGeneration()) await clear();
+            if (useAdvisorStore.getState().identity) return;
             router.replace(
               (done
                 ? "/advisor/pair"
