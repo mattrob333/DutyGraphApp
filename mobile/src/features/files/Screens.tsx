@@ -149,9 +149,12 @@ export function FilesScreen({ repository }: { repository?: FilesRepository }) {
             </Card>
           )}
           <Text variant="small" color="muted">
-            You see the files your company shares with the team. Upload
-            documents in the DutyGraph web app.
+            You see the files your company shares with the team.
           </Text>
+          <Button
+            label="Upload a file or photo"
+            onPress={() => router.push("/upload" as never)}
+          />
         </>
       )}
     </Screen>

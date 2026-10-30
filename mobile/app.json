@@ -66,6 +66,14 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "DutyGraph uses the camera only when you choose to photograph or scan a form or document to send, or to scan a company pairing code.",
+          "photosPermission": "DutyGraph opens your photos only when you choose one to send.",
+          "microphonePermission": false
+        }
+      ],
       "expo-font",
       [
         "expo-audio",
@@ -104,7 +112,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "DutyGraph uses the camera only when you choose to scan a company pairing code.",
+          "cameraPermission": "DutyGraph uses the camera only when you choose to photograph or scan a form or document to send, or to scan a company pairing code.",
           "recordAudioAndroid": false
         }
       ],
@@ -117,7 +125,7 @@
       [
         "@config-plugins/react-native-webrtc",
         {
-          "cameraPermission": "DutyGraph uses the camera only when you choose to scan a company pairing code.",
+          "cameraPermission": "DutyGraph uses the camera only when you choose to photograph or scan a form or document to send, or to scan a company pairing code.",
           "microphonePermission": "DutyGraph records only after you choose voice or start a meeting with attendee consent. A visible indicator shows recording. Answers are reviewed before sending."
         }
       ]

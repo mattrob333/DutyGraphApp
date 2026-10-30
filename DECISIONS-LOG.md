@@ -2,6 +2,7 @@
 
 | Date (UTC) | Phase | Decision | Reason |
 | --- | --- | --- | --- |
+| 2026-10-30 | Pilot upload | Send uploads to the advisor's review first; shrink photos to 1800 px JPEG and build scans as one PDF on the phone; cap at 4 MB. | Nothing joins the company files without the advisor; Vercel refuses request bodies over 4.5 MB. |
 | 2026-10-28 | Day-run D3 | Request optional gate advice only on a tap; render it separately and keep the deterministic result and route unchanged. | AI is advice, and off/unavailable/over-budget cases must preserve the rules. |
 | 2026-10-28 | Day-run D3 | Keep mock/development gate advice off and add no provider-settings editor. | The app has no existing provider configuration UI; authorization must not be invented. |
 | 2026-10-28 | Day-run D5 | Poll finish status for at most one minute; subsequent taps reuse the original command key and confirm completion through that receipt. | Keep UI waits finite without duplicating paid work or accepting another job's completion. |

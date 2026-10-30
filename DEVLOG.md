@@ -1,3 +1,15 @@
+# October 30, 2026 — Upload with the camera: photo, multi-page scan, or a file
+
+matt's pilot must-haves for the employee app: sign in, a home that shows questions, Task Cards and company files, an upload screen, and a camera on the phone to capture forms and documents.
+
+- **Upload** (`/upload`): Take a photo (shrunk to 1800 px JPEG before sending), Scan pages to one PDF (one camera shot per page, joined with expo-print; phone only), or Choose a file (expo-document-picker). An optional "What is this?" note, a warning not to send patient or customer details, and "Send to my advisor". "You sent" lists each upload as With your advisor or In company files, with Take back while the advisor has not added it.
+- Uploads go to the advisor's Files review first, never straight into the company files. They use DutyGraphV2 `POST /api/mobile/v1/uploads` (multipart `file` + `note`, Idempotency-Key), `GET /uploads` and `DELETE /uploads/:id` (DutyGraphV2 branch `claude/project-thread-w6qpc9`). 4 MB limit (Vercel's request size).
+- Today has a "Your work" section: Your Task Cards, Company files, Upload a file or photo. Files has an Upload button instead of "use the web app".
+- New native modules: expo-image-picker (camera permission text in app.json; no microphone), expo-image-manipulator, expo-print, expo-document-picker.
+- The development API has no upload route; mock mode uses an in-memory sample repository.
+
+Checks: mobile typecheck, lint and Jest (78 suites, 656 tests). No device: the camera, scanner and PDF output still need a phone test.
+
 # October 29, 2026 — My work matches the web: Task Card gallery, With your AI now, Connected
 
 matt approved the Task Card gallery design and wants the web and phone to match. The phone now follows the shared spec (/mnt/project-files/app-ux/task-card-gallery-spec.md, mockup https://claude.ai/artifact/KE5oV3e6mDpAivrwzWWXmz).

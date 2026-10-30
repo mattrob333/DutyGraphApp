@@ -1,5 +1,11 @@
 # Build progress
 
+## October 30, 2026 — Upload with the camera
+
+- Added `/upload` with Take a photo, Scan pages to one PDF and Choose a file, a note, Send to my advisor and a "You sent" list with Take back. Today links Your Task Cards, Company files and Upload; Files links Upload.
+- Http repository posts multipart FormData to DutyGraphV2 `/api/mobile/v1/uploads` with an Idempotency-Key; the sample repository keeps uploads in memory.
+- Checks: mobile typecheck, lint and Jest (78 suites, 656 tests; 6 new upload tests with mocked camera, picker and print). Not checked: a real camera, the scanned PDF on a device, or a hosted upload.
+
 ## October 28, 2026 — Optional gate advice and final adapter contract sync
 
 - Added an explicit Ask AI for a suggestion action to the meeting gate. The rules result remains visible. Any reason is labelled as a suggestion and never changes the saved gate or route. Off, unavailable, over-budget and rules-required results retain the deterministic result. The mock and development API stay off; this app has no provider-settings editor and adds no new configuration authority.
