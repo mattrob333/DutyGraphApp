@@ -12,6 +12,8 @@ The app supports mock/development workflows and opt-in actual DutyGraphV2 integr
 
 One client app (2026-10-29, branch `claude/voice-client-app`): voice interviews, Earn, Connect your AI (MCP connector steps) and company Files in the phone app. See DEVLOG.md.
 
+Upload (2026-10-30): take a photo, scan several pages to one PDF, or choose a file, and send it to the advisor's review. Needs a device test. See DEVLOG.md.
+
 ## Repository map
 
 | Path | Contents |

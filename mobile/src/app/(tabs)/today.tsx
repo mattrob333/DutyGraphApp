@@ -72,6 +72,31 @@ export default function TodayScreen() {
         </>
       ) : null}
 
+      {/* The employee pilot app's Home (October 30): Task Cards, company files and Upload, one tap each. */}
+      <SectionLabel>Your work</SectionLabel>
+      <Card level="surface" style={{ paddingVertical: 4, marginBottom: 0 }}>
+        {(
+          [
+            ['Your Task Cards', 'Cards you wrote or your AI sent', '/earn/drafts'],
+            ['Company files', 'How your company works, as shared with the team', '/files'],
+            ['Upload a file or photo', 'Send a form, a checklist or a scan to your advisor', '/upload'],
+          ] as const
+        ).map(([title, detail, route], i) => (
+          <Pressable
+            key={route}
+            accessibilityRole="button"
+            accessibilityLabel={`${title}. ${detail}`}
+            onPress={() => router.push(route as Href)}
+            style={({ pressed }) => ({ minHeight: 44, paddingVertical: 12, borderTopWidth: i ? 1 : 0, borderTopColor: c.line, opacity: pressed ? 0.8 : 1 })}
+          >
+            <Text variant="bodyStrong">{title}</Text>
+            <Text variant="small" color="faint" style={{ marginTop: 2 }}>
+              {detail}
+            </Text>
+          </Pressable>
+        ))}
+      </Card>
+
       {full ? (
         <Pressable
           accessibilityRole="button"
